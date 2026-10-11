@@ -1,0 +1,780 @@
+/* log entry */
+"%@ joined channel" = "%@ Csatlakozott a csatornához";
+
+/* log entry */
+"%@ left channel" = "%@ elhagyta a csatornát";
+
+/* Web Login Controller */
+"%@, your username \"%@\" has been validated" = "%1$@, your username \"%2$@\" has been validated";
+
+/* preferences */
+"%d %% - Default" = "%d %% - Alapértelmezett";
+
+/* codec detail */
+"(Active)" = "(Aktív)";
+
+/* codec detail */
+"12 KHz" = "12 KHz";
+
+/* codec detail
+   create channel */
+"16 KHz" = "16 KHz";
+
+/* codec detail */
+"24 KHz" = "24 KHz";
+
+/* codec detail
+   create channel */
+"32 KHz" = "32 KHz";
+
+/* codec detail */
+"48 KHz" = "48 KHz";
+
+/* codec detail
+   create channel */
+"8 KHz" = "8 KHz";
+
+/* serverlist */
+"Access preferences" = "beállítások";
+
+/* server entry
+   user detail */
+"Actions" = "Műveletek";
+
+/* channel list */
+"Active" = "Active";
+
+/* serverlist */
+"Add new server entry" = "új szerver hozzáadása";
+
+/* preferences */
+"Announce content of text message" = "szövegüzenetek bemondása";
+
+/* preferences */
+"Announce lost server connection" = "Megszakadt kapcsolat Bemondása";
+
+/* preferences */
+"Announce user joining channel" = "Csatorna csatlakozások bemondása";
+
+/* preferences */
+"Announce user leaving channel" = "Csatorna elhagyások bemondása";
+
+/* preferences */
+"Announce user logged onto server" = "Announce user logged onto server";
+
+/* preferences */
+"Announce user logged out of server" = "Announce user logged out of server";
+
+/* text to speech */
+"Announcements" = "Announcements";
+
+/* preferences */
+"App Version" = "App Version";
+
+/* codec detail */
+"Application" = "Alkalmazás";
+
+/* preferences */
+"Ascending" = "Ascending";
+
+/* codec detail */
+"Audio Channels" = "Audió csatornák";
+
+/* create channel */
+"Audio Codec" = "Audio Kodek";
+
+/* Web Login Controller */
+"Authenticate" = "Authenticate";
+
+/* server entry */
+"Authentication" = "Hitelesítés";
+
+/* channel list */
+"Ban user" = "Ban user";
+
+/* server entry */
+"BearWare.dk Web Login" = "BearWare.dk Web Login";
+
+/* weblogin event */
+"BearWare.dk Web Login failed to authenticate. Check BearWare.dk Web Login in Preferences" = "BearWare.dk Web Login failed to authenticate. Check BearWare.dk Web Login in Preferences";
+
+/* codec detail */
+"Bitrate" = "Bitrate";
+
+/* preferences */
+
+/* Sound Devices */
+"Bluetooth A2DP Playback" = "Bluetooth A2DP Playback";
+
+/* Sound Devices */
+"Bluetooth playback should use Advanced Audio Distribution Profile" = "Bluetooth playback should use Advanced Audio Distribution Profile";
+
+/* text message type */
+"Broadcast message" = "Broadcast message";
+
+/* preferences
+   user detail */
+"Broadcast Messages" = "teljesszögű üzenetek";
+
+/* preferences */
+"Broadcast Text Message" = "Broadcast Text Message";
+
+/* Dialog message */
+"Cancel" = "Cancel";
+
+/* channel list
+   server entry */
+"Channel" = "Csatorna";
+
+/* text message type */
+"Channel message" = "Channel message";
+
+/* TTS EVENT */
+"Channel message from %@. %@" = "csatorna üzenet a következőtől: %@. %@";
+
+/* preferences
+   user detail */
+"Channel Messages" = "Csatornai Üzenetek";
+
+/* create channel */
+"Channel Properties" = "Channel Properties";
+
+/* preferences */
+"Channel Text Message" = "Csatornai Szöveg Üzenet";
+
+/* channel list */
+"Channel. %d users" = "Csatorna. %d taggal";
+
+/* server entry */
+"Check only if this server has enabled BearWare.dk Web Login" = "Check only if this server has enabled BearWare.dk Web Login";
+
+/* log entry */
+"Command failed: %@" = "Command failed: %@";
+
+/* create channel */
+"Commands" = "Commands";
+
+/* serverlist */
+"Connect to server" = "Kapcsolódás a szerverre";
+
+/* connect to a server */
+"Connect to Server" = "Connect to Server";
+
+/* preferences
+   server entry */
+"Connection" = "Kapcsolat";
+
+/* preferences
+   tts event */
+"Connection lost" = "Kapcsolat Megszakadt";
+
+/* server entry */
+"Copy" = "Copy";
+
+/* server entry */
+"Country" = "Country";
+
+/* View Title */
+"Create Channel" = "Csatorna létrehozása";
+
+/* main-tab */
+"Create new channel" = "Új csatorna létrehozása";
+
+/* Sound Input */
+"Default" = "Default";
+
+/* preferences */
+"Default Subscriptions" = "alapértelmezett felíratkozások";
+
+/* serverlist */
+"Delete server from list" = "A szerver törlése";
+
+/* preferences
+   user detail */
+"Desktop" = "Asztal";
+
+/* preferences */
+"Display" = "Kijelzés";
+
+/* channel list */
+"Double tap and hold to transmit. Triple tap fast to lock transmission." = "Double tap and hold to transmit. Triple tap fast to lock transmission.";
+
+/* preferences */
+"Double tap to lock TX button" = "a továbbítás gomb dupla-koppintásos rögzítése";
+
+/* codec detail */
+"DTX" = "DTX";
+
+/* channel list */
+"Edit properties" = "tulajdonságok szerkeztése";
+
+/* server entry */
+"Encrypted" = "Encrypted";
+
+/* serverlist */
+"Enter Join Code" = "Enter Join Code";
+
+/* Dialog message */
+"Enter Password" = "Jelszó Beírása";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail */
+"Error" = "Hiba";
+
+/* preferences */
+"Enable All" = "Enable All";
+
+/* preferences */
+"Disable All" = "Disable All";
+
+/* preferences */
+"Exclusive Mode Toggled" = "Exclusive Mode Toggled";
+
+/* connect to a server */
+"Failed to setup encryption" = "Failed to setup encryption";
+
+/* preferences */
+"Female" = "Female";
+
+/* codec detail */
+"Frame Size" = "Frame Size";
+
+/* preferences */
+"Gender" = "Gender";
+
+/* preferences
+   user detail */
+"General" = "Általános";
+
+/* TTS EVENT */
+"has joined the channel" = "kapcsolódott a csatornához";
+
+/* TTS EVENT */
+"has left the channel" = "elhagyta a csatornát";
+
+/* TTS EVENT */
+"has logged on" = "has logged on";
+
+/* TTS EVENT */
+"has logged out" = "has logged out";
+
+/* preferences */
+"Headset TX Toggle" = "Headset TX Toggle";
+
+/* hidden channel */
+"Hidden Channel" = "Hidden Channel";
+
+/* server entry */
+"Host address" = "Host címe";
+
+/* channel list */
+"Inactive" = "Inactive";
+
+/* Dialog message */
+"Join" = "Belépett";
+
+/* server entry */
+"Join Channel" = "Kapcsolódás a csatornához";
+
+/* channel list */
+"Join channel" = "Kapcsolódás a csatornához";
+
+/* server entry */
+"Join Code: %@" = "Join Code: %@";
+
+/* preferences */
+"Join Root Channel" = "Gyökércsatornai Belépés";
+
+/* preferences */
+"Join root channel after login" = "Bejelentkezés után, belépés a gyökér csatornába";
+
+/* log entry */
+"Joined %@" = "Belépettd %@ ";
+
+/* channel list */
+"Kick user" = "Felhasználó rugása";
+
+/* preferences */
+"Limit length of names in channel list to %d characters" = "Nevek kiírás korlátozása a csatorna listában %d karakterre";
+
+/* serverlist */
+"Local server" = "Local server";
+
+/* text message type */
+"Log message" = "Log message";
+
+/* log entry */
+"Logged on to server" = "Bejelentkeztünk a szerverre";
+
+/* preferences */
+"Male" = "Male";
+
+/* preferences */
+"Master Volume" = "fő hangerő";
+
+/* preferences */
+"Maximum Text Length" = "Maximum Szöveg Hosszúsága";
+
+/* preferences
+   user detail */
+"Audio File" = "Média fájl";
+
+/* preferences
+   user detail */
+"Audio File Volume" = "Média fájl Hangereje";
+
+/* preferences */
+"Audio file vs. voice volume" = "a Médiafájl és hangerő közti különbség";
+
+/* server entry */
+"Message of the Day" = "Message of the Day";
+
+/* preferences */
+"Input Gain" = "Mikrofon Erősége";
+
+/* codec detail
+   create channel */
+"Mono" = "Mono";
+
+/* channel list */
+"Move user" = "Move user";
+
+/* channel list */
+"Move users here" = "Move users here";
+
+/* codec detail */
+"Music" = "Zene";
+
+/* channel list */
+"Mute" = "Némítás";
+
+/* user detail */
+"Mute Audio File" = "Média Fájl Elnémítása";
+
+/* user detail */
+"Mute Voice" = "Hang némítása";
+
+/* create channel
+   server entry */
+"Name" = "Neve";
+
+/* preferences */
+"Name displayed in channel list" = "Kijelzett név a listában";
+
+/* Dialog message */
+"New Server" = "New Server";
+
+/* preferences */
+"Nickname" = "Becenév";
+
+/* server entry */
+"Nickname (optional)" = "Nickname (optional)";
+
+/* Dialog message */
+"No" = "No";
+
+/* codec detail
+   create channel */
+"No Audio" = "Hangmentes";
+
+/* create channel */
+"No Audio Recording" = "Hang felvétel tiltva";
+
+/* create channel */
+"No Interruptions" = "Zavarás Nélüli";
+
+/* channel list */
+"No password" = "jelszómentes";
+
+/* serverlist */
+"No server found" = "No server found";
+
+/* create channel */
+"No Voice Activation" = "Hang aktiválás tiltott";
+
+/* default nickname */
+"Noname" = "névtelen";
+
+/* serverlist */
+"Official server" = "Official server";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail */
+"OK" = "Rendben";
+
+/* codec detail */
+"OPUS Codec" = "OPUS Kodek";
+
+/* preferences */
+"Order of channels in Channel List" = "Order of channels in Channel List";
+
+/* channel list */
+"Parent channel" = "Szülői Csatorna";
+
+/* create channel
+   Dialog message
+   server entry */
+"Password" = "Jelszó";
+
+/* channel list */
+"Password protected" = "Védett Jelszóval";
+
+/* create channel */
+"Permanent Channel" = "Állandós Csatorna";
+
+/* preferences */
+"Play sound when a user joins the channel" = "Hang lejátszás csatorna kapcsolásokkor";
+
+/* preferences */
+"Play sound when a user leaves the channel" = "Hang lejátszás csatorna elhagyáskor";
+
+/* preferences */
+"Play sound when broadcast text message is received" = "Play sound when broadcast text message is received";
+
+/* preferences */
+"Play sound when channel text message is received" = "Hang lejátszás mikor egy szövegüzenet érkezik";
+
+/* preferences */
+"Play sound when connection is dropped" = "Hang lejátszás mikor a kapcsolat megszakad";
+
+/* preferences */
+"Play sound when private text message is received" = "Hang lejátszása mikor egy személyes üzenet érkezik";
+
+/* preferences */
+"Play sound when transmit ready in \"No Interruptions\" channel" = "Play sound when transmit ready in \"No Interruptions\" channel";
+
+/* preferences */
+"Play sound when user logs off to the server" = "Play sound when user logs off to the server";
+
+/* preferences */
+"Play sound when user logs on to the server" = "Play sound when user logs on to the server";
+
+/* preferences */
+"Play sound when voice activation is triggered" = "Play sound when voice activation is triggered";
+
+/* preferences */
+"Play sound when voice transmission is toggled" = "Hang lejátszás hangaktíválás kapcsolásakor";
+
+/* preferences */
+"Pop up text message when new messages are received" = "Szöveg üzenetek felbukkantása beérkezéskor";
+
+/* preferences */
+"Popularity" = "Popularity";
+
+/* serverlist */
+"Preferences" = "Beállítások";
+
+/* Sound Input */
+"Preferred" = "Preferred";
+
+/* preferences */
+"Pressing Return-key sends text message" = "Pressing Return-key sends text message";
+
+/* text message type */
+"Private message" = "Private message";
+
+/* preferences */
+"Private Text Message" = "Személyes üzenet";
+
+/* TTS EVENT */
+"Private text message from %@. %@" = "Személyes üzenet a következőtöl: %@. %@";
+
+/* preferences */
+
+/* serverlist */
+"Public server" = "nyilvános szerver";
+
+/* preferences */
+"Push To Talk Lock" = "PTT zárolás";
+
+/* codec detail */
+"Quality" = "Minőség";
+
+/* preferences */
+"Receive broadcast messages by default" = "teljesszögű üzenetek alapértelmezett beérkezése";
+
+/* preferences */
+"Receive channel messages by default" = "csatornai üzenetek alapértelmezett beérkezése";
+
+/* preferences */
+"Receive desktop sessions by default" = "Asztali kacsolások  alapértelmezett beérkezése";
+
+/* preferences */
+"Receive audio file streams by default" = "média fájl folyamok alapértelmezett beérkezése";
+
+/* preferences */
+"Receive text messages by default" = "személyes üzenetek alapértelmezett beérkezése";
+
+/* preferences */
+"Receive voice streams by default" = "hangfolyamok alapértelmezett beérkezése";
+
+/* preferences */
+"Receive webcam streams by default" = "Webkamera folyamok alapértelmezett beérkezése";
+
+/* preferences */
+"Return Sends Message" = "Return Sends Message";
+
+/* channel list */
+"Return to previous channel" = "Visszalépés az utolsó csatornába";
+
+/* log entry */
+"root" = "root";
+
+/* log entry */
+"root channel" = "gyökércsatorna";
+
+/* codec detail */
+"Sample Rate" = "Sample Rate";
+
+/* Dialog message */
+"Save Server" = "Save Server";
+
+/* Dialog message */
+"Save server to server list?" = "Save server to server list?";
+
+/* text message */
+"Send empty message to close keyboard" = "Send empty message to close keyboard";
+
+/* channel list */
+"Send private message" = "Személyes üzenet küldése";
+
+/* preferences */
+"Server Connection Lost" = "Szerver kapcsolat megszakadt";
+
+/* server entry */
+"Server List Entry" = "Szerver beírási pont";
+
+/* server entry */
+"Server Status" = "Server Status";
+
+/* preferences */
+"Show in Server List" = "Show in Server List";
+
+/* preferences */
+"Show male or female icon" = "Show male or female icon";
+
+/* preferences */
+"Show Text Messages Instantly" = "rögtöni személyes üzenet mutatás";
+
+/* preferences */
+"Show Usernames" = "Felhasználónevek kijelzése";
+
+/* preferences */
+"Show usernames instead of nicknames" = "Felhasználónevek kijelzése becenevek helyett";
+
+/* channel list */
+
+/* preferences */
+"Sort Channels" = "Sort Channels";
+
+/* preferences
+   text to speech */
+"Sound Events" = "Hang Események";
+
+/* preferences */
+"Sound System" = "Hangrendszer";
+
+/* preferences */
+"Speaker Output" = "Hangszórós Kimenet";
+
+/* preferences */
+"Speech Rate" = "Beszédsebesség";
+
+/* preferences */
+"Speech Volume" = "beszédhang ereje";
+
+/* codec detail */
+"Speex Codec" = "Speex Kodek";
+
+/* codec detail */
+"Speex Variable Bitrate Codec" = "Speex Variable Bitrate Kodek";
+
+/* Text message view */
+"Status Event" = "Status Event";
+
+/* codec detail
+   create channel */
+"Stereo" = "Sztereó";
+
+/* user detail */
+"Subscriptions" = "Feliratkozások";
+
+/* channel list */
+"Administrator" = "Administrator";
+
+/* channel list */
+"Speaking" = "beszél";
+
+/* server entry */
+"TCP Port" = "TCP Port";
+
+/* preferences */
+"Text To Speech Events" = "Hangmotori Események";
+
+/* preferences */
+"The rate of the speaking voice is %.1f" = "A kívánt hang sebessége %.1f";
+
+/* preferences */
+"The volume of the speaking voice is %.1f" = "A kívánt hang ereje %.1f";
+
+/* channel list */
+"Toggle to enable/disable transmission" = "Toggle to enable/disable transmission";
+
+/* preferences */
+"Toggle voice transmission using headset" = "Toggle voice transmission using headset";
+
+/* create channel */
+"Topic" = "Téma";
+
+/* preferences */
+
+/* channel list */
+"Transmit inactive" = "Transmit inactive";
+
+/* codec detail */
+"Transmit Interval" = "Továbbítási fok";
+
+/* channel list */
+"Transmitting" = "Transmitting";
+
+/* preferences */
+
+/* serverlist */
+"Type Join Code" = "Type Join Code";
+
+/* text field hint
+   text message */
+"Type text here" = "írjon ide szöveget";
+
+/* server entry */
+"UDP Port" = "UDP Port";
+
+/* serverlist */
+"Unofficial server" = "Unofficial server";
+
+/* preferences */
+"Use echo cancellation and automatic gain control" = "Use echo cancellation and automatic gain control";
+
+/* preferences */
+"Use device's speaker instead of earpiece" = "Az iPhone hangszóró használata fejhallgató helyett";
+
+/* channel list */
+"User" = "Felhasználó";
+
+/* channel list */
+"User female" = "User female";
+
+/* preferences */
+"User Joins Channel" = "tag Kapcsolódott a Csatornához";
+
+/* preferences */
+"User joins channel" = "Tag kapcsolódott a csatornához";
+
+/* preferences */
+"User leaves channel" = "Tag elhagyta a csatornát";
+
+/* preferences */
+"User Leaves Channel" = "Tag Elhagyta a Csatornát";
+
+/* preferences */
+"User logged in" = "User logged in";
+
+/* preferences */
+"User Logged In" = "User Logged In";
+
+/* preferences */
+"User logged out" = "User logged out";
+
+/* preferences */
+"User Logged Out" = "User Logged Out";
+
+/* preferences
+   user detail */
+"User Messages" = "Felhasználói  Üzenetek";
+
+/* server entry
+   user detail */
+"Username" = "Felhasználónév";
+
+/* Web Login Controller */
+"Username or password incorrect" = "Username or password incorrect";
+
+/* server entry */
+"Users Online" = "Users Online";
+
+/* serverlist */
+"Users: %d, Country: %@" = "Users: %1$d, Country: %2$@";
+
+/* codec detail */
+"Variable Bitrate" = "Variable Bitrate";
+
+/* preferences */
+"About" = "About";
+
+/* channel list */
+"View" = "megtekintés";
+
+/* channel list */
+"View properties" = "Tulajdonságok megtekintése";
+
+/* preferences
+   user detail */
+"Voice" = "Hang";
+
+/* preferences */
+"Voice Activation Level" = "Hangaktiválási Fok";
+
+/* preferences */
+"Voice Activation Level: %d. Recommended: %d" = "Hangaktiválási fok: %d. Ajánlott: %d";
+
+/* preferences */
+"Voice Activation Level: Disabled" = "Hangaktiválási Fok: Tiltott";
+
+/* preferences */
+"Voice Activation Triggered" = "Voice Activation Triggered";
+
+/* preferences */
+
+/* preferences */
+"Voice Transmission Toggled" = "Hangtovábbítás Kapcsolva";
+
+/* user detail */
+"Voice Volume" = "hang ereje";
+
+/* codec detail */
+"VoIP" = "VoIP";
+
+/* user detail */
+"Volume Controls" = "hangvezérlő";
+
+/* Web Login controller */
+"Web Login ID" = "Web Login ID";
+
+/* preferences
+   user detail */
+"WebCam" = "Webkamera";
+
+/* Dialog message */
+"Yes" = "Yes";
+
+/* Dialog */
+"You have been kicked from channel" = "You have been kicked from channel";
+
+/* Dialog */
+"You have been kicked from channel by %@" = "You have been kicked from channel by %@";
+
+/* Dialog */
+"You have been kicked from server" = "You have been kicked from server";
+
+/* Dialog */
+"You have been kicked from server by %@" = "You have been kicked from server by %@";
+
+/* speech */
+"You have selected %@" = "a %@ hangot választotta";
+
+/* sound pack */
+"Preview" = "Preview";

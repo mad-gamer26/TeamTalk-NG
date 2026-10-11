@@ -1,0 +1,51 @@
+/*
+ * Copyright (c) 2005-2018, BearWare.dk
+ * 
+ * Contact Information:
+ *
+ * Bjoern D. Rasmussen
+ * Kirketoften 5
+ * DK-8260 Viby J
+ * Denmark
+ * Email: contact@bearware.dk
+ * Phone: +45 20 20 54 59
+ * Web: http://www.bearware.dk
+ *
+ * This source code is part of the TeamTalk SDK owned by
+ * BearWare.dk. Use of this file, or its compiled unit, requires a
+ * TeamTalk SDK License Key issued by BearWare.dk.
+ *
+ * The TeamTalk SDK License Agreement along with its Terms and
+ * Conditions are outlined in the file License.txt included with the
+ * TeamTalk SDK distribution.
+ *
+ */
+
+import UIKit
+
+class ChannelTableCell : UITableViewCell {
+    
+    @IBOutlet weak var channame: UILabel!
+    @IBOutlet weak var chanimage: UIImageView!
+    @IBOutlet weak var chantopicLabel: UILabel!
+    @IBOutlet weak var editBtn: UIButton!
+
+    var accessibilityActivationHandler: (() -> Bool)?
+    var disclosureHostingController: UIViewController?
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        disclosureHostingController?.willMove(toParent: nil)
+        disclosureHostingController?.view.removeFromSuperview()
+        disclosureHostingController?.removeFromParent()
+        disclosureHostingController = nil
+        channame.isHidden = false
+        chanimage.isHidden = false
+        chantopicLabel.isHidden = false
+        isAccessibilityElement = true
+    }
+
+    override func accessibilityActivate() -> Bool {
+        return accessibilityActivationHandler?() ?? super.accessibilityActivate()
+    }
+}

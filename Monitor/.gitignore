@@ -1,0 +1,7 @@
+/target
+/data
+/ngmon.toml
+/deploy/site/
+*.p8
+/tests/app_check/build
+__pycache__/

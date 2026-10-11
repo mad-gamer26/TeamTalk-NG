@@ -1,0 +1,784 @@
+/* log entry */
+"%@ joined channel" = "%@ 채널에 입장함";
+
+/* log entry */
+"%@ left channel" = "%@ 채널에서 퇴장함";
+
+/* Web Login Controller */
+"%@, your username \"%@\" has been validated" = "%@, 사용자 이름 \"%@\" 인증되었습니다.";
+
+/* preferences */
+"%d %% - Default" = "%d %% - 기본값";
+
+/* codec detail */
+"(Active)" = "(활성화됨)";
+
+/* codec detail */
+"12 KHz" = "12 KHz";
+
+/* codec detail
+   create channel */
+"16 KHz" = "16 KHz";
+
+/* codec detail */
+"24 KHz" = "24 KHz";
+
+/* codec detail
+   create channel */
+"32 KHz" = "32 KHz";
+
+/* codec detail */
+"48 KHz" = "48 KHz";
+
+/* codec detail
+   create channel */
+"8 KHz" = "8 KHz";
+
+/* serverlist */
+"Access preferences" = "설정 접근";
+
+/* server entry
+   user detail */
+"Actions" = "동작";
+
+/* channel list */
+"Active" = "활성화됨";
+
+/* serverlist */
+"Add new server entry" = "새 서버";
+
+/* preferences */
+"Announce content of text message" = "텍스트 메시지 내용 알림";
+
+/* preferences */
+"Announce lost server connection" = "서버 연결 끊김 알림";
+
+/* preferences */
+"Announce user joining channel" = "사용자가 채널에 입장하면 알림";
+
+/* preferences */
+"Announce user leaving channel" = "사용자가 채널에서 퇴장하면 알림";
+
+/* preferences */
+"Announce user logged onto server" = "사용자가 로그인하면 알림";
+
+/* preferences */
+"Announce user logged out of server" = "사용자가 로그아웃하면 알림";
+
+/* text to speech */
+"Announcements" = "알림";
+
+/* preferences */
+"App Version" = "앱 버전";
+
+/* codec detail */
+"Application" = "애플리케이션";
+
+/* preferences */
+"Ascending" = "오름차순";
+
+/* codec detail */
+"Audio Channels" = "오디오 채널";
+
+/* create channel */
+"Audio Codec" = "오디오 코덱";
+
+/* Web Login Controller */
+"Authenticate" = "인증";
+
+/* server entry
+   Web Login controller */
+"Authentication" = "인증";
+
+/* channel list */
+"Ban user" = "차단";
+
+/* server entry */
+"BearWare.dk Web Login" = "BearWare.dk 웹 로그인";
+
+/* weblogin event */
+"BearWare.dk Web Login failed to authenticate. Check BearWare.dk Web Login in Preferences" = "BearWare.dk 웹 로그인 인증에 실패했습니다. BearWare.dk 웹 로그인 설정을 확인해주세요.";
+
+/* codec detail */
+"Bitrate" = "비트레이트";
+
+/* preferences */
+
+/* Sound Devices */
+"Bluetooth A2DP Playback" = "Bluetooth A2DP 재생";
+
+/* Sound Devices */
+"Bluetooth playback should use Advanced Audio Distribution Profile" = "블루투스 재생 시 고급 오디오 배포 프로필(A2DP) 사용";
+
+/* text message type */
+"Broadcast message" = "방송 메시지";
+
+/* preferences
+   user detail */
+"Broadcast Messages" = "방송 메시지";
+
+/* preferences */
+"Broadcast Text Message" = "방송 메시지";
+
+/* Dialog message */
+"Cancel" = "취소";
+
+/* channel list
+   server entry */
+"Channel" = "채널";
+
+/* text message type */
+"Channel message" = "채널 메시지";
+
+/* TTS EVENT */
+"Channel message from %@. %@" = "%@의 채널 메시지: %@";
+
+/* preferences
+   user detail */
+"Channel Messages" = "채널 메시지";
+
+/* create channel */
+"Channel Properties" = "채널 속성";
+
+/* preferences */
+"Channel Text Message" = "채널 메시지";
+
+/* channel list */
+"Channel. %d users" = "채널, 사용자 %d명";
+
+/* server entry */
+"Check only if this server has enabled BearWare.dk Web Login" = "이 서버에서 BearWare.dk 웹 로그인을 활성화한 경우에만 선택하세요";
+
+/* log entry */
+"Command failed: %@" = "명령 실패: %@";
+
+/* create channel */
+"Commands" = "명령";
+
+/* serverlist */
+"Connect to server" = "서버 연결";
+
+/* connect to a server */
+"Connect to Server" = "서버 연결";
+
+/* preferences
+   server entry */
+"Connection" = "연결";
+
+/* preferences
+   tts event */
+"Connection lost" = "연결 끊김";
+
+/* server entry */
+"Copy" = "Copy";
+
+/* server entry */
+"Country" = "국가";
+
+/* View Title */
+"Create Channel" = "채널 만들기";
+
+/* main-tab */
+"Create new channel" = "새 채널 만들기";
+
+/* Sound Input */
+"Default" = "기본값";
+
+/* preferences */
+"Default Subscriptions" = "기본 수신";
+
+/* serverlist */
+"Delete server from list" = "서버 목록에서 삭제";
+
+/* preferences
+   user detail */
+"Desktop" = "화면 공유";
+
+/* preferences */
+"Display" = "출력";
+
+/* channel list */
+"Double tap and hold to transmit. Triple tap fast to lock transmission." = "말하려면 두 번 탭한 채로 길게 누르세요. 말하기 고정 상태를 전환하려면 빠르게 세 번 탭하세요.";
+
+/* preferences */
+"Double tap to lock TX button" = "두 번 탭으로 말하기 잠금";
+
+/* codec detail */
+"DTX" = "무음 무시(DTX)";
+
+/* channel list */
+"Edit properties" = "속성 수정";
+
+/* server entry */
+"Encrypted" = "암호화됨";
+
+/* serverlist */
+"Enter Join Code" = "참여 코드 입력";
+
+/* Dialog message */
+"Enter Password" = "암호를 입력하세요";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail */
+"Error" = "오류";
+
+/* preferences */
+"Enable All" = "Enable All";
+
+/* preferences */
+"Disable All" = "Disable All";
+
+/* preferences */
+"Exclusive Mode Toggled" = "단독 모드 토글";
+
+/* connect to a server */
+"Failed to setup encryption" = "암호화 설정 실패";
+
+/* preferences */
+"Female" = "여성";
+
+/* codec detail */
+"Frame Size" = "프레임 크기";
+
+/* preferences */
+"Gender" = "성별";
+
+/* preferences
+   user detail */
+"General" = "일반";
+
+/* TTS EVENT */
+"has joined the channel" = "채널에 입장함";
+
+/* TTS EVENT */
+"has left the channel" = "채널에서 퇴장함";
+
+/* TTS EVENT */
+"has logged on" = "로그인함";
+
+/* TTS EVENT */
+"has logged out" = "로그아웃함";
+
+/* preferences */
+"Headset TX Toggle" = "헤드셋으로 말하기 상태 전환";
+
+/* hidden channel */
+"Hidden Channel" = "숨겨진 채널";
+
+/* server entry */
+"Host address" = "호스트 주소";
+
+/* channel list */
+"Inactive" = "비활성화됨";
+
+/* Dialog message */
+"Join" = "입장";
+
+/* server entry */
+"Join Channel" = "채널 입장";
+
+/* channel list */
+"Join channel" = "채널 입장";
+
+/* server entry */
+"Join Code: %@" = "Join Code: %@";
+
+/* preferences */
+"Join Root Channel" = "최상위 채널 입장";
+
+/* preferences */
+"Join root channel after login" = "로그인 시 최상위 채널에 자동으로 입장";
+
+/* log entry */
+"Joined %@" = "%@에 입장함";
+
+/* channel list */
+"Kick user" = "추방";
+
+/* preferences */
+"Limit length of names in channel list to %d characters" = "채널 목록에 표시할 이름 길이를 %d자로 제한";
+
+/* serverlist */
+"Local server" = "로컬 서버";
+
+/* text message type */
+"Log message" = "메시지 기록";
+
+/* log entry */
+"Logged on to server" = "서버에 로그인함";
+
+/* preferences */
+"Male" = "남성";
+
+/* preferences */
+"Master Volume" = "마스터 음량";
+
+/* preferences */
+"Maximum Text Length" = "최대 텍스트 길이";
+
+/* preferences
+   user detail */
+"Audio File" = "미디어 파일";
+
+/* preferences
+   user detail */
+"Audio File Volume" = "미디어 파일 음량";
+
+/* preferences */
+"Audio file vs. voice volume" = "미디어 파일 음량 대비 말하기 음량";
+
+/* server entry */
+"Message of the Day" = "환영사";
+
+/* preferences */
+"Input Gain" = "마이크 음량";
+
+/* codec detail
+   create channel */
+"Mono" = "모노";
+
+/* channel list */
+"Move user" = "이동";
+
+/* channel list */
+"Move users here" = "여기로 이동";
+
+/* codec detail */
+"Music" = "Music";
+
+/* channel list */
+"Mute" = "음소거";
+
+/* user detail */
+"Mute Audio File" = "미디어 파일 음소거";
+
+/* user detail */
+"Mute Voice" = "말하기 음소거";
+
+/* create channel
+   server entry */
+"Name" = "이름";
+
+/* preferences */
+"Name displayed in channel list" = "채널 목록에 표시될 이름";
+
+/* Dialog message */
+"New Server" = "새 서버";
+
+/* preferences */
+"Nickname" = "대화명";
+
+/* server entry */
+"Nickname (optional)" = "대화명 (선택 사항)";
+
+/* Dialog message */
+"No" = "아니요";
+
+/* codec detail
+   create channel */
+"No Audio" = "오디오 사용 안 함";
+
+/* create channel */
+"No Audio Recording" = "녹음 금지";
+
+/* create channel */
+"No Interruptions" = "끊김 없는 말하기";
+
+/* channel list */
+"No password" = "암호 없음";
+
+/* serverlist */
+"No server found" = "서버를 찾을 수 없음";
+
+/* create channel */
+"No Voice Activation" = "말하기 활성화 금지";
+
+/* default nickname */
+"Noname" = "이름없음";
+
+/* serverlist */
+"Official server" = "공식 서버";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail
+   Web Login Controller */
+"OK" = "확인";
+
+/* codec detail */
+"OPUS Codec" = "OPUS 코덱";
+
+/* preferences */
+"Order of channels in Channel List" = "채널 목록 정렬 순서";
+
+/* channel list */
+"Parent channel" = "상위 채널";
+
+/* create channel
+   Dialog message
+   server entry
+   Web Login Controller */
+"Password" = "암호";
+
+/* channel list */
+"Password protected" = "암호로 보호됨";
+
+/* create channel */
+"Permanent Channel" = "영구 채널";
+
+/* preferences */
+"Play sound when a user joins the channel" = "사용자가 채널에 입장하면 효과음 재생";
+
+/* preferences */
+"Play sound when a user leaves the channel" = "사용자가 채널에서 퇴장하면 효과음 재생";
+
+/* preferences */
+"Play sound when broadcast text message is received" = "방송 메시지가 수신되면 효과음 재생";
+
+/* preferences */
+"Play sound when channel text message is received" = "채널 메시지가 수신되면 효과음 재생";
+
+/* preferences */
+"Play sound when connection is dropped" = "연결이 끊기면 효과음 재생";
+
+/* preferences */
+"Play sound when private text message is received" = "개인 메시지가 수신되면 효과음 재생";
+
+/* preferences */
+"Play sound when transmit ready in \"No Interruptions\" channel" = "\"끊김 없는 말하기\" 채널에서 전송이 준비되면 효과음 재생";
+
+/* preferences */
+"Play sound when user logs off to the server" = "사용자가 서버에서 로그아웃하면 효과음 재생";
+
+/* preferences */
+"Play sound when user logs on to the server" = "사용자가 서버에 로그인하면 효과음 재생";
+
+/* preferences */
+"Play sound when voice activation is triggered" = "말하기가 감지되면 효과음 재생";
+
+/* preferences */
+"Play sound when voice transmission is toggled" = "말하기 상태가 전환되면 효과음 재생";
+
+/* preferences */
+"Pop up text message when new messages are received" = "새 메시지가 수신되면 팝업으로 알림";
+
+/* preferences */
+"Popularity" = "인원순";
+
+/* serverlist */
+"Preferences" = "설정";
+
+/* Sound Input */
+"Preferred" = "선호";
+
+/* preferences */
+"Pressing Return-key sends text message" = "리턴 키를 누르면 메시지 보내기";
+
+/* text message type */
+"Private message" = "개인 메시지";
+
+/* preferences */
+"Private Text Message" = "개인 메시지";
+
+/* TTS EVENT */
+"Private text message from %@. %@" = "%@의 개인 메시지: %@";
+
+/* preferences */
+
+/* serverlist */
+"Public server" = "공개 서버";
+
+/* preferences */
+"Push To Talk Lock" = "눌러서 말하기 잠금";
+
+/* codec detail */
+"Quality" = "품질";
+
+/* preferences */
+"Receive broadcast messages by default" = "방송 메시지 수신";
+
+/* preferences */
+"Receive channel messages by default" = "채널 메시지 수신";
+
+/* preferences */
+"Receive desktop sessions by default" = "화면 공유 수신";
+
+/* preferences */
+"Receive audio file streams by default" = "미디어 파일 수신";
+
+/* preferences */
+"Receive text messages by default" = "텍스트 메시지 수신";
+
+/* preferences */
+"Receive voice streams by default" = "말하기 수신";
+
+/* preferences */
+"Receive webcam streams by default" = "동영상 수신";
+
+/* preferences */
+"Return Sends Message" = "리턴 키로 메시지 보내기";
+
+/* channel list */
+"Return to previous channel" = "이전 채널로 돌아가기";
+
+/* log entry */
+"root" = "root";
+
+/* log entry */
+"root channel" = "최상위 채널";
+
+/* codec detail */
+"Sample Rate" = "샘플레이트";
+
+/* Dialog message */
+"Save Server" = "서버 저장";
+
+/* Dialog message */
+"Save server to server list?" = "서버 목록에 저장하시겠습니까?";
+
+/* text message */
+"Send empty message to close keyboard" = "키보드를 닫으려면 빈 메시지를 보내세요";
+
+/* channel list */
+"Send private message" = "개인 메시지 보내기";
+
+/* preferences */
+"Server Connection Lost" = "서버 연결 끊김";
+
+/* server entry */
+"Server List Entry" = "서버 목록 항목";
+
+/* server entry */
+"Server Status" = "서버 상태";
+
+/* preferences */
+"Show in Server List" = "서버 목록에 표시";
+
+/* preferences */
+"Show male or female icon" = "성별 아이콘 보기";
+
+/* preferences */
+"Show Text Messages Instantly" = "메시지 즉시 보기";
+
+/* preferences */
+"Show Usernames" = "사용자 이름 표시";
+
+/* preferences */
+"Show usernames instead of nicknames" = "대화명 대신 사용자 이름 표시";
+
+/* channel list */
+
+/* preferences */
+"Sort Channels" = "채널 정렬";
+
+/* preferences
+   text to speech */
+"Sound Events" = "소리 이벤트";
+
+/* preferences */
+"Sound System" = "소리 시스템";
+
+/* preferences */
+"Speaker Output" = "스피커로 출력";
+
+/* preferences */
+"Speech Rate" = "말하기 속도";
+
+/* preferences */
+"Speech Volume" = "말하기 음량";
+
+/* codec detail */
+"Speex Codec" = "Speex 코덱";
+
+/* codec detail */
+"Speex Variable Bitrate Codec" = "Speex 가변 비트레이트 코덱";
+
+/* Text message view */
+"Status Event" = "상태 이벤트";
+
+/* codec detail
+   create channel */
+"Stereo" = "스테레오";
+
+/* user detail */
+"Subscriptions" = "수신";
+
+/* channel list */
+"Administrator" = "Administrator";
+
+/* channel list */
+"Speaking" = "말하는 중";
+
+/* server entry */
+"TCP Port" = "TCP 포트";
+
+/* preferences */
+"Text To Speech Events" = "TTS 이벤트";
+
+/* preferences */
+"The rate of the speaking voice is %.1f" = "현재 말하기 속도: %.1f";
+
+/* preferences */
+"The volume of the speaking voice is %.1f" = "현재 말하기 음량: %.1f";
+
+/* channel list */
+"Toggle to enable/disable transmission" = "말하기 상태 전환";
+
+/* preferences */
+"Toggle voice transmission using headset" = "헤드셋으로 말하기 상태 전환 가능";
+
+/* create channel */
+"Topic" = "주제";
+
+/* preferences */
+
+/* channel list */
+"Transmit inactive" = "말하기: 끔";
+
+/* codec detail */
+"Transmit Interval" = "전송 간격";
+
+/* channel list */
+"Transmitting" = "말하기: 켬";
+
+/* preferences */
+
+/* serverlist */
+"Type Join Code" = "Type Join Code";
+
+/* text field hint
+   text message */
+"Type text here" = "여기에 입력";
+
+/* server entry */
+"UDP Port" = "UDP 포트";
+
+/* serverlist */
+"Unofficial server" = "비공식 서버";
+
+/* preferences */
+"Use echo cancellation and automatic gain control" = "에코 제거와 자동 음량 조절 사용";
+
+/* preferences */
+"Use device's speaker instead of earpiece" = "수화기 대신 스피커로 수신";
+
+/* channel list */
+"User" = "사용자";
+
+/* channel list */
+"User female" = "사용자, 여성";
+
+/* preferences */
+"User Joins Channel" = "채널 입장";
+
+/* preferences */
+"User joins channel" = "채널 입장";
+
+/* preferences */
+"User leaves channel" = "채널 퇴장";
+
+/* preferences */
+"User Leaves Channel" = "채널 퇴장";
+
+/* preferences */
+"User logged in" = "서버 로그인";
+
+/* preferences */
+"User Logged In" = "서버 로그인";
+
+/* preferences */
+"User logged out" = "서버 로그아웃";
+
+/* preferences */
+"User Logged Out" = "서버 로그아웃";
+
+/* preferences
+   user detail */
+"User Messages" = "사용자 메시지";
+
+/* server entry
+   user detail
+   Web Login Controller */
+"Username" = "사용자 이름";
+
+/* Web Login Controller */
+"Username or password incorrect" = "사용자 이름 또는 암호가 올바르지 않습니다.";
+
+/* server entry */
+"Users Online" = "접속자";
+
+/* serverlist */
+"Users: %d, Country: %@" = "사용자 %1$d명, 국가: %2$@";
+
+/* codec detail */
+"Variable Bitrate" = "가변 비트레이트";
+
+/* preferences */
+"About" = "About";
+
+/* channel list */
+"View" = "보기";
+
+/* channel list */
+"View properties" = "속성";
+
+/* preferences
+   user detail */
+"Voice" = "말하기";
+
+/* preferences */
+"Voice Activation Level" = "말하기 활성화 수준";
+
+/* preferences */
+"Voice Activation Level: %d. Recommended: %d" = "말하기 활성화 수준: %d. 권장값: %d";
+
+/* preferences */
+"Voice Activation Level: Disabled" = "말하기 활성화 수준: 꺼짐";
+
+/* preferences */
+"Voice Activation Triggered" = "말하기 감지됨";
+
+/* preferences */
+
+/* preferences */
+"Voice Transmission Toggled" = "말하기 상태 전환됨";
+
+/* user detail */
+"Voice Volume" = "말하기 음량";
+
+/* codec detail */
+"VoIP" = "VoIP";
+
+/* user detail */
+"Volume Controls" = "음량 조절";
+
+/* Web Login controller */
+"Web Login ID" = "웹 로그인 ID";
+
+/* preferences
+   user detail */
+"WebCam" = "동영상";
+
+/* Dialog message */
+"Yes" = "예";
+
+/* Dialog */
+"You have been kicked from channel" = "채널에서 쫓겨남";
+
+/* Dialog */
+"You have been kicked from channel by %@" = "%@의 명령으로 채널에서 쫓겨남";
+
+/* Dialog */
+"You have been kicked from server" = "서버에서 쫓겨남";
+
+/* Dialog */
+"You have been kicked from server by %@" = "%@의 명령으로 서버에서 쫓겨남";
+
+/* speech */
+"You have selected %@" = "%@ 선택됨";
+
+/* sound pack */
+"Preview" = "Preview";

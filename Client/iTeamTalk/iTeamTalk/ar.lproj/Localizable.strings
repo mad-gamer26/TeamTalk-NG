@@ -1,0 +1,780 @@
+/* log entry */
+"%@ joined channel" = "%@ إنضم للقناة";
+
+/* log entry */
+"%@ left channel" = "%@ غادرَ القناة";
+
+/* Web Login Controller */
+"%@, your username \"%@\" has been validated" = "%1$@, اسم المستخدم الخاص بك \"%2$@\" تم التحقق منه";
+
+/* preferences */
+"%d %% - Default" = "%d %% - افتراضي";
+
+/* codec detail */
+"(Active)" = "(نشط)";
+
+/* codec detail */
+"12 KHz" = "12 كيلوهرتز";
+
+/* codec detail
+   create channel */
+"16 KHz" = "16 كيلوهرتز";
+
+/* codec detail */
+"24 KHz" = "24 كيلوهرتز";
+
+/* codec detail
+   create channel */
+"32 KHz" = "32 كيلوهرتز";
+
+/* codec detail */
+"48 KHz" = "48 كيلوهرتز";
+
+/* codec detail
+   create channel */
+"8 KHz" = "8 كيلوهرتز";
+
+/* serverlist */
+"Access preferences" = "الوصول إلى التفضيلات ";
+
+/* server entry
+   user detail */
+"Actions" = "الإجراءات";
+
+/* channel list */
+"Active" = "نشط";
+
+/* serverlist */
+"Add new server entry" = "إضافة بيانات خادم جديد";
+
+/* preferences */
+"Announce content of text message" = "الإعلان عن محتوى الرسالة النصية";
+
+/* preferences */
+"Announce lost server connection" = "الإعلان عن فقدان الإتصال بالخادم";
+
+/* preferences */
+"Announce user joining channel" = "الإعلان عن انضمام المستخدم إلى القناة";
+
+/* preferences */
+"Announce user leaving channel" = "الاعلان عن خروج المستخدم من القناة";
+
+/* preferences */
+"Announce user logged onto server" = "الإعلان بأن المستخدم قد سجل دخوله الى الخادم";
+
+/* preferences */
+"Announce user logged out of server" = "الإعلان بأن المستخدم قد سجل خروجه من الخادم";
+
+/* text to speech */
+"Announcements" = "الإعلانات";
+
+/* preferences */
+"App Version" = "إصدار التطبيق";
+
+/* codec detail */
+"Application" = "الوضعية";
+
+/* preferences */
+"Ascending" = "زيادة";
+
+/* codec detail */
+"Audio Channels" = "قنوات الصوت";
+
+/* create channel */
+"Audio Codec" = "ترميز الصوت";
+
+/* Web Login Controller */
+"Authenticate" = "المصادقة";
+
+/* server entry */
+"Authentication" = "المصادقة";
+
+/* channel list */
+"Ban user" = "حظر المستخدم";
+
+/* server entry */
+"BearWare.dk Web Login" = "تسجيل الدخول عبر BearWare.dk";
+
+/* weblogin event */
+"BearWare.dk Web Login failed to authenticate. Check BearWare.dk Web Login in Preferences" = "فشل BearWare.dk في المصادقة. تحقق من BearWare.dk في التفضيلات";
+
+/* codec detail */
+"Bitrate" = "معدل البت";
+
+/* preferences */
+
+/* Sound Devices */
+"Bluetooth A2DP Playback" = "Bluetooth A2DP Playback";
+
+/* Sound Devices */
+"Bluetooth playback should use Advanced Audio Distribution Profile" = "يجب أن يستخدم تشغيل Bluetooth ملف تعريف توزيع الصوت المتقدم";
+
+/* text message type */
+"Broadcast message" = "رسالة عامة";
+
+/* preferences
+   user detail */
+"Broadcast Messages" = "الرسائل العامة";
+
+/* preferences */
+"Broadcast Text Message" = "رسالة نصية عامة";
+
+/* Dialog message */
+"Cancel" = "الغاء";
+
+/* channel list
+   server entry */
+"Channel" = "قناة";
+
+/* text message type */
+"Channel message" = "رسالة القناة";
+
+/* TTS EVENT */
+"Channel message from %@. %@" = "رسالة القناة من %@: %@";
+
+/* preferences
+   user detail */
+"Channel Messages" = "رسائل القناة";
+
+/* create channel */
+"Channel Properties" = "خصائص القناة";
+
+/* preferences */
+"Channel Text Message" = "رسالة   نصية من القناة";
+
+/* channel list */
+"Channel. %d users" = "قناة. %d من المستخدمين";
+
+/* server entry */
+"Check only if this server has enabled BearWare.dk Web Login" = "حدد فقط إذا قام هذا الخادم بتمكين تسجيل الدخول إلى BearWare.dk";
+
+/* log entry */
+"Command failed: %@" = "فشل الأمر: %@";
+
+/* create channel */
+"Commands" = "الأوامر";
+
+/* serverlist */
+"Connect to server" = "الاتصال بالخادم";
+
+/* connect to a server */
+"Connect to Server" = "الاتصال بالخادم";
+
+/* preferences
+   server entry */
+"Connection" = "الاتصال";
+
+/* preferences
+   tts event */
+"Connection lost" = "تم فقد الاتصال";
+
+/* server entry */
+"Copy" = "Copy";
+
+/* server entry */
+"Country" = "الدولة";
+
+/* View Title */
+"Create Channel" = "أنشئ قناة";
+
+/* main-tab */
+"Create new channel" = "إنشاء قناة جديدة";
+
+/* Sound Input */
+"Default" = "افتراضي";
+
+/* preferences */
+"Default Subscriptions" = "الاشتراكات الافتراضية";
+
+/* serverlist */
+"Delete server from list" = "حذف الخادم من القائمة";
+
+/* preferences
+   user detail */
+"Desktop" = "سطح المكتب";
+
+/* preferences */
+"Display" = "عرض";
+
+/* channel list */
+"Double tap and hold to transmit. Triple tap fast to lock transmission." = "إنقر نقراً مزدوجا ثم ثبت إصبعك لفتح الإرسال , إنقر ثلاث نقرات بشكل سريع   لإقفال الإرسال";
+
+/* preferences */
+"Double tap to lock TX button" = "انقر نقرًا مزدوجًا لقفل الميكروفون";
+
+/* codec detail */
+"DTX" = "DTX";
+
+/* channel list */
+"Edit properties" = "تحرير الخصائص";
+
+/* server entry */
+"Encrypted" = "مشفر";
+
+/* serverlist */
+"Enter Join Code" = "Enter Join Code";
+
+/* Dialog message */
+"Enter Password" = "أدخل كلمة المرور";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail */
+"Error" = "خطأ";
+
+/* preferences */
+"Enable All" = "Enable All";
+
+/* preferences */
+"Disable All" = "Disable All";
+
+/* preferences */
+"Exclusive Mode Toggled" = "تبديل الوضع الحصري";
+
+/* connect to a server */
+"Failed to setup encryption" = "فشل في إعداد التشفير";
+
+/* preferences */
+"Female" = "أنثى";
+
+/* codec detail */
+"Frame Size" = "Frame Size";
+
+/* preferences */
+"Gender" = "الجنس";
+
+/* preferences
+   user detail */
+"General" = "عام";
+
+/* TTS EVENT */
+"has joined the channel" = "إنضم للقناة";
+
+/* TTS EVENT */
+"has left the channel" = "غادر القناة";
+
+/* TTS EVENT */
+"has logged on" = "سجل دخول";
+
+/* TTS EVENT */
+"has logged out" = "سجل خروج";
+
+/* preferences */
+"Headset TX Toggle" = "تبديل المايكروفون عن طريق سماعة الرأس";
+
+/* hidden channel */
+"Hidden Channel" = "قناة مخفية";
+
+/* server entry */
+"Host address" = "عنوان المضيف";
+
+/* channel list */
+"Inactive" = "غير نشط";
+
+/* Dialog message */
+"Join" = "إنضم";
+
+/* server entry */
+"Join Channel" = "الانضمام إلى القناة";
+
+/* channel list */
+"Join channel" = "الانضمام إلى القناة";
+
+/* server entry */
+"Join Code: %@" = "Join Code: %@";
+
+/* preferences */
+"Join Root Channel" = "الانضمام إلى القناة الرئيسية";
+
+/* preferences */
+"Join root channel after login" = "الانضمام إلى القناة الرئيسية بعد تسجيل الدخول";
+
+/* log entry */
+"Joined %@" = "انضم %@";
+
+/* channel list */
+"Kick user" = "طرد المستخدم";
+
+/* preferences */
+"Limit length of names in channel list to %d characters" = "حد  طول الأسماء في قائمة القنوات إلى %d أحرف";
+
+/* serverlist */
+"Local server" = "خادم محلي";
+
+/* text message type */
+"Log message" = "سجل الرسالة";
+
+/* log entry */
+"Logged on to server" = "سجل دخول إلى الخادم";
+
+/* preferences */
+"Male" = "ذكر";
+
+/* preferences */
+"Master Volume" = "مستوى الصوت الرئيسي";
+
+/* preferences */
+"Maximum Text Length" = "الحد الأقصى لطول النص";
+
+/* preferences
+   user detail */
+"Audio File" = "ملف الوسائط";
+
+/* preferences
+   user detail */
+"Audio File Volume" = "مستوى صوت ملف الوسائط";
+
+/* preferences */
+"Audio file vs. voice volume" = "ملف الوسائط مقابل حجم الصوت";
+
+/* server entry */
+"Message of the Day" = "رسالة اليوم";
+
+/* preferences */
+"Input Gain" = "مستوى صوت الميكروفون";
+
+/* codec detail
+   create channel */
+"Mono" = "Mono";
+
+/* channel list */
+"Move user" = "نقل المستخدم";
+
+/* channel list */
+"Move users here" = "نقل المستخدمين هنا";
+
+/* codec detail */
+"Music" = "موسيقى";
+
+/* channel list */
+"Mute" = "كتم";
+
+/* user detail */
+"Mute Audio File" = "كتم ملف الوسائط";
+
+/* user detail */
+"Mute Voice" = "كتم الصوت";
+
+/* create channel
+   server entry */
+"Name" = "الاسم";
+
+/* preferences */
+"Name displayed in channel list" = "الاسم سيكون معروضاً في قائمة القنوات";
+
+/* Dialog message */
+"New Server" = "خادم جديد";
+
+/* preferences */
+"Nickname" = "الاسم المستعار";
+
+/* server entry */
+"Nickname (optional)" = "الاسم المستعار (اختياري)";
+
+/* Dialog message */
+"No" = "لا";
+
+/* codec detail
+   create channel */
+"No Audio" = "من دون صوت";
+
+/* create channel */
+"No Audio Recording" = "لا يمكن تسجيل الصوت";
+
+/* create channel */
+"No Interruptions" = "من دون إنقطاعات";
+
+/* channel list */
+"No password" = "لا توجد كلمة مرور";
+
+/* serverlist */
+"No server found" = "No server found";
+
+/* create channel */
+"No Voice Activation" = "تعطيل وضع التنشيط الصوتي";
+
+/* default nickname */
+"Noname" = "بدون اسم";
+
+/* serverlist */
+"Official server" = "خادم رسمي";
+
+/* Dialog
+   Dialog message
+   message dialog
+   user detail */
+"OK" = "حسناً";
+
+/* codec detail */
+"OPUS Codec" = "ترميز OPUS";
+
+/* preferences */
+"Order of channels in Channel List" = "ترتيب القنوات في قائمة القنوات";
+
+/* channel list */
+"Parent channel" = "الرجوع لقناة ";
+
+/* create channel
+   Dialog message
+   server entry */
+"Password" = "كلمة المرور";
+
+/* channel list */
+"Password protected" = "محمية بكلمة مرور";
+
+/* create channel */
+"Permanent Channel" = "قناة دائمة";
+
+/* preferences */
+"Play sound when a user joins the channel" = "تشغيل صوت  عندما ينضم مستخدم إلى القناة";
+
+/* preferences */
+"Play sound when a user leaves the channel" = "تشغيل صوت  عندما يغادر  مستخدم القناة";
+
+/* preferences */
+"Play sound when broadcast text message is received" = "تشغيل الصوت عند استقبال رسالة نصية عامة";
+
+/* preferences */
+"Play sound when channel text message is received" = "تشغيل صوت عندما تتلقى رسالة من القناة";
+
+/* preferences */
+"Play sound when connection is dropped" = "إصدار صوتاً عند قطع الاتصال ";
+
+/* preferences */
+"Play sound when private text message is received" = "تشغيل صوت عند تلقي رسالة خاصة";
+
+/* preferences */
+"Play sound when transmit ready in \"No Interruptions\" channel" = "تشغيل الصوت عند الإرسال في قناة \"بدون مقاطعات\" ";
+
+/* preferences */
+"Play sound when user logs off to the server" = "تشغيل الصوت عندما يقوم مستخدم بتسجيل الخروج من الخادم";
+
+/* preferences */
+"Play sound when user logs on to the server" = "تشغيل الصوت عندما يقوم مستخدم بتسجيل الدخول إلى الخادم";
+
+/* preferences */
+"Play sound when voice activation is triggered" = "أصدار صوت عند تشغيل التنشيط الصوتي";
+
+/* preferences */
+"Play sound when voice transmission is toggled" = "إصدار تنبيه عندما تقوم بتبديل الصوت (أخذ الميكروفون)";
+
+/* preferences */
+"Pop up text message when new messages are received" = "إنبثاق نافذةاً عندما تتلقى رسالة نصية";
+
+/* preferences */
+"Popularity" = "شعبية";
+
+/* serverlist */
+"Preferences" = "الاعدادات";
+
+/* Sound Input */
+"Preferred" = "مُفَضَّل";
+
+/* preferences */
+"Pressing Return-key sends text message" = "يؤدي الضغط على رجوع (Return) في لوحة المفاتيح, لإرسال رسالة نصية";
+
+/* text message type */
+"Private message" = "رسالة خاصة";
+
+/* preferences */
+"Private Text Message" = "رسالة خاصة";
+
+/* TTS EVENT */
+"Private text message from %@. %@" = "رسالة خاصة من %@: %@";
+
+/* preferences */
+
+/* serverlist */
+"Public server" = "خادم عام";
+
+/* preferences */
+"Push To Talk Lock" = "قفل إضغط وتحدث";
+
+/* codec detail */
+"Quality" = "الجودة";
+
+/* preferences */
+"Receive broadcast messages by default" = "تلقي الرسائل العامة بشكل افتراضي";
+
+/* preferences */
+"Receive channel messages by default" = "تلقي رسائل القناة  بشكل افتراضي";
+
+/* preferences */
+"Receive desktop sessions by default" = "تلقي جلسات سطح المكتب بشكل افتراضي";
+
+/* preferences */
+"Receive audio file streams by default" = "تلقي الملفات الصوتية بشكل إفتراضي";
+
+/* preferences */
+"Receive text messages by default" = "تلقي الرسائل النصية بشكل افتراضي";
+
+/* preferences */
+"Receive voice streams by default" = "تلقي  بث الصوت بشكل إفتراضي ";
+
+/* preferences */
+"Receive webcam streams by default" = "تلقي  بث  كاميرا الويب بشكل افتراضي";
+
+/* preferences */
+"Return Sends Message" = "الرجوع (return) يرسل رسالة";
+
+/* channel list */
+"Return to previous channel" = "الرجوع إلى القناة السابقة";
+
+/* log entry */
+"root" = "root";
+
+/* log entry */
+"root channel" = "القناة الرئيسية";
+
+/* codec detail */
+"Sample Rate" = "Sample Rate";
+
+/* Dialog message */
+"Save Server" = "حفظ الخادم";
+
+/* Dialog message */
+"Save server to server list?" = "هل تريد حفظ الخادم في قائمة الخوادم?";
+
+/* text message */
+"Send empty message to close keyboard" = "إرسال رسالة فارغة لإغلاق لوحة المفاتيح";
+
+/* channel list */
+"Send private message" = "إرسال رسالة خاصة";
+
+/* preferences */
+"Server Connection Lost" = "فقدان الاتصال بالخادم";
+
+/* server entry */
+"Server List Entry" = "قائمة الخوادم";
+
+/* server entry */
+"Server Status" = "حالة الخادم";
+
+/* preferences */
+"Show in Server List" = "إظهار في قائمة الخوادم";
+
+/* preferences */
+"Show male or female icon" = "إظهار رمز ذكر أو أنثى";
+
+/* preferences */
+"Show Text Messages Instantly" = "عرض الرسائل النصية على الفور";
+
+/* preferences */
+"Show Usernames" = "عرض أسماء المستخدمين";
+
+/* preferences */
+"Show usernames instead of nicknames" = "عرض أسماء المستخدمين بدلا من الأسماء المستعارة";
+
+/* channel list */
+
+/* preferences */
+"Sort Channels" = "فرز القنوات";
+
+/* preferences
+   text to speech */
+"Sound Events" = "صوت الاحداث";
+
+/* preferences */
+"Sound System" = "نظام الصوت";
+
+/* preferences */
+"Speaker Output" = "السماعة الخارجية";
+
+/* preferences */
+"Speech Rate" = "سرعة الكلام";
+
+/* preferences */
+"Speech Volume" = "مستوى الصوت";
+
+/* codec detail */
+"Speex Codec" = "Speex Codec";
+
+/* codec detail */
+"Speex Variable Bitrate Codec" = "Speex Variable Bitrate Codec";
+
+/* Text message view */
+"Status Event" = "حدث الحالة";
+
+/* codec detail
+   create channel */
+"Stereo" = "Stereo";
+
+/* user detail */
+"Subscriptions" = "الإشتراكات";
+
+/* channel list */
+"Administrator" = "Administrator";
+
+/* channel list */
+"Speaking" = "يتحدث";
+
+/* server entry */
+"TCP Port" = "منفذ TCP";
+
+/* preferences */
+"Text To Speech Events" = "أحداث تحويل النص إلى كلام";
+
+/* preferences */
+"The rate of the speaking voice is %.1f" = "سرعة الكلام للصوت المتحدث هي %.1f";
+
+/* preferences */
+"The volume of the speaking voice is %.1f" = "مستوى صوت المتحدث هو %.1f";
+
+/* channel list */
+"Toggle to enable/disable transmission" = "تبديل لتمكين او  تعطيل الإرسال";
+
+/* preferences */
+"Toggle voice transmission using headset" = "تبديل ارسال الصوت باستخدام سماعة الرأس";
+
+/* create channel */
+"Topic" = "الموضوع";
+
+/* preferences */
+
+/* channel list */
+"Transmit inactive" = "الميكروفون معطل";
+
+/* codec detail */
+"Transmit Interval" = "الفاصل الزمني للإرسال";
+
+/* channel list */
+"Transmitting" = "يتم النقل";
+
+/* preferences */
+
+/* serverlist */
+"Type Join Code" = "Type Join Code";
+
+/* text field hint
+   text message */
+"Type text here" = "اكتب النص هنا";
+
+/* server entry */
+"UDP Port" = "منفذ UDP";
+
+/* serverlist */
+"Unofficial server" = "خادم غير رسمي";
+
+/* preferences */
+"Use echo cancellation and automatic gain control" = "استخدام إلغاء الصدى والتحكم بالميكروفون بشكل تلقائي";
+
+/* preferences */
+"Use device's speaker instead of earpiece" = "استخدم سماعة ال Iphone  بدلا من سماعة الأذن";
+
+/* channel list */
+"User" = "المستخدم";
+
+/* channel list */
+"User female" = "أنثى";
+
+/* preferences */
+"User Joins Channel" = "ينضم المستخدم إلى القناة";
+
+/* preferences */
+"User joins channel" = "ينضم المستخدم إلى القناة";
+
+/* preferences */
+"User leaves channel" = "يغادر المستخدم القناة";
+
+/* preferences */
+"User Leaves Channel" = "يغادر المستخدم القناة";
+
+/* preferences */
+"User logged in" = "تسجيل دخول المستخدم";
+
+/* preferences */
+"User Logged In" = "تسجيل دخول المستخدم";
+
+/* preferences */
+"User logged out" = "تسجيل خروج المستخدم";
+
+/* preferences */
+"User Logged Out" = "تسجيل خروج المستخدم";
+
+/* preferences
+   user detail */
+"User Messages" = "رسائل المستخدم";
+
+/* server entry
+   user detail */
+"Username" = "اسم المستخدم";
+
+/* Web Login Controller */
+"Username or password incorrect" = "خطأ في أسم المستخدم أو كلمة المرور";
+
+/* server entry */
+"Users Online" = "مستخدمين متصلين";
+
+/* serverlist */
+"Users: %d, Country: %@" = "المستخدمون: %1$d, الدولة: %2$@";
+
+/* codec detail */
+"Variable Bitrate" = "Variable Bitrate";
+
+/* preferences */
+"About" = "About";
+
+/* channel list */
+"View" = "عرض";
+
+/* channel list */
+"View properties" = "عرض الخصائص";
+
+/* preferences
+   user detail */
+"Voice" = "الصوت";
+
+/* preferences */
+"Voice Activation Level" = "مستوى التنشيط الصوتي";
+
+/* preferences */
+"Voice Activation Level: %d. Recommended: %d" = "مستوى التنشيط الصوتي: %d. موصى به: %d";
+
+/* preferences */
+"Voice Activation Level: Disabled" = "مستوى التنشيط الصوتي: معطل";
+
+/* preferences */
+"Voice Activation Triggered" = "تفعيل التنشيط الصوتي";
+
+/* preferences */
+
+/* preferences */
+"Voice Transmission Toggled" = "تبديل نقل الصوت";
+
+/* user detail */
+"Voice Volume" = "مستوى الصوت";
+
+/* codec detail */
+"VoIP" = "VoIP (الصوت عبر بروتوكول الإنترنت)";
+
+/* user detail */
+"Volume Controls" = "عناصر التحكم في مستوى الصوت";
+
+/* Web Login controller */
+"Web Login ID" = "معرف تسجيل الدخول";
+
+/* preferences
+   user detail */
+"WebCam" = "كاميرا الويب";
+
+/* Dialog message */
+"Yes" = "نعم";
+
+/* Dialog */
+"You have been kicked from channel" = "تم طردك من القناة";
+
+/* Dialog */
+"You have been kicked from channel by %@" = "لقد تم طردك من القناة من قبل %@";
+
+/* Dialog */
+"You have been kicked from server" = "You have been kicked from server";
+
+/* Dialog */
+"You have been kicked from server by %@" = "لقد تم طردك من الخادم من قبل %@";
+
+/* speech */
+"You have selected %@" = " لقد اخترت %@";
+
+/* sound pack */
+"Preview" = "Preview";

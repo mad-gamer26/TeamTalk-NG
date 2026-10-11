@@ -1,0 +1,20 @@
+# TeamTalk NG Monitor on your server (~/ngmon/ngmon.toml).
+listen = "127.0.0.1:8650"
+data_dir = "data"
+client_name = "TeamTalk NG Monitor"
+
+[limits]
+servers_per_device = 10
+servers_total = 2000
+registrations_per_address_per_hour = 20
+
+[push]
+mode = "apns"
+encrypt = true
+
+# The team's APNs key, an Apple Push Notification service key (.p8) from your developer account.
+[push.apns]
+key_file = "/home/you/apns/AuthKey_XXXXXXXXXX.p8"
+key_id = "XXXXXXXXXX"
+team_id = "YOURTEAMID"
+topic = "com.example.TeamTalk-NG"

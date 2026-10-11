@@ -1,0 +1,23 @@
+# The TeamTalk 5 SDK (BearWare.dk): download it yourself, see README.md.
+/Library/
+/Documentation/
+/Readme.html
+
+# Builds
+/Monitor/target/
+/Monitor/tests/app_check/build/
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+xcuserdata/
+
+# Private
+/Monitor/deploy/site/
+/Monitor/data/
+*.p8
+*.p12
+*.mobileprovision
+.env
+
+.DS_Store

@@ -1,0 +1,20 @@
+[Unit]
+Description=TeamTalk NG Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=you
+WorkingDirectory=/home/you/ngmon
+ExecStart=/home/you/ngmon/bin/ngmon --config /home/you/ngmon/ngmon.toml serve
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+# Reads the APNs key in your home folder; writes only its own folder.
+ProtectHome=read-only
+ReadWritePaths=/home/you/ngmon
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
