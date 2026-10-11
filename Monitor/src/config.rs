@@ -17,6 +17,11 @@ pub struct Config {
     /// Folder for the database; relative paths are relative to this file.
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
+    /// The key that encrypts stored server passwords; made on first start.
+    /// Keep it out of database backups, and back it up on its own: without
+    /// it the stored passwords cannot be read.
+    #[serde(default = "default_secret_key_file")]
+    pub secret_key_file: PathBuf,
     /// The client name other TeamTalk users see for the monitor.
     #[serde(default = "default_client_name")]
     pub client_name: String,
@@ -100,6 +105,10 @@ fn default_listen() -> String {
     "127.0.0.1:8650".into()
 }
 
+fn default_secret_key_file() -> PathBuf {
+    PathBuf::from("secret.key")
+}
+
 fn default_data_dir() -> PathBuf {
     "data".into()
 }
@@ -140,6 +149,9 @@ impl Config {
         if cfg.data_dir.is_relative() {
             cfg.data_dir = base.join(&cfg.data_dir);
         }
+        if cfg.secret_key_file.is_relative() {
+            cfg.secret_key_file = base.join(&cfg.secret_key_file);
+        }
         if let Some(apns) = cfg.push.apns.as_mut()
             && Path::new(&apns.key_file).is_relative()
         {
@@ -151,6 +163,11 @@ impl Config {
     pub fn database(&self) -> PathBuf {
         self.data_dir.join("ngmon.sqlite")
     }
+
+    /// The database, with stored passwords encrypted by the secret key.
+    pub fn open_store(&self) -> anyhow::Result<crate::store::Store> {
+        crate::store::Store::open(&self.database(), crate::store::secret_key(&self.secret_key_file)?)
+    }
 }
 
 pub const SAMPLE: &str = r#"# TeamTalk NG Monitor settings.
@@ -160,6 +177,10 @@ listen = "127.0.0.1:8650"
 
 # Database folder, relative to this file.
 data_dir = "data"
+
+# The key that encrypts stored server passwords, made on first start. Back
+# it up separately from the database.
+secret_key_file = "secret.key"
 
 # What other TeamTalk users see as the monitor's client.
 client_name = "TeamTalk NG Monitor"

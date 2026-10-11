@@ -10,6 +10,8 @@ ExecStart=/home/you/ngmon/bin/ngmon --config /home/you/ngmon/ngmon.toml serve
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
+# Files it makes (the database, the password key) are private.
+UMask=0077
 ProtectSystem=strict
 # Reads the APNs key in your home folder; writes only its own folder.
 ProtectHome=read-only

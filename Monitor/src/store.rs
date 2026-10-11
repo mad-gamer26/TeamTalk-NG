@@ -162,24 +162,97 @@ pub fn now_ms() -> i64 {
 
 pub struct Store {
     db: Connection,
+    /// Encrypts server passwords at rest.
+    key: [u8; 32],
 }
 
+/// The key that encrypts stored passwords: read from `path`, or made there,
+/// readable only by this account, the first time.
+pub fn secret_key(path: &Path) -> anyhow::Result<[u8; 32]> {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+    match std::fs::read_to_string(path) {
+        Ok(text) => {
+            let bytes = B64.decode(text.trim()).with_context(|| format!("{} is not a key", path.display()))?;
+            bytes.try_into().map_err(|_| anyhow::anyhow!("{} is not a 32-byte key", path.display()))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let key: [u8; 32] = rand::random();
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(path)
+                .with_context(|| format!("Could not create {}", path.display()))?;
+            writeln!(f, "{}", B64.encode(key))?;
+            tracing::info!(path = %path.display(), "made a new key for stored passwords; back it up");
+            Ok(key)
+        }
+        Err(e) => Err(e).with_context(|| format!("Could not read {}", path.display())),
+    }
+}
+
+/// Stored passwords start with this; anything else is from before they
+/// were encrypted.
+const SEALED: &str = "sealed:";
+
 impl Store {
-    pub fn open(path: &Path) -> anyhow::Result<Store> {
+    pub fn open(path: &Path, key: [u8; 32]) -> anyhow::Result<Store> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok();
         }
         let db = Connection::open(path).with_context(|| format!("Could not open {}", path.display()))?;
-        Self::setup(db)
+        Self::setup(db, key)
     }
 
     #[cfg(test)]
     pub fn memory() -> Store {
-        Self::setup(Connection::open_in_memory().unwrap()).unwrap()
+        Self::setup(Connection::open_in_memory().unwrap(), rand::random()).unwrap()
     }
 
-    fn setup(db: Connection) -> anyhow::Result<Store> {
+    fn seal(&self, password: &str) -> anyhow::Result<String> {
+        if password.is_empty() {
+            return Ok(String::new());
+        }
+        Ok(format!("{SEALED}{}", crate::push::seal(&self.key, password.as_bytes())?))
+    }
+
+    fn unseal(&self, stored: &str) -> anyhow::Result<String> {
+        match stored.strip_prefix(SEALED) {
+            Some(sealed) => Ok(String::from_utf8(crate::push::open(&self.key, sealed)?)?),
+            None => Ok(stored.to_owned()),
+        }
+    }
+
+    /// Encrypt passwords stored before they were, and leave no readable
+    /// copy behind in the database files.
+    fn seal_old_passwords(&self) -> anyhow::Result<usize> {
+        let old: Vec<(i64, String, String)> = self
+            .db
+            .prepare("SELECT id, password, channel_password FROM servers WHERE (password <> '' AND password NOT LIKE 'sealed:%') OR (channel_password <> '' AND channel_password NOT LIKE 'sealed:%')")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        if old.is_empty() {
+            return Ok(0);
+        }
+        let seal = |p: &str| if p.starts_with(SEALED) { Ok(p.to_owned()) } else { self.seal(p) };
+        for (id, password, channel_password) in &old {
+            self.db.execute(
+                "UPDATE servers SET password = ?2, channel_password = ?3 WHERE id = ?1",
+                params![id, seal(password)?, seal(channel_password)?],
+            )?;
+        }
+        self.db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
+        tracing::info!(servers = old.len(), "encrypted stored passwords");
+        Ok(old.len())
+    }
+
+    fn setup(db: Connection, key: [u8; 32]) -> anyhow::Result<Store> {
         db.busy_timeout(std::time::Duration::from_secs(5))?;
+        // Overwrite what is deleted or replaced, such as old passwords.
+        db.pragma_update(None, "secure_delete", "ON")?;
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.execute_batch(
             r#"
@@ -291,7 +364,9 @@ impl Store {
             [],
         )?;
         db.execute("UPDATE devices SET apns_token = NULL WHERE apns_token IS NOT NULL", [])?;
-        Ok(Store { db })
+        let store = Store { db, key };
+        store.seal_old_passwords()?;
+        Ok(store)
     }
 
     // Change counter for servers, so a running monitor sees edits made
@@ -349,7 +424,16 @@ impl Store {
                 status_mode: r.get(13)?,
             })
         })?;
-        Ok(rows.collect::<Result<_, _>>()?)
+        let mut servers: Vec<ServerConfig> = rows.collect::<Result<_, _>>()?;
+        for s in &mut servers {
+            for p in [&mut s.password, &mut s.channel_password] {
+                *p = self.unseal(p).unwrap_or_else(|e| {
+                    tracing::error!(server = s.id, "a stored password cannot be read with this key: {e:#}");
+                    String::new()
+                });
+            }
+        }
+        Ok(servers)
     }
 
     pub fn server(&self, id: i64) -> anyhow::Result<Option<ServerConfig>> {
@@ -359,7 +443,7 @@ impl Store {
     pub fn add_server(&self, s: &ServerConfig) -> anyhow::Result<i64> {
         self.db.execute(
             "INSERT INTO servers (name, host, tcp_port, encrypted, nickname, username, password, status_msg, channel, channel_password, enabled, owner, status_mode) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![s.name, s.host, s.tcp_port, s.encrypted, s.nickname, s.username, s.password, s.status_msg, s.channel, s.channel_password, s.enabled, s.owner, s.status_mode],
+            params![s.name, s.host, s.tcp_port, s.encrypted, s.nickname, s.username, self.seal(&s.password)?, s.status_msg, s.channel, self.seal(&s.channel_password)?, s.enabled, s.owner, s.status_mode],
         )?;
         let id = self.db.last_insert_rowid();
         self.bump_servers_version()?;
@@ -381,7 +465,7 @@ impl Store {
     pub fn update_server(&self, s: &ServerConfig) -> anyhow::Result<bool> {
         let n = self.db.execute(
             "UPDATE servers SET name = ?2, host = ?3, tcp_port = ?4, encrypted = ?5, nickname = ?6, username = ?7, password = ?8, status_msg = ?9, channel = ?10, channel_password = ?11, enabled = ?12, status_mode = ?13 WHERE id = ?1",
-            params![s.id, s.name, s.host, s.tcp_port, s.encrypted, s.nickname, s.username, s.password, s.status_msg, s.channel, s.channel_password, s.enabled, s.status_mode],
+            params![s.id, s.name, s.host, s.tcp_port, s.encrypted, s.nickname, s.username, self.seal(&s.password)?, s.status_msg, s.channel, self.seal(&s.channel_password)?, s.enabled, s.status_mode],
         )?;
         self.bump_servers_version()?;
         Ok(n > 0)
@@ -793,6 +877,51 @@ impl Store {
 mod tests {
     use super::*;
     use crate::tt::state::ConnectionStatus;
+
+    fn raw_passwords(st: &Store, id: i64) -> (String, String) {
+        st.db.query_row("SELECT password, channel_password FROM servers WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+    }
+
+    #[test]
+    fn passwords_are_encrypted_at_rest() {
+        let dir = std::env::temp_dir().join(format!("ngmon-secret-{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key_path = dir.join("secret.key");
+        let key = secret_key(&key_path).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&key_path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(secret_key(&key_path).unwrap(), key, "the same key is read back");
+
+        let db = dir.join("ngmon.sqlite");
+        let st = Store::open(&db, key).unwrap();
+        let id = server(&st, 1);
+        let mut c = st.server(id).unwrap().unwrap();
+        c.password = "hunter2".into();
+        c.channel = "/Lobby/".into();
+        c.channel_password = "lobbypw".into();
+        st.update_server(&c).unwrap();
+        let (p, cp) = raw_passwords(&st, id);
+        assert!(p.starts_with(SEALED) && !p.contains("hunter2"), "{p}");
+        assert!(cp.starts_with(SEALED) && !cp.contains("lobbypw"), "{cp}");
+        let back = st.server(id).unwrap().unwrap();
+        assert_eq!((back.password.as_str(), back.channel_password.as_str()), ("hunter2", "lobbypw"));
+
+        // Passwords stored before encryption are encrypted on opening.
+        st.db.execute("UPDATE servers SET password = 'plain-old', channel_password = '' WHERE id = ?1", [id]).unwrap();
+        drop(st);
+        let st = Store::open(&db, key).unwrap();
+        let (p, cp) = raw_passwords(&st, id);
+        assert!(p.starts_with(SEALED) && cp.is_empty(), "{p} {cp}");
+        assert_eq!(st.server(id).unwrap().unwrap().password, "plain-old");
+        drop(st);
+        let files: Vec<u8> = std::fs::read_dir(&dir).unwrap().flat_map(|e| std::fs::read(e.unwrap().path()).unwrap()).collect();
+        assert!(!files.windows(9).any(|w| w == b"plain-old"), "no readable copy left in the database files");
+
+        // Another key cannot read them.
+        let st = Store::open(&db, rand::random()).unwrap();
+        assert_eq!(st.server(id).unwrap().unwrap().password, "");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn servers_round_trip_and_bump_version() {

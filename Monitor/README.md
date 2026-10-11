@@ -78,8 +78,14 @@ TeamTalk servers ◄── TCP/TLS ── ngmon ◄── nginx (HTTPS, WebSocke
   only.
 - **Limits:** 10 servers per install, 2000 in all, and 20 new installs per
   address per hour (see `[limits]`).
-- **Stored logins.** Server passwords are stored in `data/ngmon.sqlite`,
-  because the monitor needs them to log in. The API never sends them out.
+- **Stored logins.** The monitor needs the real server passwords to log
+  in, so they cannot be hashed. They are encrypted in `data/ngmon.sqlite`
+  (ChaCha20-Poly1305) with a key in `secret.key` next to the settings
+  file (`secret_key_file`), made on first start and readable only by the
+  service's account. A copy of the database alone reveals no passwords.
+  Back the key up separately: without it every monitor's login must be
+  entered again. The API never sends passwords out, and the service runs
+  with `UMask=0077`.
 - **Sealed notifications.** Notification text is sealed with a key only
   the install has. Apple sees "New activity on a monitored server", and the
   app's notification service extension opens the real text on the phone.

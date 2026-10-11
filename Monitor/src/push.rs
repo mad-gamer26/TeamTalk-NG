@@ -270,7 +270,7 @@ pub fn seal(key: &[u8], plain: &[u8]) -> anyhow::Result<String> {
     Ok(B64.encode(out))
 }
 
-#[cfg(test)]
+/// Open what [`seal`] sealed.
 pub fn open(key: &[u8], sealed: &str) -> anyhow::Result<Vec<u8>> {
     let bytes = B64.decode(sealed)?;
     anyhow::ensure!(bytes.len() > 12, "too short");

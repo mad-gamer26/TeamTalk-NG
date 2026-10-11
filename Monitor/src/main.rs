@@ -18,7 +18,6 @@ use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 
 use config::Config;
-use store::Store;
 
 #[derive(Parser)]
 #[command(name = "ngmon", version, about = "TeamTalk NG Monitor: watches TeamTalk servers for TeamTalk NG users")]
@@ -98,19 +97,19 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Init => unreachable!(),
         Command::Serve => serve(cfg).await,
         Command::Stats => {
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             println!("{} installs, {} servers", store.count_devices()?, store.count_servers(None)?);
             Ok(())
         }
         Command::Servers => {
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             for s in store.servers()? {
                 println!("{}: {} ({}:{}) for install {}{}", s.id, s.name, s.host, s.tcp_port, s.owner, if s.enabled { "" } else { " [off]" });
             }
             Ok(())
         }
         Command::Device(DeviceCommand::List) => {
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             for d in store.devices()? {
                 println!(
                     "{}: {}, {} servers, {} phones with notifications{}",
@@ -125,7 +124,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Command::CheckPhones => {
             let apns = push::Apns::new(cfg.push.apns.as_ref().context("[push.apns] is not set up")?)?;
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             let due = store.push_targets_due(store::now_ms(), 0)?;
             let mut gone = 0;
             for t in &due {
@@ -139,14 +138,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Sweep => {
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             let r = store.sweep(store::now_ms(), store::Retention::default())?;
             println!("{} put to sleep, {} deleted", r.dormant.len(), r.deleted.len());
             Ok(())
         }
         Command::PushTest { device, token, sandbox } => {
             let apns = push::Apns::new(cfg.push.apns.as_ref().context("[push.apns] is not set up")?)?;
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             let (token, sandbox, key, app_ref) = match (device, token) {
                 (Some(id), _) => {
                     let d = store.device(id)?.into_iter().next().with_context(|| format!("There is no install {id}"))?;
@@ -174,7 +173,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Device(DeviceCommand::Remove { id }) => {
-            let store = Store::open(&cfg.database())?;
+            let store = cfg.open_store()?;
             if !store.remove_device(id)? {
                 bail!("There is no install {id}");
             }
@@ -185,7 +184,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 async fn serve(cfg: Config) -> anyhow::Result<()> {
-    let store = Store::open(&cfg.database())?;
+    let store = cfg.open_store()?;
     let hub = hub::Hub::new(
         store,
         hub::Options {
