@@ -58,6 +58,7 @@ class ServerDetailViewController : UITableViewController, UITextFieldDelegate {
     var statusmsgfield : UITextField?
     var chanfield : UITextField?
     var chpasswdfield : UITextField?
+    var syncpasswdfield : UISwitch?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -189,6 +190,11 @@ class ServerDetailViewController : UITableViewController, UITextFieldDelegate {
             field.isSecureTextEntry = toggle.isOn == false
         }, for: .valueChanged)
         authItems.append(showpasswdcell)
+
+        // Off: this server syncs to the NG Account without its passwords.
+        let syncpasswdcell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        syncpasswdfield = newTableCellSwitch(syncpasswdcell, label: NSLocalizedString("Sync Passwords with NG Account", comment: "server entry"), initial: server.syncPassword)
+        authItems.append(syncpasswdcell)
     }
     
     @objc func copyJoinCode() {
@@ -214,6 +220,7 @@ class ServerDetailViewController : UITableViewController, UITextFieldDelegate {
         let channame = chanfield!.text!.trimmingCharacters(in: .whitespacesAndNewlines)
         server.channel = channame
         server.chanpasswd = chpasswdfield!.text!
+        server.syncPassword = syncpasswdfield?.isOn ?? true
     }
     
     func textFieldShouldReturn(_ textfield: UITextField) -> Bool {

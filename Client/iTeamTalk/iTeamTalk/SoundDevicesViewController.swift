@@ -280,7 +280,10 @@ class SoundDevicesViewController : UITableViewController, TeamTalkEvent {
     }
 
     func isSelectedAudioInput(_ audioinput: AVAudioSessionPortDescription, session: AVAudioSession) -> Bool {
-        if let savedInputUID = UserDefaults.standard.string(forKey: PREF_SNDINPUT_DEVICE) {
+        // The saved microphone, when this iPhone has it (the setting may come
+        // from another device); otherwise the one in use.
+        if let savedInputUID = UserDefaults.standard.string(forKey: PREF_SNDINPUT_DEVICE),
+           availableSelectableAudioInputs(for: session).contains(where: { $0.uid == savedInputUID }) {
             return savedInputUID == audioinput.uid
         }
 

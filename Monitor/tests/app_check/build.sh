@@ -11,5 +11,5 @@ xcrun swiftc -target arm64-apple-ios17.0-macabi -sdk "$sdk" \
     -I "$sdk/System/iOSSupport/usr/lib/swift" -L "$sdk/System/iOSSupport/usr/lib/swift" -L /usr/lib/swift \
     -swift-version 5 -parse-as-library -o "$here/build/harness" \
     "$app/MonitorShared.swift" "$app/MonitorModels.swift" "$app/MonitorClient.swift" "$app/MonitorNotifications.swift" \
-    "$app/MonitorEvents.swift" "$here/stubs.swift" "$here/main.swift"
+    "$app/MonitorEvents.swift" "$app/../Account/NGAccountAPI.swift" "$here/stubs.swift" "$here/main.swift"
 echo "Built $here/build/harness"

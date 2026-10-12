@@ -34,6 +34,58 @@ pub struct Config {
     pub limits: Limits,
     #[serde(default)]
     pub push: PushConfig,
+    /// How NG Account emails its sign-up and password reset codes.
+    #[serde(default)]
+    pub mail: MailConfig,
+    /// Where sound pack files are kept; relative paths are relative to
+    /// this file.
+    #[serde(default = "default_packs_dir")]
+    pub packs_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MailMode {
+    /// No email: nobody can make an NG Account or reset a password.
+    #[default]
+    None,
+    /// Through an SMTP relay (STARTTLS).
+    Smtp,
+    /// Written as files into `outbox` instead of sent (for tests).
+    Outbox,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MailConfig {
+    #[serde(default)]
+    pub mode: MailMode,
+    /// Who the codes come from, such as `TeamTalk NG <no-reply@example.com>`.
+    #[serde(default = "default_mail_from")]
+    pub from: String,
+    #[serde(default)]
+    pub smtp: Option<SmtpConfig>,
+    /// The folder for `outbox` mode.
+    #[serde(default)]
+    pub outbox: Option<PathBuf>,
+}
+
+impl Default for MailConfig {
+    fn default() -> Self {
+        MailConfig { mode: MailMode::None, from: default_mail_from(), smtp: None, outbox: None }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SmtpConfig {
+    pub host: String,
+    #[serde(default = "default_smtp_port")]
+    pub port: u16,
+    pub username: String,
+    /// A file holding the password only, kept private (relative paths
+    /// are relative to this file).
+    pub password_file: PathBuf,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,6 +153,18 @@ pub struct ApnsConfig {
     pub endpoint: Option<String>,
 }
 
+fn default_mail_from() -> String {
+    "TeamTalk NG <no-reply@example.com>".into()
+}
+
+fn default_smtp_port() -> u16 {
+    587
+}
+
+fn default_packs_dir() -> PathBuf {
+    "packs".into()
+}
+
 fn default_listen() -> String {
     "127.0.0.1:8650".into()
 }
@@ -152,6 +216,19 @@ impl Config {
         if cfg.secret_key_file.is_relative() {
             cfg.secret_key_file = base.join(&cfg.secret_key_file);
         }
+        if cfg.packs_dir.is_relative() {
+            cfg.packs_dir = base.join(&cfg.packs_dir);
+        }
+        if let Some(smtp) = cfg.mail.smtp.as_mut()
+            && smtp.password_file.is_relative()
+        {
+            smtp.password_file = base.join(&smtp.password_file);
+        }
+        if let Some(outbox) = cfg.mail.outbox.as_mut()
+            && outbox.is_relative()
+        {
+            *outbox = base.join(&*outbox);
+        }
         if let Some(apns) = cfg.push.apns.as_mut()
             && Path::new(&apns.key_file).is_relative()
         {
@@ -178,6 +255,9 @@ listen = "127.0.0.1:8650"
 # Database folder, relative to this file.
 data_dir = "data"
 
+# Sound pack files for NG Account, relative to this file.
+packs_dir = "packs"
+
 # The key that encrypts stored server passwords, made on first start. Back
 # it up separately from the database.
 secret_key_file = "secret.key"
@@ -201,6 +281,18 @@ encrypt = true
 # key_id = "XXXXXXXXXX"
 # team_id = "5NJK4F832Z"
 # topic = "com.matthewdovi.TeamTalk-NG"
+
+[mail]
+# How NG Account emails sign-up and password reset codes: "none" (no
+# accounts), "smtp", or "outbox" (files in a folder, for tests).
+mode = "none"
+from = "TeamTalk NG <no-reply@example.com>"
+
+# [mail.smtp]
+# host = "smtp-relay.example.com"
+# port = 587
+# username = "you@example.com"
+# password_file = "smtp-password"
 "#;
 
 #[cfg(test)]

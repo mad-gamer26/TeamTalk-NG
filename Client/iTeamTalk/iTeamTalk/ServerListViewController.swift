@@ -79,6 +79,10 @@ class Server : NSObject {
     var certdata = ""
     var certprivkeydata = ""
     var certverifypeer = false
+    /// The same server on every device of the NG Account.
+    var syncID = UUID().uuidString
+    /// Whether NG Account syncs this server's passwords.
+    var syncPassword = true
     
     // Reserved for imported server metadata.
     var stats_usercount = 0
@@ -106,6 +110,8 @@ class Server : NSObject {
         certdata = dec.decodeObject(forKey: "certdata") as? String ?? ""
         certprivkeydata = dec.decodeObject(forKey: "certprivkeydata") as? String ?? ""
         certverifypeer = dec.decodeBool(forKey: "certverifypeer")
+        syncID = dec.decodeObject(forKey: "syncid") as? String ?? ""
+        syncPassword = dec.containsValue(forKey: "syncpassword") ? dec.decodeBool(forKey: "syncpassword") : true
     }
     
     @objc func encodeWithCoder(_ enc: NSCoder!) {
@@ -124,6 +130,8 @@ class Server : NSObject {
         enc.encode(certdata, forKey: "certdata")
         enc.encode(certprivkeydata, forKey: "certprivkeydata")
         enc.encode(certverifypeer, forKey: "certverifypeer")
+        enc.encode(syncID, forKey: "syncid")
+        enc.encode(syncPassword, forKey: "syncpassword")
     }
 }
 
@@ -145,7 +153,12 @@ func isServerSaved(_ server: Server) -> Bool {
 
 /// Saves a server to the list under `name` (replacing one of that name).
 func saveServerToList(_ server: Server, named name: String) {
-    var servers = loadLocalServers().filter { $0.name != name }
+    let existing = loadLocalServers()
+    // Replacing a server keeps it the same server in the NG Account.
+    if let replaced = existing.first(where: { $0.name == name }) {
+        server.syncID = replaced.syncID
+    }
+    var servers = existing.filter { $0.name != name }
     server.name = name
     server.servertype = .LOCAL
     servers.append(server)
@@ -182,6 +195,7 @@ func saveLocalServers(_ servers : [Server]) {
     defaults.set(s_array, forKey: SERVER_LIST_KEY)
     defaults.synchronize()
     saveControlCenterServers(servers)
+    NotificationCenter.default.post(name: .localServersSaved, object: nil)
 }
 
 func saveControlCenterServers(_ servers: [Server]) {
@@ -210,6 +224,8 @@ class ServerListViewController : UITableViewController,
         CompactUI.apply(to: self, title: NSLocalizedString("Servers", comment: "serverlist"))
         CompactUI.apply(to: tableView)
         NotificationCenter.default.addObserver(self, selector: #selector(iCloudSettingsDidApply), name: .iCloudSettingsDidApply, object: nil)
+        // Servers from the NG Account (another iPhone added or changed some).
+        NotificationCenter.default.addObserver(self, selector: #selector(iCloudSettingsDidApply), name: .ngSyncApplied, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(connectedServerSessionsDidChange), name: .connectedServerSessionsDidChange, object: nil)
         tableView.rowHeight = 52
         tableView.estimatedRowHeight = 52
@@ -568,8 +584,20 @@ class ServerListViewController : UITableViewController,
     }
     
     func saveServerList() {
-        let connectedServers = loadLocalServers().filter { ConnectedServerManager.shared.isConnectedServer($0) }
-        saveLocalServers((servers + connectedServers).filter({$0.servertype == .LOCAL}))
+        // This list leaves out servers connected right now: they keep their
+        // places, and the rest fill the others in this list's order (the
+        // order also syncs to the NG Account's other iPhones).
+        var remaining = servers[...]
+        var merged = [Server]()
+        for saved in loadLocalServers() {
+            if ConnectedServerManager.shared.isConnectedServer(saved) {
+                merged.append(saved)
+            } else if let next = remaining.popFirst() {
+                merged.append(next)
+            }
+        }
+        merged.append(contentsOf: remaining)
+        saveLocalServers(merged.filter({$0.servertype == .LOCAL}))
     }
     
     override func numberOfSections(in tableView: UITableView) -> Int {

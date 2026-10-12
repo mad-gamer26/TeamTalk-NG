@@ -3,12 +3,18 @@
 //! happening on them, send push notifications, and reply and act from the
 //! phone.
 
+mod account_api;
+mod accounts;
 mod api;
 mod config;
 mod hub;
+mod mail;
+mod packs;
 mod push;
 mod store;
+mod sync;
 mod tt;
+mod zip;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -42,6 +48,12 @@ enum Command {
     /// List or remove app installs.
     #[command(subcommand)]
     Device(DeviceCommand),
+    /// NG Accounts.
+    #[command(subcommand)]
+    Account(AccountCommand),
+    /// Sound packs: the catalog, reports, and Official packs.
+    #[command(subcommand)]
+    Pack(PackCommand),
     /// Put abandoned sign-ups to sleep and delete long-abandoned ones now
     /// (the running monitor also does this every hour).
     Sweep,
@@ -68,6 +80,44 @@ enum DeviceCommand {
     /// Forget an install and stop monitoring its servers (takes effect
     /// when the monitor next starts, or within seconds while it runs).
     Remove { id: i64 },
+}
+
+#[derive(Subcommand)]
+enum AccountCommand {
+    List,
+    /// Stop an account from publishing sound packs (unpublishes its packs).
+    Block { id: i64 },
+    Unblock { id: i64 },
+}
+
+#[derive(Subcommand)]
+enum PackCommand {
+    /// Every pack, private ones included.
+    List,
+    /// Packs people reported.
+    Reports,
+    /// Take a published pack out of the catalog.
+    Hide { id: String },
+    /// Put a hidden pack back.
+    Show { id: String },
+    /// Give a pack to an NG Account, which can then update or unpublish it.
+    Assign { id: String, email: String },
+    /// Mark a pack Official (or not, with --off).
+    Official {
+        id: String,
+        #[arg(long)]
+        off: bool,
+    },
+    /// Make or replace an Official pack from a zip of sounds. Keep the ID
+    /// of a pack people already installed, so it updates for them.
+    ImportOfficial {
+        id: String,
+        name: String,
+        author: String,
+        /// The pack's version; installed copies of a lower one update.
+        version: i64,
+        zip: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -120,6 +170,83 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     if d.dormant { ", asleep" } else { "" }
                 );
             }
+            Ok(())
+        }
+        Command::Account(AccountCommand::List) => {
+            let store = cfg.open_store()?;
+            for a in store.accounts()? {
+                let (bytes, _) = store.pack_usage(a.id)?;
+                println!(
+                    "{}: {}, {} devices signed in, {} monitored servers, {} KB of sound packs",
+                    a.id,
+                    a.email,
+                    store.sessions(a.id)?.len(),
+                    store.servers_of(a.owner)?.len(),
+                    bytes / 1024
+                );
+            }
+            Ok(())
+        }
+        Command::Account(AccountCommand::Block { id }) | Command::Account(AccountCommand::Unblock { id }) => {
+            let block = matches!(cli.command, Command::Account(AccountCommand::Block { .. }));
+            if !cfg.open_store()?.set_publishing_blocked(id, block)? {
+                bail!("There is no account {id}");
+            }
+            println!("Account {id} {}", if block { "can no longer publish; its packs were unpublished" } else { "can publish again" });
+            Ok(())
+        }
+        Command::Pack(PackCommand::List) => {
+            for p in cfg.open_store()?.all_packs()? {
+                let state = match (p.public, p.hidden, p.official) {
+                    (_, true, _) => "hidden",
+                    (true, _, true) => "official",
+                    (true, _, false) => "public",
+                    _ => "private",
+                };
+                let owner = p.owner.map_or("nobody".to_owned(), |o| format!("account {o}"));
+                println!("{}: {} by {:?} ({state}, {owner}, version {}, {} sounds, {} KB, {} installs)", p.id, p.name, p.author, p.version, p.files.len(), p.size / 1024, p.installs);
+            }
+            Ok(())
+        }
+        Command::Pack(PackCommand::Reports) => {
+            for (pack, account, reason, _) in cfg.open_store()?.pack_reports()? {
+                println!("{pack} reported by account {account}: {reason}");
+            }
+            Ok(())
+        }
+        Command::Pack(PackCommand::Hide { ref id }) | Command::Pack(PackCommand::Show { ref id }) => {
+            let hide = matches!(cli.command, Command::Pack(PackCommand::Hide { .. }));
+            if !cfg.open_store()?.set_pack_hidden(id, hide)? {
+                bail!("There is no pack {id}");
+            }
+            Ok(())
+        }
+        Command::Pack(PackCommand::Assign { ref id, ref email }) => {
+            let store = cfg.open_store()?;
+            let email = accounts::normalize_email(email).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let account = store.account_by_email(&email)?.with_context(|| format!("There is no NG Account {email}"))?;
+            if !store.assign_pack(id, account.id)? {
+                bail!("There is no pack {id}");
+            }
+            println!("{id} now belongs to {email} (account {})", account.id);
+            Ok(())
+        }
+        Command::Pack(PackCommand::Official { ref id, off }) => {
+            if !cfg.open_store()?.set_pack_official(id, !off)? {
+                bail!("There is no pack {id}");
+            }
+            Ok(())
+        }
+        Command::Pack(PackCommand::ImportOfficial { ref id, ref name, ref author, version, ref zip }) => {
+            let hub = hub::Hub::new(cfg.open_store()?, hub::Options {
+                client_name: cfg.client_name.clone(),
+                seal: false,
+                allow_private_hosts: false,
+                limits: cfg.limits.clone(),
+            })?;
+            let packs = packs::Packs::new(hub, cfg.packs_dir.clone())?;
+            let n = packs.import_official(id, name, author, version, zip)?;
+            println!("{name} ({id}) is an Official pack, version {version}, with {n} sounds");
             Ok(())
         }
         Command::CheckPhones => {
@@ -232,7 +359,18 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     if cfg.allow_private_hosts {
         tracing::warn!("private and local server addresses are allowed (allow_private_hosts); never on a public service");
     }
-    let app = api::App { hub: hub.clone(), name: cfg.client_name.clone() };
+    let mailer = mail::Mailer::new(&cfg.mail)?;
+    if !mailer.enabled() {
+        tracing::warn!("[mail] is not set up: nobody can make an NG Account or reset a password");
+    }
+    let accounts = std::sync::Arc::new(accounts::Accounts::new(hub.clone(), mailer));
+    let packs = std::sync::Arc::new(packs::Packs::new(hub.clone(), cfg.packs_dir.clone())?);
+    match packs.collect_garbage() {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(files = n, "cleared unused sound files"),
+        Err(e) => tracing::warn!("could not clear unused sound files: {e:#}"),
+    }
+    let app = api::App { hub: hub.clone(), accounts, packs, name: cfg.client_name.clone() };
     axum::serve(listener, api::router(app).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(shutdown()).await?;
     watcher.abort();
     hub.stop_all();

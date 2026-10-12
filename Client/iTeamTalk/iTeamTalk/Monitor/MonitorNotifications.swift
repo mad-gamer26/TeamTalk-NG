@@ -65,8 +65,12 @@ final class MonitorNotifications: NSObject, UNUserNotificationCenterDelegate {
     func didRegister(deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
         MonitorInstall.groupDefaults.set(hex, forKey: Self.deviceTokenKey)
-        // Every paired monitor needs the (possibly new) token.
-        for account in MonitorAccountStore.all() {
+        // Signed in to NG Account: only its sign-in gets this iPhone's
+        // pushes (an older sign-up merged into the account shares the same
+        // push entry, so registering both would leave whichever came last).
+        // Otherwise every sign-up from before NG Account.
+        let accounts = NGAccountCenter.shared.signIn.map { [$0] } ?? MonitorAccountStore.all()
+        for account in accounts {
             Task { @MainActor in
                 do {
                     try await MonitorAPI(account: account).registerPush(deviceToken: hex, sandbox: Self.sandbox)

@@ -18,3 +18,15 @@ key_file = "/home/you/apns/AuthKey_XXXXXXXXXX.p8"
 key_id = "XXXXXXXXXX"
 team_id = "YOURTEAMID"
 topic = "com.example.TeamTalk-NG"
+
+# NG Account emails sign-up and password reset codes through an SMTP relay.
+[mail]
+mode = "smtp"
+from = "TeamTalk NG <no-reply@example.com>"
+
+[mail.smtp]
+host = "smtp-relay.example.com"
+port = 587
+username = "you@example.com"
+# A private file holding only the password.
+password_file = "smtp-password"

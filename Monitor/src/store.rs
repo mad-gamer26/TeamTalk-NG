@@ -161,7 +161,7 @@ pub fn now_ms() -> i64 {
 }
 
 pub struct Store {
-    db: Connection,
+    pub(crate) db: Connection,
     /// Encrypts server passwords at rest.
     key: [u8; 32],
 }
@@ -212,14 +212,14 @@ impl Store {
         Self::setup(Connection::open_in_memory().unwrap(), rand::random()).unwrap()
     }
 
-    fn seal(&self, password: &str) -> anyhow::Result<String> {
+    pub(crate) fn seal(&self, password: &str) -> anyhow::Result<String> {
         if password.is_empty() {
             return Ok(String::new());
         }
         Ok(format!("{SEALED}{}", crate::push::seal(&self.key, password.as_bytes())?))
     }
 
-    fn unseal(&self, stored: &str) -> anyhow::Result<String> {
+    pub(crate) fn unseal(&self, stored: &str) -> anyhow::Result<String> {
         match stored.strip_prefix(SEALED) {
             Some(sealed) => Ok(String::from_utf8(crate::push::open(&self.key, sealed)?)?),
             None => Ok(stored.to_owned()),
@@ -365,6 +365,9 @@ impl Store {
         )?;
         db.execute("UPDATE devices SET apns_token = NULL WHERE apns_token IS NOT NULL", [])?;
         let store = Store { db, key };
+        store.setup_accounts()?;
+        store.setup_sync()?;
+        store.setup_packs()?;
         store.seal_old_passwords()?;
         Ok(store)
     }
@@ -628,7 +631,9 @@ impl Store {
     pub fn sweep(&self, now: i64, r: Retention) -> anyhow::Result<Sweep> {
         let mut out = Sweep::default();
         {
-            let mut st = self.db.prepare("SELECT id FROM devices WHERE last_seen < ?1 ORDER BY id")?;
+            // An NG Account's monitors only ever go dormant; the account
+            // decides when they are deleted.
+            let mut st = self.db.prepare("SELECT id FROM devices WHERE last_seen < ?1 AND id NOT IN (SELECT owner FROM accounts) ORDER BY id")?;
             out.deleted = st.query_map([now - r.delete_after_ms], |r| r.get(0))?.collect::<Result<_, _>>()?;
         }
         for id in &out.deleted {

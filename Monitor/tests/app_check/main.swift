@@ -205,12 +205,105 @@ final class Run {
                 } catch MonitorError.notPaired {
                     say("ok stopped monitoring everything")
                 } catch { fail("unpair: \(error)") }
+            case "account":
+                // NG Account with the app's own API client: sign up with the
+                // emailed code (the driver reads it), claiming an older
+                // sign-up's monitor, then sync and sound packs.
+                await accountChecks(base: base)
             default:
                 conn.stop()
                 say("DONE")
                 exit(0)
             }
         }
+    }
+}
+
+/// The NG Account API client against the real service.
+@MainActor
+func accountChecks(base: URL) async {
+    do {
+        let anon = NGAccountAPI(baseURL: base, token: nil)
+        let old = try await MonitorAPI.register(baseURL: base, deviceName: "Before NG Account")
+        let oldAPI = MonitorAPI(account: MonitorAccount(ref: "old", name: "", baseURL: base, token: old.token, pushKey: old.pushKey, deviceID: old.deviceId))
+        let saved = Server()
+        saved.name = "Claimed"
+        saved.ipaddr = "127.0.0.1"
+        saved.tcpport = 20333
+        saved.username = "alice"
+        saved.password = "alice"
+        try await oldAPI.addServer(MonitorCenter.input(for: saved))
+        do {
+            try await anon.signUp(email: "harness@example.com", password: "short")
+            fail("short password accepted")
+        } catch NGAccountError.refused(let m) {
+            say("ok refused: \(m)")
+        }
+        try await anon.signUp(email: "harness@example.com", password: "harness password")
+        say("CODE?")
+        let code = readCommand().last ?? ""
+        let install = NGInstall(installID: "harness-install", deviceName: "Harness", claimToken: old.token)
+        do {
+            _ = try await anon.verify(email: "harness@example.com", code: "999999" == code ? "000000" : "999999", install: install)
+            fail("wrong code accepted")
+        } catch NGAccountError.refused {}
+        let r = try await anon.verify(email: "harness@example.com", code: code, install: install)
+        guard r.pushKey == old.pushKey, r.account.email == "harness@example.com" else { fail("sign-in result \(r)") }
+        let session = MonitorAccount(ref: "ng", name: "", baseURL: base, token: r.token, pushKey: r.pushKey, deviceID: r.deviceId, email: r.account.email)
+        NGAccountCenter.shared.signIn = session
+        let names = try await MonitorAPI(account: session).servers().map(\.name)
+        guard names == ["Claimed"] else { fail("claimed monitors: \(names)") }
+        say("ok signed up with the code; the older sign-up's monitor is the account's")
+
+        let api = NGAccountAPI(baseURL: base, token: r.token)
+        let state = try await api.account()
+        guard state.account.email == "harness@example.com", state.packs.limitBytes == 250 * 1024 * 1024 else { fail("account \(state)") }
+        // Sync: a setting and a server, then a conflict.
+        let pushed = try await api.push([
+            NGSyncChange(kind: "setting", key: "nickname_preference", baseRev: 0, deleted: false, data: "Matt"),
+            NGSyncChange(kind: "server", key: "S1", baseRev: 0, deleted: false, data: ["name": "Home", "ipaddr": "tt.example.com", "password": "pw", "order": 0]),
+        ])
+        guard pushed.applied.count == 2, pushed.rev == 2 else { fail("push \(pushed)") }
+        let pulled = try await api.pull(since: 0)
+        let server = pulled.records.first { $0.key == "S1" }
+        guard pulled.rev == 2, (server?.data as? [String: Any])?["password"] as? String == "pw" else { fail("pull \(pulled)") }
+        let conflict = try await api.push([NGSyncChange(kind: "setting", key: "nickname_preference", baseRev: 0, deleted: false, data: "Other")])
+        guard conflict.applied.isEmpty, conflict.conflicts.first?.data as? String == "Matt" else { fail("conflict \(conflict)") }
+        say("ok sync: pushed, pulled with the password, and a conflict came back")
+        // Sound packs: back up, upload, publish, find in the catalog, zip.
+        var pack = try await api.backupPack(localID: "harness-pack", name: "Harness Sounds")
+        let wav = Data("RIFF\u{24}\0\0\0WAVEfmt ".utf8) + Data(count: 40)
+        pack = try await api.uploadSound(pack: pack.id, name: "logged_on.wav", data: wav)
+        guard pack.files.map(\.name) == ["logged_on.wav"] else { fail("upload \(pack)") }
+        do {
+            _ = try await api.changePack(pack.id, NGPackChange(public: true))
+            fail("published without an author")
+        } catch NGAccountError.refused {}
+        pack = try await api.changePack(pack.id, NGPackChange(author: "Harness", description: "Beeps", public: true))
+        guard pack.public else { fail("not public") }
+        let catalog = try await anon.catalog(query: "beeps")
+        guard catalog.map(\.name) == ["Harness Sounds"], catalog[0].downloadPath.hasSuffix("/pack.zip") else { fail("catalog \(catalog)") }
+        let zip = try await anon.packZip(pack.id)
+        guard zip.starts(with: [0x50, 0x4B]) else { fail("not a zip") }
+        let list = try await api.packs()
+        guard list.packs.count == 1, list.usedBytes == Int64(wav.count) else { fail("packs \(list)") }
+        say("ok sound packs: backed up, published, in the catalog, downloadable as a zip")
+        let sessions = try await api.sessions()
+        guard sessions.count == 1, sessions[0].current, sessions[0].installId == "harness-install" else { fail("sessions \(sessions)") }
+        let export = try await api.export()
+        guard let text = String(data: export, encoding: .utf8), text.contains("harness@example.com"), !text.contains("\"pw\"") else { fail("export") }
+        try await api.signOut()
+        do {
+            _ = try await api.account()
+            fail("still signed in")
+        } catch NGAccountError.signedOut {}
+        // The monitor connection notices the ended session.
+        let conn = MonitorConnection(account: session)
+        await conn.refreshServers()
+        guard NGAccountCenter.shared.sessionsEnded == 1, NGAccountCenter.shared.signIn == nil else { fail("ended session not noticed") }
+        say("ok devices, export, sign-out; the monitor connection signs out when the session ends")
+    } catch {
+        fail("account: \(error)")
     }
 }
 

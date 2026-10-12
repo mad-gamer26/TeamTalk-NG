@@ -30,6 +30,8 @@ pub const API_VERSION: i64 = 1;
 #[derive(Clone)]
 pub struct App {
     pub hub: Arc<Hub>,
+    pub accounts: Arc<crate::accounts::Accounts>,
+    pub packs: Arc<crate::packs::Packs>,
     pub name: String,
 }
 
@@ -54,11 +56,12 @@ pub fn router(app: App) -> Router {
         .route("/v1/servers/{id}/conversations/{conversation}/read", post(mark_read))
         .route("/v1/events", get(events))
         .route("/v1/ws", get(websocket))
+        .merge(crate::account_api::routes())
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(app)
 }
 
-pub struct ApiError(StatusCode, String);
+pub struct ApiError(pub StatusCode, pub String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -72,6 +75,9 @@ impl From<HubError> for ApiError {
             HubError::NotFound(_) => StatusCode::NOT_FOUND,
             HubError::Invalid(_) => StatusCode::BAD_REQUEST,
             HubError::Refused(_) => StatusCode::CONFLICT,
+            HubError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            HubError::TooMany(_) => StatusCode::TOO_MANY_REQUESTS,
+            HubError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             HubError::Command(crate::tt::conn::CommandError::Server { .. }) => StatusCode::UNPROCESSABLE_ENTITY,
             HubError::Command(_) => StatusCode::SERVICE_UNAVAILABLE,
             HubError::Internal(e) => {
@@ -83,7 +89,7 @@ impl From<HubError> for ApiError {
     }
 }
 
-type ApiResult<T> = Result<T, ApiError>;
+pub type ApiResult<T> = Result<T, ApiError>;
 
 /// The paired device making the request.
 pub struct Authed(pub Device);
@@ -119,7 +125,7 @@ struct RegisterRequest {
 
 /// The address a request came from: nginx's `X-Real-IP` when the monitor
 /// listens behind it on this machine, else the connection's own.
-fn client_address(peer: SocketAddr, headers: &HeaderMap) -> String {
+pub fn client_address(peer: SocketAddr, headers: &HeaderMap) -> String {
     if peer.ip().is_loopback()
         && let Some(ip) = headers.get("x-real-ip").and_then(|v| v.to_str().ok())
     {
@@ -150,8 +156,15 @@ async fn rename_me(State(app): State<App>, Authed(d): Authed, Json(r): Json<Rena
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Forget this install and stop monitoring its servers.
+/// Forget this install and stop monitoring its servers. An NG Account's
+/// sign-up stays (the account owns it): only its monitoring stops.
 async fn unpair(State(app): State<App>, Authed(d): Authed) -> ApiResult<StatusCode> {
+    if app.hub.with_store(|s| s.account_of_owner(d.id))?.is_some() {
+        for server in app.hub.with_store(|s| s.servers_of(d.id))? {
+            app.hub.remove_server(d.id, server.id)?;
+        }
+        return Ok(StatusCode::NO_CONTENT);
+    }
     app.hub.remove_device(d.id)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -424,12 +437,22 @@ struct WsQuery {
 
 /// Live events. With `since`, missed events are sent first; when too many
 /// were missed, a `reset` message says to reload the servers instead.
-async fn websocket(State(app): State<App>, Authed(d): Authed, Query(q): Query<WsQuery>, ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(move |socket| follow(app.hub, socket, d.id, q.since))
+async fn websocket(
+    State(app): State<App>,
+    Authed(d): Authed,
+    crate::account_api::MaybeSigned(session): crate::account_api::MaybeSigned,
+    Query(q): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    // A signed-in install also hears when its account's synced data or
+    // sound packs change elsewhere.
+    let install = session.map(|s| s.install_id);
+    ws.on_upgrade(move |socket| follow(app.hub, socket, d.id, q.since, install))
 }
 
-async fn follow(hub: Arc<Hub>, mut socket: WebSocket, owner: i64, since: Option<i64>) {
+async fn follow(hub: Arc<Hub>, mut socket: WebSocket, owner: i64, since: Option<i64>, install: Option<String>) {
     let mut live = hub.subscribe();
+    let mut synced = hub.subscribe_sync();
     let mut last = hub.last_seq();
     // A number past the end means the monitor's log was started over.
     if since.is_some_and(|s| s > last) && send(&mut socket, json!({ "type": "reset", "seq": last })).await.is_err() {
@@ -479,6 +502,22 @@ async fn follow(hub: Arc<Hub>, mut socket: WebSocket, owner: i64, since: Option<
                         return;
                     }
                 }
+                Err(RecvError::Closed) => return,
+            },
+            change = synced.recv() => match change {
+                Ok(c) if install.is_some() && c.owner == owner && Some(&c.from_install) != install.as_ref() => {
+                    if send(&mut socket, json!({ "type": "sync", "rev": c.rev })).await.is_err() {
+                        return;
+                    }
+                }
+                Ok(_) => {}
+                // Missed some: say something changed.
+                Err(RecvError::Lagged(_)) if install.is_some() => {
+                    if send(&mut socket, json!({ "type": "sync", "rev": 0 })).await.is_err() {
+                        return;
+                    }
+                }
+                Err(RecvError::Lagged(_)) => {}
                 Err(RecvError::Closed) => return,
             },
             msg = socket.recv() => match msg {

@@ -10,6 +10,10 @@ enum MonitorSetup {
     /// Set up monitoring of a saved server: the monitor's nickname, status
     /// and channel first, then it starts.
     static func offerToMonitor(_ server: Server, from vc: UIViewController, done: (() -> Void)? = nil) {
+        guard NGAccountCenter.shared.isSignedIn else {
+            askToSignIn(from: vc)
+            return
+        }
         let name = server.name.isEmpty ? server.ipaddr : server.name
         if MonitorCenter.shared.monitored(server) != nil {
             let alert = UIAlertController(title: String(format: NSLocalizedString("%@ Is Already Monitored", comment: "monitor"), name), message: nil, preferredStyle: .alert)
@@ -20,8 +24,24 @@ enum MonitorSetup {
         vc.navigationController?.pushViewController(MonitorServerEditViewController(saved: server), animated: true)
     }
 
+    /// Monitors belong to an NG Account: sign in or make one first.
+    static func askToSignIn(from vc: UIViewController) {
+        let alert = UIAlertController(title: NSLocalizedString("Sign In to Monitor Servers", comment: "monitor"),
+                                      message: NSLocalizedString("Your monitors belong to your NG Account, so they're there on any iPhone you sign in on, even after reinstalling TeamTalk NG.", comment: "monitor"),
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "monitor"), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Sign In or Create Account", comment: "monitor"), style: .default) { _ in
+            vc.navigationController?.pushViewController(NGAccountViewController(), animated: true)
+        })
+        vc.present(alert, animated: true)
+    }
+
     /// Choose one of the saved servers to monitor.
     static func chooseSavedServer(from vc: UIViewController, sourceView: UIView?, done: (() -> Void)? = nil) {
+        guard NGAccountCenter.shared.isSignedIn else {
+            askToSignIn(from: vc)
+            return
+        }
         let saved = loadLocalServers().filter { MonitorCenter.shared.monitored($0) == nil }
         guard !saved.isEmpty else {
             let alert = UIAlertController(title: NSLocalizedString("No Servers to Add", comment: "monitor"),
@@ -67,6 +87,7 @@ final class MonitorListViewController: UITableViewController {
         add.accessibilityLabel = NSLocalizedString("Monitor a Saved Server", comment: "monitor")
         navigationItem.rightBarButtonItem = add
         NotificationCenter.default.addObserver(self, selector: #selector(monitorChanged), name: .monitorChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(monitorChanged), name: .ngAccountChanged, object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -95,7 +116,7 @@ final class MonitorListViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section)! {
         case .servers: return servers.count
-        case .actions: return connection == nil ? 0 : 1
+        case .actions: return 1
         }
     }
 
@@ -106,6 +127,11 @@ final class MonitorListViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch Section(rawValue: section)! {
         case .servers:
+            if connection == nil {
+                return NGAccountCenter.shared.hasMonitorsWithoutAccount
+                    ? NSLocalizedString("Your monitors are waiting: sign in to your NG Account, or create one, to see them again. They move into your account.", comment: "monitor")
+                    : NSLocalizedString("The monitor stays logged in to your servers even when TeamTalk NG is closed. It notifies you when people log in or send you messages, and lets you reply and see who is on. Monitors belong to your NG Account, so they're there on any iPhone you sign in on.", comment: "monitor")
+            }
             if servers.isEmpty {
                 return NSLocalizedString("The monitor stays logged in to your servers even when TeamTalk NG is closed. It notifies you when people log in or send you messages, and lets you reply and see who is on. Add a server with the + button, or choose Monitor This Server on a server in your list.", comment: "monitor")
             }
@@ -142,6 +168,10 @@ final class MonitorListViewController: UITableViewController {
             cell.detailTextLabel?.text = details.joined(separator: ", ")
             cell.detailTextLabel?.numberOfLines = 0
             cell.accessibilityLabel = "\(s.displayName), \(details.joined(separator: ", "))"
+        case .actions where connection == nil:
+            cell.textLabel?.text = NSLocalizedString("Sign In or Create Account", comment: "monitor")
+            cell.imageView?.image = UIImage(systemName: "person.crop.circle")
+            cell.accessoryType = .disclosureIndicator
         case .actions:
             cell.textLabel?.text = NSLocalizedString("Monitor Settings", comment: "monitor")
             cell.imageView?.image = UIImage(systemName: "bell")
@@ -159,6 +189,8 @@ final class MonitorListViewController: UITableViewController {
         case .actions:
             if let connection {
                 navigationController?.pushViewController(MonitorSettingsViewController(connection: connection), animated: true)
+            } else {
+                navigationController?.pushViewController(NGAccountViewController(), animated: true)
             }
         }
     }

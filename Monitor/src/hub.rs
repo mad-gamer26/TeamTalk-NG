@@ -32,6 +32,14 @@ pub enum HubError {
     Invalid(String),
     #[error("{0}")]
     Refused(String),
+    /// Wrong email, password or code.
+    #[error("{0}")]
+    Unauthorized(String),
+    #[error("{0}")]
+    TooMany(String),
+    /// Something this service is not set up for, such as email.
+    #[error("{0}")]
+    Unavailable(String),
     #[error(transparent)]
     Command(#[from] CommandError),
     #[error(transparent)]
@@ -39,6 +47,13 @@ pub enum HubError {
 }
 
 pub type Result<T> = std::result::Result<T, HubError>;
+
+#[derive(Debug, Clone)]
+pub struct SyncChange {
+    pub owner: i64,
+    pub rev: i64,
+    pub from_install: String,
+}
 
 /// A monitored server as the app lists it.
 #[derive(Debug, Clone, Serialize)]
@@ -148,6 +163,9 @@ pub struct Hub {
     running: Mutex<HashMap<i64, Running>>,
     generation: Mutex<u64>,
     events: broadcast::Sender<StoredEvent>,
+    /// An account's synced data or sound packs changed: (its sign-up,
+    /// the new revision, the install that changed it).
+    sync_changes: broadcast::Sender<SyncChange>,
     push: Mutex<Option<mpsc::UnboundedSender<PushJob>>>,
     options: Options,
     register_limit: RateLimit,
@@ -158,11 +176,13 @@ impl Hub {
     pub fn new(store: Store, options: Options) -> anyhow::Result<Arc<Hub>> {
         let seq = store.last_seq()?;
         let (events, _) = broadcast::channel(1024);
+        let (sync_changes, _) = broadcast::channel(256);
         Ok(Arc::new_cyclic(|me| Hub {
             inner: Mutex::new(Inner { store, seq, servers: HashMap::new(), servers_version: -1, paused: HashMap::new() }),
             running: Mutex::new(HashMap::new()),
             generation: Mutex::new(0),
             events,
+            sync_changes,
             push: Mutex::new(None),
             register_limit: RateLimit::new(options.limits.registrations_per_address_per_hour),
             options,
@@ -826,7 +846,12 @@ impl Hub {
         Ok(())
     }
 
+    /// The sign-up behind a token: an NG Account session's (its account's
+    /// sign-up), or an install's from before NG Account.
     pub fn authenticate(&self, token: &str) -> Option<Device> {
+        if let Some((_, d)) = self.authenticate_session(token) {
+            return Some(d);
+        }
         let woke = {
             let inner = self.inner.lock().unwrap();
             let d = inner.store.device_by_token(&hash(token)).ok()??;
@@ -843,6 +868,29 @@ impl Hub {
         }
         let inner = self.inner.lock().unwrap();
         inner.store.device_by_token(&hash(token)).ok()?
+    }
+
+    /// An NG Account session and its account's sign-up.
+    pub fn authenticate_session(&self, token: &str) -> Option<(crate::accounts::Session, Device)> {
+        let (session, device, woke) = {
+            let inner = self.inner.lock().unwrap();
+            let session = inner.store.session_by_token(&hash(token)).ok()??;
+            let account = inner.store.account(session.account).ok()??;
+            let device = inner.store.device(account.owner).ok()?.into_iter().next()?;
+            if now_ms() - session.last_seen > 60_000 {
+                let _ = inner.store.touch_session(session.id);
+            }
+            if now_ms() - device.last_seen > 60_000 {
+                let _ = inner.store.touch_device(device.id);
+            }
+            let woke = device.dormant && inner.store.wake_device(device.id).unwrap_or(false);
+            (session, device, woke)
+        };
+        if woke {
+            tracing::info!("a dormant NG Account is back; monitoring its servers again");
+            self.reconcile(true);
+        }
+        Some((session, device))
     }
 
     /// Once a day per phone, a silent push: Apple refuses it when the app
@@ -864,8 +912,29 @@ impl Hub {
         }
     }
 
+    pub fn subscribe_sync(&self) -> broadcast::Receiver<SyncChange> {
+        self.sync_changes.subscribe()
+    }
+
+    /// Tell an account's other installs that something synced changed:
+    /// live ones over their WebSocket, the rest with a silent push.
+    pub fn sync_changed(&self, owner: i64, rev: i64, from_install: &str) {
+        let _ = self.sync_changes.send(SyncChange { owner, rev, from_install: from_install.to_owned() });
+        let targets = self.with_store(|s| s.push_targets(owner)).unwrap_or_default();
+        let push = self.push.lock().unwrap();
+        let Some(push) = push.as_ref() else { return };
+        for t in targets.into_iter().filter(|t| t.install_id != from_install) {
+            let mut payload = push::silent_payload();
+            payload["ttng"] = serde_json::json!({ "sync": rev });
+            let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, payload, background: true });
+        }
+    }
+
     /// Put abandoned sign-ups to sleep and delete long-abandoned ones.
     pub fn sweep(&self, retention: crate::store::Retention) {
+        if let Err(e) = self.with_store(|s| s.sweep_accounts(now_ms())) {
+            tracing::error!("account sweep failed: {e:#}");
+        }
         let result = self.with_store(|s| s.sweep(now_ms(), retention));
         match result {
             Ok(r) if r.dormant.is_empty() && r.deleted.is_empty() => {}

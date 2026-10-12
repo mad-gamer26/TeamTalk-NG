@@ -25,12 +25,15 @@ enum MonitorError: LocalizedError {
     case refused(String)
     case notPaired
     case unreachable(String)
+    /// Monitors belong to an NG Account; this iPhone isn't signed in.
+    case needsAccount
 
     var errorDescription: String? {
         switch self {
         case .refused(let m): return m
         case .notPaired: return NSLocalizedString("The monitor service no longer knows this phone. Monitor a server again to sign up again.", comment: "monitor")
         case .unreachable(let m): return String(format: NSLocalizedString("Could not reach the monitor service: %@", comment: "monitor"), m)
+        case .needsAccount: return NSLocalizedString("Sign in to your NG Account to monitor servers.", comment: "monitor")
         }
     }
 }
@@ -306,6 +309,10 @@ final class MonitorConnection {
             servers = try await api.servers()
             prefs = try? await api.prefs()
             lastError = nil
+        } catch MonitorError.notPaired where account.isNGAccount {
+            // Signed out elsewhere, password reset, or the account deleted.
+            NGAccountCenter.shared.sessionEnded()
+            return
         } catch {
             lastError = error.localizedDescription
         }
@@ -409,6 +416,10 @@ final class MonitorConnection {
         case "reset":
             lastSeq = env.seq
             Task { @MainActor in await self.reloadModels() }
+        case "sync":
+            // The NG Account's servers, settings or sound packs changed on
+            // another device.
+            MainActor.assumeIsolated { NGAccountCenter.shared.remoteChange() }
         case "event":
             guard let e = env.event else { return }
             lastSeq = max(lastSeq ?? 0, e.seq)
@@ -466,7 +477,6 @@ final class MonitorCenter {
     private init() {
         // Nothing is connected live when the app starts.
         MonitorLiveServers.clear()
-        MonitorAccountStore.migrateToICloudKeychain()
         reload()
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -476,16 +486,11 @@ final class MonitorCenter {
         connection?.account.ref == ref ? connection : nil
     }
 
-    /// Pick up the sign-up from the keychain (which iCloud Keychain may
-    /// have brought from another iPhone, or kept through a reinstall).
+    /// Follow the NG Account this iPhone is signed in to: monitors belong
+    /// to the account. (Sign-ups from before NG Account only move their
+    /// monitors into an account when signing in.)
     func reload() {
-        // Two sign-ups (an iPhone that signed up before iCloud Keychain
-        // brought the first): keep the oldest and fold the others into it.
-        let accounts = MonitorAccountStore.all().filter { $0.baseURL == MonitorService.baseURL }
-        let account = accounts.min { $0.deviceID < $1.deviceID }
-        if let account, accounts.count > 1 {
-            merge(accounts.filter { $0.ref != account.ref }, into: account)
-        }
+        let account = NGAccountCenter.shared.signIn
         if let account {
             if let connection, connection.account.ref == account.ref {
                 connection.update(account: account)
@@ -506,6 +511,8 @@ final class MonitorCenter {
 
     @objc private func didBecomeActive() {
         active = true
+        // iCloud Keychain may have brought a sign-up from before NG Account.
+        Task { @MainActor in await NGAccountCenter.shared.absorbOldSignUps() }
         // iCloud Keychain may have brought a sign-up meanwhile.
         reload()
         connection?.start()
@@ -519,43 +526,12 @@ final class MonitorCenter {
         connection?.stop()
     }
 
-    /// The connection, signing this install up first if needed.
+    /// The connection to the NG Account's monitors.
     @MainActor
     func ensureSignedUp() async throws -> MonitorConnection {
-        // iCloud Keychain may have just brought the sign-up from another iPhone.
         reload()
-        if let connection { return connection }
-        let result = try await MonitorAPI.register(baseURL: MonitorService.baseURL, deviceName: UIDevice.current.name)
-        let account = MonitorAccount(ref: UUID().uuidString, name: result.name, baseURL: MonitorService.baseURL,
-                                     token: result.token, pushKey: result.pushKey, deviceID: result.deviceId)
-        MonitorAccountStore.save(account)
-        reload()
-        MonitorNotifications.shared.registerIfAllowed()
-        guard let connection else { throw MonitorError.notPaired }
+        guard let connection else { throw MonitorError.needsAccount }
         return connection
-    }
-
-    private var merging = Set<String>()
-
-    private func merge(_ others: [MonitorAccount], into account: MonitorAccount) {
-        for other in others where !merging.contains(other.ref) {
-            merging.insert(other.ref)
-            Task { @MainActor in
-                defer { merging.remove(other.ref) }
-                do {
-                    try await MonitorAPI(account: account).merge(otherToken: other.token)
-                } catch MonitorError.refused(_) {
-                    // Already merged (by another iPhone) or gone.
-                } catch {
-                    return
-                }
-                MonitorAccountStore.remove(ref: other.ref)
-                // This iPhone's notifications now belong to the kept
-                // sign-up, whose key opens them.
-                MonitorNotifications.shared.registerIfAllowed()
-                await connection?.refreshServers()
-            }
-        }
     }
 
     /// The monitor's settings for a saved server: its login, under a
@@ -743,12 +719,11 @@ final class MonitorCenter {
         }
     }
 
-    /// Stop monitoring every server and forget this install on the service.
+    /// Stop monitoring every server. The NG Account stays signed in.
     @MainActor
     func stopEverything() async throws {
         guard let connection else { return }
         try await connection.api.unpair()
-        MonitorAccountStore.remove(ref: connection.account.ref)
-        reload()
+        await connection.refreshServers()
     }
 }

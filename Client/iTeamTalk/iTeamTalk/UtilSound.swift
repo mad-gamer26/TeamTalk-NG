@@ -115,6 +115,11 @@ extension Sounds {
     }
 }
 
+extension Notification.Name {
+    /// Sound packs were added, changed, removed or chosen.
+    static let soundPacksChanged = Notification.Name("SoundPacksChanged")
+}
+
 struct RemoteSoundPack: Codable, Hashable {
     let id: String
     let name: String
@@ -122,6 +127,8 @@ struct RemoteSoundPack: Codable, Hashable {
     let description: String?
     let version: String
     let downloadURL: URL
+    /// Made by TeamTalk NG (the catalog lists these first).
+    var official: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -130,6 +137,7 @@ struct RemoteSoundPack: Codable, Hashable {
         case description
         case version
         case downloadURL = "download_url"
+        case official
     }
 }
 
@@ -153,7 +161,6 @@ struct SoundPack: Codable, Hashable {
 final class SoundPackStore {
     static let shared = SoundPackStore()
     static let defaultSoundPackID = "default"
-    static let catalogURL = URL(string: "https://ttng-soundpacks.mad-gamer.com/packs.json")!
 
     private let selectedSoundPackIDKey = "settings.selectedSoundPackID"
     private let metadataFilename = "metadata.json"
@@ -188,6 +195,7 @@ final class SoundPackStore {
         storeSelection(packID)
         // Monitor notifications follow the selected pack.
         MonitorNotificationSounds.refresh()
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
     }
 
     /// Remember the selected pack without side effects. load() runs while
@@ -404,6 +412,7 @@ final class SoundPackStore {
         let destinationURL = directoryURL.appendingPathComponent(sound.defaultSoundName).appendingPathExtension(fileExtension)
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
         MonitorNotificationSounds.refresh()
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
     }
 
     func resetSound(_ sound: Sounds, in packID: String) throws {
@@ -412,44 +421,17 @@ final class SoundPackStore {
         }
         removeCustomSound(sound, in: packID)
         MonitorNotificationSounds.refresh()
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
     }
 
     func fetchCatalog(completion: @escaping (Result<[RemoteSoundPack], Error>) -> Void) {
-        var request = URLRequest(url: SoundPackStore.catalogURL)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-                return
-            }
-            guard let httpResponse = response as? HTTPURLResponse else {
-                DispatchQueue.main.async {
-                    completion(.failure(SoundPackError.invalidCatalogResponse))
-                }
-                return
-            }
-            guard (200...299).contains(httpResponse.statusCode) else {
-                DispatchQueue.main.async {
-                    completion(.failure(SoundPackError.catalogUnavailable(statusCode: httpResponse.statusCode)))
-                }
-                return
-            }
+        Task { @MainActor in
             do {
-                let packs = try JSONDecoder().decode(RemoteSoundPackCatalog.self, from: data ?? Data()).packs
-                DispatchQueue.main.async {
-                    completion(.success(packs))
-                }
+                completion(.success(try await self.catalog()))
             } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
+                completion(.failure(error))
             }
-        }.resume()
+        }
     }
 
     func downloadCatalogPack(_ pack: RemoteSoundPack, completion: @escaping (Result<URL, Error>) -> Void) {
@@ -503,6 +485,78 @@ final class SoundPackStore {
                     try? fileManager.removeItem(at: url)
                 }
             }
+        }
+    }
+
+    /// Note a catalog pack's new version (its owner just published one).
+    func setVersion(_ version: String, for packID: String) throws {
+        guard let index = customPacks.firstIndex(where: { $0.id == packID }), customPacks[index].version != version else { return }
+        customPacks[index].version = version
+        try save()
+    }
+
+    /// Put one sound (by file name, such as `logged_on.wav`) into a pack,
+    /// replacing whatever that sound was.
+    func writeSound(_ data: Data, fileName: String, in packID: String) throws {
+        let stem = (fileName as NSString).deletingPathExtension
+        guard let sound = Sounds.allCases.first(where: { $0.defaultSoundName == stem }) else { return }
+        let directoryURL = packDirectoryURL(for: packID)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        removeCustomSound(sound, in: packID)
+        try data.write(to: directoryURL.appendingPathComponent(fileName), options: .atomic)
+        MonitorNotificationSounds.refresh()
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
+    }
+
+    /// Take one sound (by file name) out of a pack: it plays the default.
+    func removeSound(fileName: String, in packID: String) {
+        let stem = (fileName as NSString).deletingPathExtension
+        guard let sound = Sounds.allCases.first(where: { $0.defaultSoundName == stem }) else { return }
+        removeCustomSound(sound, in: packID)
+        MonitorNotificationSounds.refresh()
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
+    }
+
+    /// A pack's own sounds, by file name (such as `logged_on.wav`).
+    func customSoundFiles(in packID: String) -> [(name: String, url: URL)] {
+        Sounds.allCases.compactMap { sound in
+            customSoundURL(for: sound, packID: packID).map { (sound.defaultSoundName + "." + $0.pathExtension.lowercased(), $0) }
+        }
+    }
+
+    /// Put back a pack from the NG Account, as the pack it was on the
+    /// iPhone that backed it up.
+    func restorePackArchive(from archiveURL: URL, id: String, name: String) throws -> SoundPack {
+        let entryLookup = try supportedSoundEntries(from: ZIPArchive.read(from: archiveURL))
+        let restored = SoundPack(id: id,
+                                 name: name,
+                                 author: nil,
+                                 createdAt: pack(for: id)?.createdAt ?? Date(),
+                                 catalogID: nil,
+                                 version: nil)
+        try writeImportedPack(restored, entries: entryLookup)
+        if let index = customPacks.firstIndex(where: { $0.id == id }) {
+            customPacks[index] = restored
+        } else {
+            customPacks.append(restored)
+        }
+        sortPacks()
+        try save()
+        return restored
+    }
+
+    /// The catalog of published sound packs (Official ones first).
+    func catalog() async throws -> [RemoteSoundPack] {
+        try await NGAccountAPI(baseURL: MonitorService.baseURL, token: nil).catalog().compactMap { p in
+            guard let url = URL(string: p.downloadPath, relativeTo: MonitorService.baseURL)?.absoluteURL else { return nil }
+            return RemoteSoundPack(id: p.id, name: p.name, author: p.author, description: p.description.isEmpty ? nil : p.description,
+                                   version: p.version, downloadURL: url, official: p.official)
+        }
+    }
+
+    func downloadCatalogPack(_ pack: RemoteSoundPack) async throws -> URL {
+        try await withCheckedThrowingContinuation { c in
+            downloadCatalogPack(pack) { c.resume(with: $0) }
         }
     }
 
@@ -607,6 +661,7 @@ final class SoundPackStore {
     private func save() throws {
         let data = try JSONEncoder().encode(customPacks)
         try data.write(to: metadataURL(), options: .atomic)
+        NotificationCenter.default.post(name: .soundPacksChanged, object: nil)
     }
 
     private func sortPacks() {

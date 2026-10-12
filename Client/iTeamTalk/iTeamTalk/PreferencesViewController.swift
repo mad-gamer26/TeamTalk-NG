@@ -483,7 +483,6 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
     var ttsratecell : UITableViewCell?
     var ttsvolcell : UITableViewCell?
     var ttsvoicecell : UITableViewCell?
-    var iCloudSwitch: UISwitch?
     var fileSortButton: UIButton?
 
     var general_items = [UITableViewCell]()
@@ -802,17 +801,26 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
         diagnosticLogsCell.accessibilityHint = NSLocalizedString("Creates a zip file of app logs and opens sharing options.", comment: "preferences")
         version_items.append(diagnosticLogsCell)
 
-        let iCloudCell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
-        iCloudSwitch = newTableCellSwitch(iCloudCell,
-                                           label: NSLocalizedString("Sync with iCloud", comment: "preferences"),
-                                           initial: ICloudSync.shared.isEnabled)
-        iCloudSwitch?.addTarget(self, action: #selector(SettingsViewController.iCloudSyncChanged(_:)), for: .valueChanged)
-        iCloud_items.append(iCloudCell)
+        // NG Account replaces iCloud sync.
+        let accountCell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+        accountCell.textLabel?.text = NSLocalizedString("NG Account", comment: "preferences")
+        if #available(iOS 13.0, *) {
+            accountCell.imageView?.image = UIImage(systemName: "person.crop.circle")
+        }
+        accountCell.accessoryType = .disclosureIndicator
+        iCloud_items.append(accountCell)
+        updateAccountCell()
+        NotificationCenter.default.addObserver(self, selector: #selector(updateAccountCell), name: .ngAccountChanged, object: nil)
+    }
+
+    @objc private func updateAccountCell() {
+        guard let cell = iCloud_items.first else { return }
+        cell.detailTextLabel?.text = NGAccountCenter.shared.email ?? NSLocalizedString("Not Signed In", comment: "preferences")
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        iCloudSwitch?.setOn(ICloudSync.shared.isEnabled, animated: false)
+        updateAccountCell()
         updateFileSortButton()
         if isConnectedToServer() {
             expandedSections.remove(SECTION_SOUND)
@@ -1139,7 +1147,7 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
         case SECTION_VERSION :
             return NSLocalizedString("About", comment: "preferences")
         case SECTION_ICLOUD :
-            return NSLocalizedString("iCloud", comment: "preferences")
+            return NSLocalizedString("Sync", comment: "preferences")
         default :
             return nil
         }
@@ -1284,10 +1292,6 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
         return cell
     }
 
-    @objc func iCloudSyncChanged(_ sender: UISwitch) {
-        ICloudSync.shared.setEnabled(sender.isOn)
-    }
-
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         let logicalSection = logicalSettingsSection(for: indexPath.section)
         if logicalSection == SECTION_SOUNDEVENTS && indexPath.row == 1 {
@@ -1297,6 +1301,10 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
         else if logicalSection == SECTION_SIRI_SHORTCUTS {
             tableView.deselectRow(at: indexPath, animated: true)
             configureSiriShortcuts(tableView.cellForRow(at: indexPath))
+        }
+        else if logicalSection == SECTION_ICLOUD {
+            tableView.deselectRow(at: indexPath, animated: true)
+            navigationController?.pushViewController(NGAccountViewController(), animated: true)
         }
         else if logicalSection == SECTION_VERSION && indexPath.row == 1 {
             tableView.deselectRow(at: indexPath, animated: true)

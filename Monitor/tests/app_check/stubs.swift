@@ -27,3 +27,19 @@ let PREF_GENERAL_NICKNAME = "nickname_preference"
 /// The gender in Settings (0 male, 1 female, 2 neutral).
 var stubGenderIndex = 2
 func preferredGenderIndex() -> Int { stubGenderIndex }
+
+/// NG Account as the monitor code sees it: which account this iPhone is
+/// signed in to (the harness signs in with the real API client).
+final class NGAccountCenter {
+    static let shared = NGAccountCenter()
+    var signIn: MonitorAccount?
+    var isSignedIn: Bool { signIn != nil }
+    var sessionsEnded = 0
+    var remoteChanges = 0
+    func sessionEnded() {
+        signIn = nil
+        sessionsEnded += 1
+    }
+    @MainActor func remoteChange() { remoteChanges += 1 }
+    @MainActor func absorbOldSignUps() async {}
+}

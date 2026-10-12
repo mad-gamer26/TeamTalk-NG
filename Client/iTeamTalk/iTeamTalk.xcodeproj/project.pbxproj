@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0590E0AA3481D083A03E6CC4 /* NGAccountAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81988022663B16178264B8B /* NGAccountAPI.swift */; };
+		153BBEA3EF818C08B4AC733E /* NGAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE4AA377828BAB18275205E2 /* NGAccount.swift */; };
+		C61DA868C622A2D6B559C781 /* NGSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFEFA5C2660DCE7895A3F5DE /* NGSync.swift */; };
+		513CA51EDF91032606B66F5C /* NGPackSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988EDFEA6867171AB7CD06C4 /* NGPackSync.swift */; };
+		98078B2418C209B548E3A523 /* NGAccountViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABD2E8C980216402AE75E64 /* NGAccountViewController.swift */; };
 		BEBAB71963E70FA938CE2C0F /* MonitorShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABAEEB542584CBEFB74896D /* MonitorShared.swift */; };
 		A37DDB9128430DA7BB652E40 /* MonitorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FEC40CFA5698E81CEA31A09 /* MonitorModels.swift */; };
 		67D058C78B4BE561A2A638A2 /* MonitorClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11122035DF20E0FB917C9007 /* MonitorClient.swift */; };
@@ -124,6 +129,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B81988022663B16178264B8B /* NGAccountAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NGAccountAPI.swift; sourceTree = "<group>"; };
+		CE4AA377828BAB18275205E2 /* NGAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NGAccount.swift; sourceTree = "<group>"; };
+		BFEFA5C2660DCE7895A3F5DE /* NGSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NGSync.swift; sourceTree = "<group>"; };
+		988EDFEA6867171AB7CD06C4 /* NGPackSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NGPackSync.swift; sourceTree = "<group>"; };
+		AABD2E8C980216402AE75E64 /* NGAccountViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NGAccountViewController.swift; sourceTree = "<group>"; };
 		4ABAEEB542584CBEFB74896D /* MonitorShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorShared.swift; sourceTree = "<group>"; };
 		0FEC40CFA5698E81CEA31A09 /* MonitorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorModels.swift; sourceTree = "<group>"; };
 		11122035DF20E0FB917C9007 /* MonitorClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorClient.swift; sourceTree = "<group>"; };
@@ -293,6 +303,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D42C9C8F45B4616D2E95C2D8 /* Account */ = {
+			isa = PBXGroup;
+			children = (
+				B81988022663B16178264B8B /* NGAccountAPI.swift */,
+				CE4AA377828BAB18275205E2 /* NGAccount.swift */,
+				BFEFA5C2660DCE7895A3F5DE /* NGSync.swift */,
+				988EDFEA6867171AB7CD06C4 /* NGPackSync.swift */,
+				AABD2E8C980216402AE75E64 /* NGAccountViewController.swift */,
+			);
+			path = Account;
+			sourceTree = "<group>";
+		};
 		423642C433470C8F2196D5C7 /* Monitor */ = {
 			isa = PBXGroup;
 			children = (
@@ -355,6 +377,7 @@
 			isa = PBXGroup;
 			children = (
 				423642C433470C8F2196D5C7 /* Monitor */,
+				D42C9C8F45B4616D2E95C2D8 /* Account */,
 				253713391BC97D1200A7ADB3 /* Settings.bundle */,
 				254B7A7E1B9DE2C500BE0DEF /* iTeamTalk-Bridging-Header.h */,
 				254B7A7F1B9DE2C700BE0DEF /* iTeamTalk-Bridging-Header.m */,
@@ -675,6 +698,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0590E0AA3481D083A03E6CC4 /* NGAccountAPI.swift in Sources */,
+				153BBEA3EF818C08B4AC733E /* NGAccount.swift in Sources */,
+				C61DA868C622A2D6B559C781 /* NGSync.swift in Sources */,
+				513CA51EDF91032606B66F5C /* NGPackSync.swift in Sources */,
+				98078B2418C209B548E3A523 /* NGAccountViewController.swift in Sources */,
 				BEBAB71963E70FA938CE2C0F /* MonitorShared.swift in Sources */,
 				A37DDB9128430DA7BB652E40 /* MonitorModels.swift in Sources */,
 				67D058C78B4BE561A2A638A2 /* MonitorClient.swift in Sources */,
@@ -832,7 +860,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkNotifications/iTeamTalkNotifications.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkNotifications/Info.plist;
@@ -860,7 +888,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkNotifications/iTeamTalkNotifications.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkNotifications/Info.plist;
@@ -1008,7 +1036,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalk/iTeamTalk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				ENABLE_BITCODE = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
@@ -1051,7 +1079,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalk/iTeamTalk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				ENABLE_BITCODE = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
@@ -1092,7 +1120,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkControls/iTeamTalkControls.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkControls/Info.plist;
@@ -1120,7 +1148,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkControls/iTeamTalkControls.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkControls/Info.plist;

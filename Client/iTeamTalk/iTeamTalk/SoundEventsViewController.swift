@@ -495,8 +495,17 @@ class SoundPacksViewController: UITableViewController, UIDocumentPickerDelegate 
     }
 
     private func confirmDeleteAllSoundPacks() {
+        var message = NSLocalizedString("This deletes every sound pack except the default one.", comment: "sound pack")
+        let inAccount = SoundPackStore.shared.customPacks.compactMap { NGPackSync.shared.accountPack(forLocal: $0.id) }
+        if !inAccount.isEmpty {
+            let published = inAccount.filter(\.public).count
+            message += "\n\n" + String(format: NSLocalizedString("%d of them are in your NG Account and will be deleted from it and your other iPhones too.", comment: "sound pack"), inAccount.count)
+            if published > 0 {
+                message += " " + String(format: NSLocalizedString("%d published ones will leave the catalog (people who installed them keep their copy).", comment: "sound pack"), published)
+            }
+        }
         let alert = UIAlertController(title: NSLocalizedString("Delete Custom Sound Packs?", comment: "sound pack"),
-                                      message: NSLocalizedString("This deletes every sound pack except the default one.", comment: "sound pack"),
+                                      message: message,
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "alert"), style: .cancel))
         alert.addAction(UIAlertAction(title: NSLocalizedString("Delete All", comment: "alert"), style: .destructive) { [weak self] _ in
@@ -574,8 +583,14 @@ class SoundPacksViewController: UITableViewController, UIDocumentPickerDelegate 
 
     private func confirmDeleteSoundPack(_ packID: String) {
         let packName = SoundPackStore.shared.pack(for: packID)?.name ?? NSLocalizedString("Sound Pack", comment: "sound pack")
+        var message = packName
+        if let account = NGPackSync.shared.accountPack(forLocal: packID) {
+            message += "\n\n" + (account.public
+                ? NSLocalizedString("It's also deleted from your NG Account and your other iPhones, and leaves the catalog (people who installed it keep their copy).", comment: "sound pack")
+                : NSLocalizedString("It's also deleted from your NG Account and your other iPhones.", comment: "sound pack"))
+        }
         let alert = UIAlertController(title: NSLocalizedString("Delete Sound Pack?", comment: "sound pack"),
-                                      message: packName,
+                                      message: message,
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "alert"), style: .cancel))
         alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: "alert"), style: .destructive) { [weak self] _ in
@@ -615,27 +630,63 @@ private class SoundPackEditorViewController: UITableViewController, UIDocumentPi
     override func viewDidLoad() {
         super.viewDidLoad()
         updateTitle()
+        // Find out whether this pack is one of the account's.
+        Task { @MainActor [weak self] in
+            await NGPackSync.shared.syncNow()
+            self?.tableView.reloadData()
+        }
+    }
+
+    /// Packs made here can be published; catalog packs only by their owner.
+    private var canPublish: Bool {
+        guard let pack = SoundPackStore.shared.pack(for: packID) else { return false }
+        return pack.catalogID == nil || NGPackSync.shared.owns(catalogID: pack.catalogID)
+    }
+
+    private var ownedCatalogPack: NGPack? {
+        SoundPackStore.shared.pack(for: packID)?.catalogID.flatMap { NGPackSync.shared.ownedCatalogPacks[$0] }
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
-        return 2
+        return canPublish ? 3 : 2
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if section == 0 {
+        if section == 0 || section == 2 {
             return 1
         }
         return Sounds.allCases.count
     }
 
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard section == 1 else {
-            return nil
+        switch section {
+        case 1: return NSLocalizedString("Sounds", comment: "sound pack")
+        case 2: return NSLocalizedString("NG Account", comment: "sound pack")
+        default: return nil
         }
-        return NSLocalizedString("Sounds", comment: "sound pack")
+    }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        guard section == 2 else { return nil }
+        if ownedCatalogPack != nil {
+            return NSLocalizedString("This catalog pack is yours. Sounds you change here are published as a new version for everyone who installed it.", comment: "sound pack")
+        }
+        return NGAccountCenter.shared.isSignedIn
+            ? NSLocalizedString("Your packs are backed up to your NG Account. Publish one to share it in the catalog.", comment: "sound pack")
+            : NSLocalizedString("Sign in to your NG Account to back up your packs and share them in the catalog.", comment: "sound pack")
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if indexPath.section == 2 {
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = ownedCatalogPack != nil
+                ? NSLocalizedString("Manage in Catalog", comment: "sound pack")
+                : NGAccountCenter.shared.isSignedIn
+                    ? NSLocalizedString("Publish to Catalog", comment: "sound pack")
+                    : NSLocalizedString("Sign In or Create Account", comment: "sound pack")
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        }
         if indexPath.section == 0 {
             let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
             let packName = SoundPackStore.shared.pack(for: packID)?.name ?? NSLocalizedString("Sound Pack", comment: "sound pack")
@@ -664,6 +715,16 @@ private class SoundPackEditorViewController: UITableViewController, UIDocumentPi
         tableView.deselectRow(at: indexPath, animated: true)
         if indexPath.section == 0 {
             showRenameSoundPackAlert()
+            return
+        }
+        if indexPath.section == 2 {
+            let next: UIViewController
+            if let owned = ownedCatalogPack {
+                next = NGPublishPackViewController(accountPackID: owned.id)
+            } else {
+                next = NGAccountCenter.shared.isSignedIn ? NGPublishPackViewController(localID: packID) : NGAccountViewController()
+            }
+            navigationController?.pushViewController(next, animated: true)
             return
         }
 
@@ -874,6 +935,9 @@ private class SoundPackBrowserViewController: UITableViewController {
         let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = pack.name
         var detail = String(format: NSLocalizedString("Created by %@", comment: "sound pack"), pack.author)
+        if pack.official == true {
+            detail = NSLocalizedString("Official", comment: "sound pack") + " · " + detail
+        }
         detail += "\n" + String(format: NSLocalizedString("Version %@", comment: "sound pack"), pack.version)
         if let description = pack.description, !description.isEmpty {
             detail += "\n" + description
@@ -881,6 +945,15 @@ private class SoundPackBrowserViewController: UITableViewController {
         cell.detailTextLabel?.numberOfLines = 0
         cell.detailTextLabel?.text = detail
         var accessibilityDetail = String(format: NSLocalizedString("Created by %@, Version %@", comment: "sound pack"), pack.author, pack.version)
+        if pack.official == true {
+            accessibilityDetail = NSLocalizedString("Official", comment: "sound pack") + ", " + accessibilityDetail
+        }
+        if pack.official != true {
+            cell.accessibilityCustomActions = [UIAccessibilityCustomAction(name: NSLocalizedString("Report", comment: "sound pack")) { [weak self] _ in
+                self?.report(pack)
+                return true
+            }]
+        }
         if let description = pack.description, !description.isEmpty {
             accessibilityDetail += ", " + description
         }
@@ -904,6 +977,43 @@ private class SoundPackBrowserViewController: UITableViewController {
             return
         }
         download(pack)
+    }
+
+    override func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        guard !isLoading, packs.indices.contains(indexPath.row), packs[indexPath.row].official != true else { return nil }
+        let pack = packs[indexPath.row]
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(title: "", children: [UIAction(title: NSLocalizedString("Report", comment: "sound pack"), attributes: .destructive) { _ in
+                self?.report(pack)
+            }])
+        }
+    }
+
+    /// Tell TeamTalk NG about a pack that shouldn't be in the catalog.
+    private func report(_ pack: RemoteSoundPack) {
+        guard NGAccountCenter.shared.isSignedIn else {
+            let alert = UIAlertController(title: NSLocalizedString("Sign In to Report", comment: "sound pack"),
+                                          message: NSLocalizedString("Reporting a pack needs an NG Account.", comment: "sound pack"), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "alert"), style: .default))
+            present(alert, animated: true)
+            return
+        }
+        let alert = UIAlertController(title: String(format: NSLocalizedString("Report %@", comment: "sound pack"), pack.name),
+                                      message: NSLocalizedString("What's wrong with this pack?", comment: "sound pack"), preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = NSLocalizedString("Reason", comment: "sound pack") }
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "alert"), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Report", comment: "sound pack"), style: .destructive) { [weak self, weak alert] _ in
+            let reason = alert?.textFields?.first?.text ?? ""
+            Task { @MainActor in
+                do {
+                    try await NGAccountCenter.shared.signed { try await $0.report(pack.id, reason: reason) }
+                    UIAccessibility.post(notification: .announcement, argument: NSLocalizedString("Reported. Thank you.", comment: "sound pack"))
+                } catch {
+                    self?.showError(error)
+                }
+            }
+        })
+        present(alert, animated: true)
     }
 
     private func loadPacks() {
@@ -948,6 +1058,7 @@ private class SoundPackBrowserViewController: UITableViewController {
             do {
                 let archiveURL = try result.get()
                 _ = try SoundPackStore.shared.importCatalogPackArchive(from: archiveURL, remotePack: pack, selectAfterImport: selectAfterImport)
+                Task { await NGAccountAPI(baseURL: MonitorService.baseURL, token: nil).countInstall(pack.id) }
             } catch {
                 self.showError(error)
             }

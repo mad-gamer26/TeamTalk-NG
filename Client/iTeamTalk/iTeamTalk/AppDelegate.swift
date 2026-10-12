@@ -80,12 +80,53 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         MonitorCenter.shared.unmuteLeftoverLiveServers()
         MonitorCenter.shared.giveMonitorsGender()
         MonitorNotificationSounds.refresh()
+        NGSync.shared.start()
+        NGPackSync.shared.start()
+        // iCloud Keychain may still bring sign-ups from before NG Account.
+        Task { @MainActor in await NGAccountCenter.shared.absorbOldSignUps() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.offerToMoveFromICloud()
+        }
         
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         MonitorNotifications.shared.didRegister(deviceToken: deviceToken)
+    }
+
+    /// A silent push: the NG Account's servers, settings or sound packs
+    /// changed on another device.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard (userInfo["ttng"] as? [String: Any])?["sync"] != nil, NGAccountCenter.shared.isSignedIn else {
+            completionHandler(.noData)
+            return
+        }
+        Task { @MainActor in
+            await NGSync.shared.syncNow()
+            await NGPackSync.shared.syncNow()
+            completionHandler(.newData)
+        }
+    }
+
+    /// iCloud sync is now NG Account: offer it once to whoever used iCloud.
+    private func offerToMoveFromICloud() {
+        let key = "NGAccountICloudOffered"
+        guard ICloudSync.shared.isEnabled, !NGAccountCenter.shared.isSignedIn,
+              !MonitorInstall.groupDefaults.bool(forKey: key) else { return }
+        let window = self.window ?? UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } }.first
+        guard let nav = window?.rootViewController as? UINavigationController, nav.presentedViewController == nil else { return }
+        MonitorInstall.groupDefaults.set(true, forKey: key)
+        let alert = UIAlertController(title: NSLocalizedString("iCloud Sync Is Now NG Account", comment: "ng account"),
+                                      message: NSLocalizedString("TeamTalk NG now keeps your servers, settings, sound packs and monitors in an NG Account instead of iCloud. Sign in or create an account to bring everything with you; until then, iCloud keeps syncing as before.", comment: "ng account"),
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Later", comment: "ng account"), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Sign In or Create Account", comment: "ng account"), style: .default) { _ in
+            nav.pushViewController(NGAccountViewController(), animated: true)
+        })
+        nav.present(alert, animated: true)
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {

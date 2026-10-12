@@ -23,6 +23,11 @@ struct MonitorAccount: Codable, Equatable {
     /// Key that opens sealed notification text (base64).
     var pushKey: String
     var deviceID: Int
+    /// The NG Account this is signed in to; nil for a sign-up from before
+    /// NG Account (kept only until its monitors move into an account).
+    var email: String? = nil
+
+    var isNGAccount: Bool { email != nil }
 }
 
 /// This installed copy of the app, which gets its own notifications. Kept
@@ -91,6 +96,33 @@ enum MonitorAccountStore {
         all().first { $0.ref == ref }
     }
 
+    /// The NG Account this iPhone is signed in to.
+    static var ngAccount: MonitorAccount? {
+        all().first { $0.isNGAccount }
+    }
+
+    /// Sign-ups from before NG Account, which iCloud Keychain may still
+    /// bring; signing in moves their monitors into the account.
+    static var legacy: [MonitorAccount] {
+        all().filter { !$0.isNGAccount }
+    }
+
+    /// Save an NG Account sign-in on this iPhone only: the account itself
+    /// keeps everything, so nothing needs iCloud Keychain.
+    static func saveSignIn(_ account: MonitorAccount) {
+        guard let data = try? JSONEncoder().encode(account) else { return }
+        for old in all() where old.isNGAccount {
+            remove(ref: old.ref)
+        }
+        var add = baseQuery(useGroup: groupAvailable)
+        add[kSecAttrAccount as String] = account.ref
+        add[kSecAttrSynchronizable as String] = kCFBooleanFalse
+        add[kSecValueData as String] = data
+        // The notification extension runs while the phone is locked.
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
     /// Save the sign-up to iCloud Keychain: deleting the app, restoring
     /// the phone or moving to a new iPhone keeps the monitors.
     static func save(_ account: MonitorAccount) {
@@ -115,7 +147,8 @@ enum MonitorAccountStore {
         q[kSecReturnData as String] = true
         var result: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess, let items = result as? [Data] else { return }
-        for account in items.compactMap({ try? JSONDecoder().decode(MonitorAccount.self, from: $0) }) {
+        // An NG Account sign-in stays on this iPhone.
+        for account in items.compactMap({ try? JSONDecoder().decode(MonitorAccount.self, from: $0) }) where !account.isNGAccount {
             save(account)
         }
     }
@@ -266,11 +299,19 @@ enum MonitorPush {
            let content = try? JSONDecoder().decode(MonitorPushContent.self, from: data) {
             return (ref, content)
         }
-        guard let sealed = ttng["sealed"] as? String,
-              let account = MonitorAccountStore.account(ref: ref),
-              let opened = open(sealed: sealed, keyBase64: account.pushKey),
-              let content = try? JSONDecoder().decode(MonitorPushContent.self, from: opened) else { return nil }
-        return (ref, content)
+        guard let sealed = ttng["sealed"] as? String else { return nil }
+        // The sign-in the push names; failing that (the service still had an
+        // older one's name for this iPhone), any whose key opens it. The
+        // name returned is the one that opened it.
+        let accounts = MonitorAccountStore.all()
+        let named = accounts.filter { $0.ref == ref }
+        for account in named + accounts.filter({ $0.ref != ref }) {
+            if let opened = open(sealed: sealed, keyBase64: account.pushKey),
+               let content = try? JSONDecoder().decode(MonitorPushContent.self, from: opened) {
+                return (account.ref, content)
+            }
+        }
+        return nil
     }
 
     /// ChaCha20-Poly1305, nonce + ciphertext + tag, as the monitor seals it.

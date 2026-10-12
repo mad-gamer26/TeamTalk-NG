@@ -9,6 +9,7 @@ The app's monitor files are compiled for Mac Catalyst into a small program
 users. The TeamTalk SDK has no simulator build, so this is how the app's
 networking, decoding and push opening are tested off the phone.
 """
+import glob
 import json, os, queue, shutil, subprocess, sys, tempfile, threading, time, http.server, socket
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -30,8 +31,10 @@ try:
     key = os.path.join(work, "test.p8")
     subprocess.run(["openssl", "genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", key], check=True, capture_output=True)
     cfg = os.path.join(work, "ngmon.toml")
+    outbox = os.path.join(work, "outbox")
     open(cfg, "w").write('listen = "127.0.0.1:18650"\nallow_private_hosts = true\n[push]\nmode = "apns"\n'
-                         f'[push.apns]\nkey_file = "{key}"\nkey_id = "TESTKEY123"\nteam_id = "5NJK4F832Z"\nendpoint = "http://127.0.0.1:18651"\n')
+                         f'[push.apns]\nkey_file = "{key}"\nkey_id = "TESTKEY123"\nteam_id = "5NJK4F832Z"\nendpoint = "http://127.0.0.1:18651"\n'
+                         f'[mail]\nmode = "outbox"\noutbox = "{outbox}"\n')
     ng = [NGMON, "--config", cfg]
     procs.append(subprocess.Popen(ng + ["serve"], stderr=open(os.path.join(work, "serve.log"), "w")))
     wait_for(lambda: socket.socket().connect_ex(("127.0.0.1", 18650)) == 0, "monitor up")
@@ -103,6 +106,15 @@ try:
     check("Late" in l, "the app merges a second sign-up into the first")
     tell("unpair"); expect("ok stopped monitoring everything")
     check("Test" not in subprocess.run(ng + ["servers"], capture_output=True, text=True).stdout, "the service forgot the server")
+    tell("account"); expect("ok refused")
+    expect("CODE?")
+    mail = json.load(open(glob.glob(os.path.join(outbox, "*.json"))[0]))
+    tell("code " + mail["code"])
+    expect("ok signed up with the code")
+    expect("ok sync")
+    expect("ok sound packs")
+    expect("ok devices, export, sign-out")
+    check(True, "the app's NG Account client works against the service")
     tell("quit"); expect("DONE")
     print("\nApp code checks passed.")
 finally:

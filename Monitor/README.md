@@ -189,11 +189,78 @@ Errors are `{"error": "<what went wrong>"}` with these statuses:
 - 429: too many sign-ups;
 - 503: the TeamTalk server didn't answer.
 
+## NG Account
+
+An NG Account (email and password) owns a person's monitors, synced
+servers and settings, and sound packs, so a new iPhone or a reinstall only
+needs signing in. It replaces iCloud sync and the iCloud Keychain sign-up.
+
+- **Signing up** emails a 6-digit code (through `[mail]`), typed into the
+  app to finish. Resetting a password works the same way. Passwords are
+  hashed with Argon2. Codes expire after 15 minutes and stop working after
+  5 wrong tries. 10 wrong passwords in a row lock the account for 15
+  minutes. Codes, sign-ins and sign-ups are also limited per network and
+  per address.
+- **The account owns one sign-up**, the same kind of owner an install
+  without an account has, so monitoring, notifications and conversations
+  work as before. Each app install that signs in gets its own session,
+  which ends at sign-out (and its pushes stop). The first sign-in brings an
+  older sign-up's token (`claim_token`), and that sign-up's monitors become
+  the account's.
+- **Sync** keeps revisioned records (`server`, `setting`) per account. The
+  app pulls changes since a revision and pushes its own with the revision
+  each was based on. A change made elsewhere meanwhile comes back as a
+  conflict. Server passwords, channel passwords and client certificate
+  keys are encrypted at rest. Other installs hear of changes over the
+  WebSocket (`{"type":"sync"}`) or a silent push (`ttng.sync`).
+- **Sound packs** back up privately. Files are kept once, named by SHA-256,
+  under `packs_dir`. A pack can be at most 25 MB, and an account's packs
+  250 MB. Publishing needs a pack name and the name shown as its maker.
+  Deleting an account removes its private packs, and its public ones stay
+  in the catalog, owned by nobody.
+- **Account sign-ups are never deleted for inactivity.** They only go
+  dormant; the account decides when they're deleted.
+
+| Method and path | Purpose |
+|---|---|
+| `POST /v1/account/signup` `{email, password}` | Email a code to finish with |
+| `POST /v1/account/verify` `{email, code, install_id, device_name, claim_token?}` | Make the account and sign in: `token`, `push_key`, `device_id`, `account` |
+| `POST /v1/account/signin` `{email, password, install_id, device_name, claim_token?}` | Sign in |
+| `POST /v1/account/forgot` `{email}` | Email a reset code (the same answer whether or not the account exists) |
+| `POST /v1/account/reset` `{email, code, password, install_id, device_name}` | New password; signs out every other install |
+| `GET /v1/account` | The account, its sync revision and sound pack usage |
+| `POST /v1/account/password` `{current, new}` | Change the password; signs out other installs |
+| `GET /v1/account/sessions`, `DELETE /v1/account/sessions/{id}` | Signed-in installs; sign one out |
+| `POST /v1/account/signout` | Sign this install out |
+| `POST /v1/account/delete` `{password}` | Delete the account and everything only it has |
+| `GET /v1/account/export` | Everything, as JSON, without passwords |
+| `GET /v1/sync?since=`, `POST /v1/sync` `{changes}` | Pull and push synced records |
+| `GET/POST /v1/packs`, `PATCH/DELETE /v1/packs/{id}` | The account's packs; back one up `{local_id, name}`; change or publish `{name, author, description, public}` |
+| `PUT/DELETE/GET /v1/packs/{id}/files/{name}` | A sound (`logged_on.wav`; only known sounds, checked to be audio) |
+| `GET /v1/packs/{id}/pack.zip` | A whole pack (the owner's, or a published one) |
+| `GET /v1/catalog?q=&sort=popular` | Published packs, Official ones first (no token needed) |
+| `POST /v1/catalog/{id}/installed`, `POST /v1/catalog/{id}/report` `{reason}` | Count an install; report a pack |
+
+On the server:
+
+```sh
+bin/ngmon -c ngmon.toml account list
+bin/ngmon -c ngmon.toml account block <id>      # can't publish; unpublishes its packs
+bin/ngmon -c ngmon.toml pack list               # every pack, private ones too
+bin/ngmon -c ngmon.toml pack reports
+bin/ngmon -c ngmon.toml pack hide <id>          # take out of the catalog (show <id> to undo)
+bin/ngmon -c ngmon.toml pack import-official <id> <name> <author> <version> <zip>
+```
+
+The test `tests/accounts_e2e.py` covers all of this against a running
+monitor, with email written to a folder.
+
 ## Tests
 
 ```sh
 cargo test                                         # protocol, state, storage, push, safety
 python3 tests/e2e.py --tt5srv /path/to/tt5srv      # against a real TeamTalk server
+python3 tests/accounts_e2e.py                      # NG Account: accounts, sync, sound packs
 tests/app_check/build.sh && python3 tests/app_check/drive.py /path/to/tt5srv
 ```
 

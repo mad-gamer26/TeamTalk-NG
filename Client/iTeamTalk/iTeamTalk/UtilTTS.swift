@@ -49,16 +49,10 @@ func newUtterance(_ utterance: String, allowVoiceOver: Bool = true) {
         myUtterance.volume = DEFAULT_TTS_VOL
         settings.set(DEFAULT_TTS_VOL, forKey: PREF_TTSEVENT_VOL)
     }
-    if let voice = settings.string(forKey: PREF_TTSEVENT_VOICEID) {
-        if #available(iOS 9.0, *) {
-            myUtterance.voice = AVSpeechSynthesisVoice(identifier: voice)
-        } else {
-            // Fallback on earlier versions
-        }
-    }
-    else if let lang = settings.string(forKey: PREF_TTSEVENT_VOICELANG) {
-        myUtterance.voice = AVSpeechSynthesisVoice(language: lang)
-    }
+    // The chosen voice; if this iPhone doesn't have it (the setting came
+    // from another device), a voice for its language; else the default.
+    myUtterance.voice = settings.string(forKey: PREF_TTSEVENT_VOICEID).flatMap { AVSpeechSynthesisVoice(identifier: $0) }
+        ?? settings.string(forKey: PREF_TTSEVENT_VOICELANG).flatMap { AVSpeechSynthesisVoice(language: $0) }
     
     synth.speak(myUtterance)
 }
