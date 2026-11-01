@@ -184,7 +184,11 @@ async fn merge(State(app): State<App>, Authed(d): Authed, Json(r): Json<MergeReq
 #[derive(Deserialize)]
 struct PushRegistration {
     /// The APNs device token in hex; null turns pushes off.
+    #[serde(default)]
     apns_token: Option<String>,
+    /// Firebase's token, from the Android app (in place of `apns_token`).
+    #[serde(default)]
+    fcm_token: Option<String>,
     /// Development builds get their pushes from Apple's sandbox.
     #[serde(default)]
     sandbox: bool,
@@ -202,10 +206,18 @@ async fn set_push(State(app): State<App>, Authed(d): Authed, Json(r): Json<PushR
         && (t.len() > 200 || !t.chars().all(|c| c.is_ascii_hexdigit())) {
             return Err(ApiError(StatusCode::BAD_REQUEST, "That is not an APNs device token".into()));
         }
+    // Firebase's tokens are mixed case and must stay exactly as they came.
+    let fcm = r.fcm_token.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
+    if let Some(t) = &fcm
+        && (t.len() > 4096 || !t.chars().all(|c| c.is_ascii_alphanumeric() || "-_:.".contains(c))) {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "That is not a Firebase token".into()));
+        }
+    let android = fcm.is_some();
+    let token = fcm.or(token);
     let clean = |v: &str| -> String { v.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(64).collect() };
     let app_ref = clean(&r.app_ref);
     let install_id = if r.install_id.is_empty() { app_ref.clone() } else { clean(&r.install_id) };
-    app.hub.with_store(|s| s.set_push_target(d.id, &install_id, token.as_deref(), r.sandbox, &app_ref))?;
+    app.hub.with_store(|s| s.set_push_target(d.id, &install_id, token.as_deref(), r.sandbox, &app_ref, android))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

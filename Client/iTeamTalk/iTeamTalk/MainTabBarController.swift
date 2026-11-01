@@ -607,7 +607,7 @@ class MainTabBarController : UITabBarController, UIAlertViewDelegate, TeamTalkEv
         TT_SetLicenseInformation(REGISTRATION_NAME, REGISTRATION_KEY)
         teamTalkInstance = TT_InitTeamTalkPoll()
         ttInst = teamTalkInstance
-        // Servers and other users see "TeamTalk NG" and this app's version.
+        // Servers and other users see "TeamTalk NG for iOS" and this app's version.
         TTNG_SetClientVersion(teamTalkInstance, AppInfo.getClientVersion())
         NotificationCenter.default.addObserver(self, selector: #selector(audioNetStreamEnded(_:)),
                                                name: .audioNetStreamEnded, object: nil)

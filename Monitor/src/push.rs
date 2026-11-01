@@ -1,10 +1,11 @@
 //! Push notifications: which events a device wants to hear about, the
 //! notification for each, sealing its text so only that device can read it,
-//! and delivering it to Apple (APNs) with the app's key.
+//! and delivering it to Apple (APNs) with the app's key, or to Google
+//! (Firebase Cloud Messaging) for the Android app.
 //!
-//! Sealed, Apple sees only a placeholder: the app's notification service
-//! extension opens the text with the key the device got when it
-//! registered.
+//! Sealed, Apple sees only a placeholder and Google nothing readable: the
+//! iPhone app's notification service extension, or the Android app, opens
+//! the text with the key the device got when it registered.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -19,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use crate::config::{ApnsConfig, PushConfig, PushMode};
+use crate::config::{ApnsConfig, FcmConfig, PushConfig, PushMode};
 use crate::tt::state::{ConnectionStatus, Event, MessageKind};
 
 /// Notification categories the app registers, with their actions.
@@ -282,7 +283,12 @@ pub fn open(key: &[u8], sealed: &str) -> anyhow::Result<Vec<u8>> {
 /// only a placeholder; the app's notification service extension replaces it
 /// with the real text from `ttng`.
 pub fn payload(n: &Notification, push_key: Option<&[u8]>, app_ref: &str) -> anyhow::Result<Value> {
-    let content = json!({ "title": n.title, "subtitle": n.subtitle, "body": n.body, "data": n.data });
+    // The Android app shows the notification itself, so what iOS keeps in
+    // `aps` travels with the text (inside the seal).
+    let content = json!({
+        "title": n.title, "subtitle": n.subtitle, "body": n.body, "data": n.data,
+        "thread": n.thread, "category": n.category, "sound": n.sound,
+    });
     let mut aps = json!({
         "thread-id": n.thread,
         "category": n.category,
@@ -310,8 +316,10 @@ pub fn payload(n: &Notification, push_key: Option<&[u8]>, app_ref: &str) -> anyh
 
 #[derive(Debug, Clone)]
 pub struct PushJob {
+    /// The APNs device token, or Firebase's token when `android`.
     pub apns_token: String,
     pub sandbox: bool,
+    pub android: bool,
     pub payload: Value,
     /// A silent check that the app is still installed: nothing is shown,
     /// but Apple refuses it when the app is gone.
@@ -397,16 +405,111 @@ impl Apns {
     }
 }
 
+/// Sends pushes to Android phones through Firebase Cloud Messaging, with a
+/// service account of the Firebase project.
+pub struct Fcm {
+    http: reqwest::Client,
+    project_id: String,
+    client_email: String,
+    token_uri: String,
+    key: jsonwebtoken::EncodingKey,
+    endpoint: Option<String>,
+    access: tokio::sync::Mutex<Option<(String, Instant)>>,
+}
+
+impl Fcm {
+    pub fn new(cfg: &FcmConfig) -> anyhow::Result<Fcm> {
+        let text = std::fs::read_to_string(&cfg.service_account_file)
+            .with_context(|| format!("Could not read the Firebase service account {}", cfg.service_account_file))?;
+        let account: Value = serde_json::from_str(&text).context("The Firebase service account is not JSON")?;
+        let field = |name: &str| account.get(name).and_then(Value::as_str).map(str::to_owned);
+        let pem = field("private_key").context("The Firebase service account has no private_key")?;
+        Ok(Fcm {
+            http: reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?,
+            project_id: cfg.project_id.clone().or_else(|| field("project_id")).context("No Firebase project ID")?,
+            client_email: field("client_email").context("The Firebase service account has no client_email")?,
+            token_uri: field("token_uri").unwrap_or_else(|| "https://oauth2.googleapis.com/token".into()),
+            key: jsonwebtoken::EncodingKey::from_rsa_pem(pem.as_bytes()).context("The Firebase service account's key is not valid")?,
+            endpoint: cfg.endpoint.clone(),
+            access: tokio::sync::Mutex::new(None),
+        })
+    }
+
+    /// An OAuth access token from the service account, reused for 50 minutes.
+    async fn access_token(&self) -> Result<String, PushError> {
+        let mut access = self.access.lock().await;
+        if let Some((t, made)) = access.as_ref()
+            && made.elapsed() < Duration::from_secs(50 * 60) {
+                return Ok(t.clone());
+            }
+        let iat = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| PushError::Other(e.to_string()))?.as_secs();
+        let claims = json!({
+            "iss": self.client_email,
+            "scope": "https://www.googleapis.com/auth/firebase.messaging",
+            "aud": self.token_uri,
+            "iat": iat,
+            "exp": iat + 3600,
+        });
+        let assertion = jsonwebtoken::encode(&jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256), &claims, &self.key)
+            .map_err(|e| PushError::Other(e.to_string()))?;
+        let reply: Value = self.http.post(&self.token_uri)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            // Both values are URL-safe as they stand (a JWT is base64url).
+            .body(format!("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion={assertion}"))
+            .send().await.map_err(|e| PushError::Other(format!("Could not reach Google: {e}")))?
+            .json().await.map_err(|e| PushError::Other(format!("Google's answer made no sense: {e}")))?;
+        let token = reply.get("access_token").and_then(Value::as_str)
+            .ok_or_else(|| PushError::Other(format!("Google refused the service account: {reply}")))?.to_owned();
+        *access = Some((token.clone(), Instant::now()));
+        Ok(token)
+    }
+
+    pub async fn send(&self, job: &PushJob) -> Result<(), PushError> {
+        let base = self.endpoint.as_deref().unwrap_or("https://fcm.googleapis.com").trim_end_matches('/').to_owned();
+        let token = self.access_token().await?;
+        let res = self.http
+            .post(format!("{base}/v1/projects/{}/messages:send", self.project_id))
+            .bearer_auth(token)
+            .json(&fcm_message(job))
+            .send().await
+            .map_err(|e| PushError::Other(format!("Could not reach Google: {e}")))?;
+        let status = res.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = res.text().await.unwrap_or_default();
+        if status.as_u16() == 404 || body.contains("UNREGISTERED") {
+            return Err(PushError::Unregistered);
+        }
+        Err(PushError::Other(format!("Google refused the push ({status}): {body}")))
+    }
+}
+
+/// A data message: the app opens the `ttng` part and shows the notification
+/// itself, so Google never holds readable text.
+fn fcm_message(job: &PushJob) -> Value {
+    let ttng = job.payload.get("ttng").cloned().unwrap_or_else(|| json!({ "check": true }));
+    json!({ "message": {
+        "token": job.apns_token,
+        "data": { "ttng": ttng.to_string() },
+        "android": { "priority": if job.background { "NORMAL" } else { "HIGH" } },
+    } })
+}
+
 enum Sender {
     None,
     Apns(Apns),
+    Fcm(Fcm),
+    Both(Apns, Fcm),
 }
 
 impl Sender {
     async fn send(&self, job: &PushJob) -> Result<(), PushError> {
         match self {
             Sender::None => Ok(()),
-            Sender::Apns(apns) => apns.send(job).await,
+            Sender::Apns(apns) => if job.android { Ok(()) } else { apns.send(job).await },
+            Sender::Fcm(fcm) => if job.android { fcm.send(job).await } else { Ok(()) },
+            Sender::Both(apns, fcm) => if job.android { fcm.send(job).await } else { apns.send(job).await },
         }
     }
 }
@@ -417,11 +520,20 @@ pub fn seals(cfg: &PushConfig) -> bool {
 }
 
 /// Start the task that delivers pushes. `unregistered` is told about device
-/// tokens Apple no longer accepts.
+/// tokens Apple or Google no longer accepts.
 pub fn start(cfg: &PushConfig, unregistered: impl Fn(String) + Send + Sync + 'static) -> anyhow::Result<mpsc::UnboundedSender<PushJob>> {
-    let sender = match cfg.mode {
-        PushMode::None => Sender::None,
-        PushMode::Apns => Sender::Apns(Apns::new(cfg.apns.as_ref().context("push mode is \"apns\" but [push.apns] is missing")?)?),
+    let fcm = cfg.fcm.as_ref().map(Fcm::new).transpose()?;
+    let sender = match (cfg.mode, fcm) {
+        (PushMode::None, _) => Sender::None,
+        (PushMode::Apns, fcm) => {
+            let apns = Apns::new(cfg.apns.as_ref().context("push mode is \"apns\" but [push.apns] is missing")?)?;
+            match fcm {
+                Some(fcm) => Sender::Both(apns, fcm),
+                None => Sender::Apns(apns),
+            }
+        }
+        (PushMode::Fcm, Some(fcm)) => Sender::Fcm(fcm),
+        (PushMode::Fcm, None) => anyhow::bail!("push mode is \"fcm\" but [push.fcm] is missing"),
     };
     let (tx, mut rx) = mpsc::unbounded_channel::<PushJob>();
     let sender = Arc::new(sender);
@@ -548,6 +660,24 @@ mod tests {
         assert_eq!(opened["body"], "secret plans");
         assert_eq!(p["aps"]["mutable-content"], 1);
         assert_eq!(p["aps"]["category"], CATEGORY_PRIVATE_MESSAGE);
+    }
+
+    #[test]
+    fn android_pushes_are_data_messages_with_sealed_text() {
+        let key = [7u8; 32];
+        let n = notification_for(&Prefs::default(), &ctx(), &message(MessageKind::User, "a secret")).unwrap();
+        let payload = payload(&n, Some(&key), "ref-1").unwrap();
+        let job = PushJob { apns_token: "fcm-token".into(), sandbox: false, android: true, payload, background: false };
+        let m = fcm_message(&job);
+        assert_eq!(m["message"]["token"], "fcm-token");
+        assert_eq!(m["message"]["android"]["priority"], "HIGH");
+        assert!(m["message"].get("notification").is_none());
+        let data = m["message"]["data"]["ttng"].as_str().unwrap();
+        assert!(!data.contains("a secret"));
+        let ttng: Value = serde_json::from_str(data).unwrap();
+        let opened: Value = serde_json::from_slice(&open(&key, ttng["sealed"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(opened["body"], "a secret");
+        assert_eq!(opened["category"], CATEGORY_PRIVATE_MESSAGE);
     }
 
     #[test]

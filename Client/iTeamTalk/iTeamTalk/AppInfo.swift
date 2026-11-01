@@ -69,7 +69,7 @@ class AppInfo {
         return getAppVersion() + " Build " + getBundleInfo(.build_NO)
     }
     static func getClientName() -> String {
-        return "TeamTalk NG"
+        return "TeamTalk NG for iOS"
     }
     /// The version sent at login: major.minor.build. TeamTalk clients
     /// show it as three numbers of 0 to 255 each (User.uVersion), so a

@@ -140,7 +140,8 @@ struct Runtime {
 /// Whether two settings log in the same way (they may differ in nickname
 /// and status, which change while logged in).
 fn same_login(a: &ServerConfig, b: &ServerConfig) -> bool {
-    ServerConfig { nickname: b.nickname.clone(), status_mode: b.status_mode, status_msg: b.status_msg.clone(), ..a.clone() } == *b
+    // (Nor does moving to another owner, such as out of an NG Account.)
+    ServerConfig { nickname: b.nickname.clone(), status_mode: b.status_mode, status_msg: b.status_msg.clone(), owner: b.owner, ..a.clone() } == *b
 }
 
 struct Running {
@@ -485,7 +486,7 @@ impl Hub {
             for t in targets {
                 match push::payload(&n, key, &t.app_ref) {
                     Ok(payload) => {
-                        let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, payload, background: false });
+                        let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, android: t.android, payload, background: false });
                     }
                     Err(e) => tracing::error!("could not build push: {e:#}"),
                 }
@@ -908,7 +909,7 @@ impl Hub {
         let push = self.push.lock().unwrap();
         let Some(push) = push.as_ref() else { return };
         for t in due {
-            let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, payload: push::silent_payload(), background: true });
+            let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, android: t.android, payload: push::silent_payload(), background: true });
         }
     }
 
@@ -926,7 +927,7 @@ impl Hub {
         for t in targets.into_iter().filter(|t| t.install_id != from_install) {
             let mut payload = push::silent_payload();
             payload["ttng"] = serde_json::json!({ "sync": rev });
-            let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, payload, background: true });
+            let _ = push.send(PushJob { apns_token: t.apns_token, sandbox: t.sandbox, android: t.android, payload, background: true });
         }
     }
 

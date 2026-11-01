@@ -33,6 +33,7 @@ pub fn routes() -> Router<App> {
         .route("/v1/account", get(account))
         .route("/v1/account/password", post(change_password))
         .route("/v1/account/signout", post(sign_out))
+        .route("/v1/account/release-monitors", post(release_monitors))
         .route("/v1/account/delete", post(delete_account))
         .route("/v1/account/sessions", get(sessions))
         .route("/v1/account/sessions/{id}", axum::routing::delete(end_session))
@@ -198,6 +199,13 @@ struct ChangePassword {
 async fn change_password(State(app): State<App>, Signed(s, _): Signed, Json(r): Json<ChangePassword>) -> ApiResult<StatusCode> {
     app.accounts.change_password(&s, &r.current, &r.new).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Move the account's monitors to a sign-up of their own (the app keeps it,
+/// as before NG Account), then sign out separately.
+async fn release_monitors(State(app): State<App>, Signed(s, _): Signed) -> ApiResult<Json<Value>> {
+    let (token, device_id, push_key) = app.accounts.release_monitors(s.account)?;
+    Ok(Json(json!({ "token": token, "device_id": device_id, "push_key": push_key, "name": app.name })))
 }
 
 async fn sign_out(State(app): State<App>, Signed(s, _): Signed) -> ApiResult<StatusCode> {

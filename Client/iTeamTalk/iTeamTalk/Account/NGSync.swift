@@ -21,21 +21,21 @@ final class NGSync {
     static let shared = NGSync()
 
     /// Saved in the app's settings but not settings, or synced another way.
-    private static let notSettings: Set<String> = [
+    nonisolated private static let notSettings: Set<String> = [
         SERVER_LIST_KEY,                   // synced as servers
         "settings.selectedSoundPackID",    // sound pack sync chooses the pack
         ICloudSync.enabledKey,
         PREF_GENERAL_GENDER_NEUTRAL_MIGRATED, PREF_GENERAL_GENDER_ORDER_MIGRATED,
     ]
     /// What iOS itself keeps in an app's settings.
-    private static let systemPrefixes = ["Apple", "NS", "com.apple.", "WebKit", "AK", "PK", "MSV", "INNext", "_"]
+    nonisolated private static let systemPrefixes = ["Apple", "NS", "com.apple.", "WebKit", "AK", "PK", "MSV", "INNext", "_"]
 
-    private static let packKeys = [NGPackSync.installedCatalogKey, NGPackSync.selectedPackKey]
+    nonisolated static let packKeys = ["ng_installed_catalog_packs", "ng_selected_sound_pack"]
 
     /// Every setting syncs (as iCloud sync did), however particular to an
     /// iPhone: one another iPhone can't use (a voice it doesn't have, a
     /// microphone it doesn't have) falls back to the default there.
-    static func isSetting(_ key: String) -> Bool {
+    nonisolated static func isSetting(_ key: String) -> Bool {
         !notSettings.contains(key) && !packKeys.contains(key) && !systemPrefixes.contains { key.hasPrefix($0) }
     }
 
@@ -65,6 +65,9 @@ final class NGSync {
         /// Each record's revision and the hash of its data as last synced
         /// ("server:<id>", "setting:<key>").
         var records: [String: Synced] = [:]
+        /// The first sync after signing in keeps this iPhone's servers and
+        /// settings where the account has its own (the person chose to).
+        var keepThisPhone: Bool?
     }
 
     private struct Synced: Codable {
@@ -135,9 +138,13 @@ final class NGSync {
     /// Signed in: a new account takes this iPhone's servers and settings;
     /// an existing one brings its own, and this iPhone adds what it has
     /// that the account doesn't.
-    func signedIn(newAccount: Bool) {
+    func signedIn(newAccount: Bool, keepThisPhone: Bool = false) {
+        holding = false
         state = nil
         if let url = Self.stateURL { try? FileManager.default.removeItem(at: url) }
+        if keepThisPhone, let email = NGAccountCenter.shared.email {
+            saveState(State(email: email, keepThisPhone: true))
+        }
         // iCloud sync is replaced by the account (its data is already here).
         if ICloudSync.shared.isEnabled {
             ICloudSync.shared.setEnabled(false)
@@ -166,9 +173,43 @@ final class NGSync {
     }
 
     func signedOut() {
+        holding = false
         pending?.cancel()
         state = nil
         if let url = Self.stateURL { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Whether this iPhone has servers or settings of its own (to ask, on
+    /// signing in to an account that has them too, whose to keep).
+    static var phoneHasData: Bool {
+        !loadLocalServers().filter { $0.servertype == .LOCAL }.isEmpty || saved.keys.contains { isSetting($0) }
+    }
+
+    /// Whether the account's records (pulled from the start) and this
+    /// iPhone disagree about anything both have: a setting with another
+    /// value, or the same server with other details. What only one side has
+    /// is kept either way, and order alone doesn't count, so only these make
+    /// the choice of whose to keep matter.
+    func differs(from records: [NGSyncRecord]) -> Bool {
+        let servers = loadLocalServers().filter { $0.servertype == .LOCAL }
+        for r in records where !r.deleted {
+            switch r.kind {
+            case "setting" where syncsSettings && Self.isSetting(r.key):
+                if let local = Self.settingValue(r.key), Self.hash(local) != Self.hash(r.data) {
+                    return true
+                }
+            case "server" where syncsServers:
+                guard var remote = r.data as? [String: Any] else { continue }
+                remote["order"] = nil
+                if let local = servers.first(where: { $0.syncID == r.key }) ?? servers.first(where: { Self.sameLogin($0, remote) }),
+                   Self.hash(Self.serverData(local)) != Self.hash(remote) {
+                    return true
+                }
+            default:
+                break
+            }
+        }
+        return false
     }
 
     /// Signing out with "remove": the servers that came from the account go.
@@ -186,8 +227,17 @@ final class NGSync {
 
     // MARK: Syncing
 
+    /// Signing in, until whose servers and settings to keep is decided.
+    private var holding = false
+
+    /// Hold off syncing while signing in asks whose data to keep.
+    func holdForSignIn() {
+        holding = true
+        pending?.cancel()
+    }
+
     func syncNow() async {
-        guard let email = NGAccountCenter.shared.email else { return }
+        guard !holding, let email = NGAccountCenter.shared.email else { return }
         if running {
             again = true
             return
@@ -238,6 +288,8 @@ final class NGSync {
         }
         apply(pulled.records, to: &s)
         s.rev = max(s.rev, pulled.rev)
+        // Kept this iPhone's on the first sync: from now on, as usual.
+        s.keepThisPhone = nil
         saveState(s)
 
         // 2. What changed here, sent; changed elsewhere meanwhile: this
@@ -275,6 +327,10 @@ final class NGSync {
         for r in records {
             let id = "\(r.kind):\(r.key)"
             switch r.kind {
+            case "setting" where Self.isSetting(r.key) && isSynced(r.key) && s.keepThisPhone == true && Self.settingValue(r.key) != nil:
+                // This iPhone's value is kept: noted as the account's, so it
+                // differs and goes up in its place.
+                s.records[id] = Synced(rev: r.rev, hash: Self.hash(r.deleted ? nil : r.data))
             case "setting" where isSynced(r.key):
                 if r.deleted {
                     UserDefaults.standard.removeObject(forKey: r.key)
@@ -288,13 +344,20 @@ final class NGSync {
                     servers?.removeAll { $0.syncID == r.key }
                     s.records[id] = Synced(rev: r.rev, hash: Self.hash(nil))
                 } else if let data = r.data as? [String: Any] {
-                    let server = servers?.first { $0.syncID == r.key }
+                    let existing = servers?.first { $0.syncID == r.key }
                         ?? servers?.first { $0.servertype == .LOCAL && s.records["server:\($0.syncID)"] == nil && Self.sameLogin($0, data) }
-                        ?? {
-                            let new = Server()
-                            servers?.append(new)
-                            return new
-                        }()
+                    if let existing, s.keepThisPhone == true {
+                        // This iPhone's version is kept (as the account's
+                        // server) and goes up in its place.
+                        existing.syncID = r.key
+                        s.records[id] = Synced(rev: r.rev, hash: Self.hash(data))
+                        continue
+                    }
+                    let server = existing ?? {
+                        let new = Server()
+                        servers?.append(new)
+                        return new
+                    }()
                     server.syncID = r.key
                     Self.fill(server, from: data)
                     var synced = Self.serverData(server)
@@ -311,7 +374,7 @@ final class NGSync {
                 guard r.kind == "server", let o = (r.data as? [String: Any])?["order"] as? Int else { return nil }
                 return (r.key, o)
             })
-            if !order.isEmpty {
+            if !order.isEmpty && s.keepThisPhone != true {
                 let indexed = list.enumerated().map { ($0.offset, $0.element) }
                 list = indexed.sorted { a, b in
                     (order[a.1.syncID] ?? a.0) < (order[b.1.syncID] ?? b.0)

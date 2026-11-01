@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Debug builds may talk to a local test service over plain HTTP. -->
+    <application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/debug_network" tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
+        <receiver android:name=".DebugStreamReceiver" android:exported="true" />
+        <service android:name=".SpeechLogService" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TTS_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+
+# The AudioNet engine and its generated bindings, and the Firebase client file.
+app/audionet/
+app/google-services.json
+
+# TeamTalk NG's changes to BearWare's source, kept out of this repository.
+teamtalk-android.patch

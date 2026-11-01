@@ -321,6 +321,20 @@ impl Store {
         Ok(())
     }
 
+    /// Move an account's monitors (with their conversations and notification
+    /// settings) to a new sign-up of their own, outside the account, for an
+    /// iPhone leaving NG Account for iCloud. Returns the new sign-up's
+    /// token, ID and notification key.
+    pub(crate) fn release_monitors(&self, account: &Account) -> anyhow::Result<(String, i64, Vec<u8>)> {
+        let owner = self.device(account.owner)?.into_iter().next().context("the account's sign-up is gone")?;
+        let token = B64URL.encode(rand::random::<[u8; 32]>());
+        let push_key: [u8; 32] = rand::random();
+        let id = self.add_device(&format!("Monitors from {}", account.email), &hash(&token), &push_key, &owner.prefs)?;
+        self.db.execute("UPDATE servers SET owner = ?1 WHERE owner = ?2", params![id, account.owner])?;
+        self.bump_servers_version()?;
+        Ok((token, id, push_key.to_vec()))
+    }
+
     /// Drop expired codes and sessions nobody has used for a long time.
     pub fn sweep_accounts(&self, now: i64) -> anyhow::Result<()> {
         self.db.execute("DELETE FROM email_codes WHERE expires < ?1", [now])?;
@@ -548,7 +562,9 @@ impl Accounts {
         check_password(new)?;
         let account = self.account(session.account)?;
         if !password_matches(current, &account.password_hash).await {
-            return Err(HubError::Unauthorized("Your current password isn't right".into()));
+            // Not Unauthorized: the sign-in is fine, and the apps take a 401
+            // on a signed-in request to mean it has ended.
+            return Err(HubError::Refused("Your current password isn't right".into()));
         }
         let password_hash = hash_password(new).await?;
         self.hub.with_store(|s| {
@@ -567,6 +583,15 @@ impl Accounts {
         self.hub.with_store(|s| s.sessions(account))
     }
 
+    /// See `Store::release_monitors`.
+    pub fn release_monitors(&self, account: i64) -> Result<(String, i64, String)> {
+        let account = self.account(account)?;
+        let (token, id, key) = self.hub.with_store(|s| s.release_monitors(&account))?;
+        tracing::info!(account = account.id, into = id, "monitors moved out of an NG Account");
+        self.hub.reconcile(true);
+        Ok((token, id, B64.encode(key)))
+    }
+
     pub fn end_session(&self, account: i64, session: i64) -> Result<()> {
         if !self.hub.with_store(|s| s.end_session(account, session))? {
             return Err(HubError::NotFound("That device is already signed out".into()));
@@ -579,7 +604,7 @@ impl Accounts {
     pub async fn delete(&self, session: &Session, password: &str) -> Result<()> {
         let account = self.account(session.account)?;
         if !password_matches(password, &account.password_hash).await {
-            return Err(HubError::Unauthorized("That password isn't right".into()));
+            return Err(HubError::Refused("That password isn't right".into()));
         }
         self.hub.with_store(|s| s.delete_account(&account))?;
         tracing::info!(account = account.id, "NG Account deleted");

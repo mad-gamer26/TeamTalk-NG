@@ -1,15 +1,16 @@
 # TeamTalk NG
 
-TeamTalk NG is an iPhone client for [TeamTalk 5](https://bearware.dk)
-voice and text chat servers, built on BearWare.dk's TeamTalk 5 iOS client.
-It adds an accessible, VoiceOver-first interface, sound packs, AudioNet
-audio, and **TeamTalk NG Monitor**: a service that stays logged in to your
+TeamTalk NG is an iPhone and Android client for [TeamTalk 5](https://bearware.dk)
+voice and text chat servers, built on BearWare.dk's TeamTalk 5 clients and SDK.
+It adds an accessible, VoiceOver- and TalkBack-first interface, sound packs,
+AudioNet audio, and **TeamTalk NG Monitor**: a service that stays logged in to your
 servers while the app is closed and sends push notifications for logins,
 logouts and private messages, which you can answer from the notification.
 
 | Folder | What it is |
 |---|---|
 | `Client/iTeamTalk/` | The iPhone app (Xcode project `iTeamTalk.xcodeproj`), its notification service extension and Control Center controls |
+| `Client/Android/` | The Android app. See [Client/Android/README.md](Client/Android/README.md) |
 | `Client/iTeamTalk/iTeamTalk/Monitor/` | The app's side of TeamTalk NG Monitor |
 | `Client/iTeamTalk/AudioNet/` | The prebuilt AudioNet engine the app links, and the script that builds it |
 | `Monitor/` | `ngmon`, the Monitor service (Rust). See [Monitor/README.md](Monitor/README.md) |
@@ -34,6 +35,11 @@ has no simulator slice.
 Push notifications from the Monitor need your own APNs key and Monitor
 deployment; the app points at the service in `MonitorService.baseURL`
 (`Client/iTeamTalk/iTeamTalk/Monitor/MonitorClient.swift`).
+
+## Building the Android app
+
+See [Client/Android/README.md](Client/Android/README.md). It uses TeamTalk 5.22a
+for Android, built with this project's changes, which is not included here either.
 
 ## Building the Monitor service
 

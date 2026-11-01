@@ -50,9 +50,9 @@ final class NGAccountViewController: UITableViewController {
                  [.signOut, .delete]),
             ]
         } else {
-            var footer = NSLocalizedString("An NG Account keeps your servers, settings, sound packs and monitors, so a new iPhone or reinstalling TeamTalk NG only needs signing in.", comment: "ng account")
+            var footer = NSLocalizedString("An NG Account is optional. It keeps your servers, settings, sound packs and monitors in one place, so a new iPhone or reinstalling TeamTalk NG only needs signing in, and it lets you back up and publish sound packs. Signing in replaces Sync with iCloud on this iPhone.", comment: "ng account")
             if center.hasMonitorsWithoutAccount {
-                footer += "\n\n" + NSLocalizedString("Your monitors are waiting: sign in or create an account to see them again. They move into your account.", comment: "ng account")
+                footer += "\n\n" + NSLocalizedString("Your monitors move into your account when you sign in.", comment: "ng account")
             }
             sections = [(nil, footer, [.signIn, .createAccount])]
         }
@@ -377,9 +377,23 @@ final class NGFormViewController: UITableViewController, UITextFieldDelegate {
         }
     }
 
+    /// Whose servers and settings to keep, asked while signing in.
+    @MainActor
+    private func askWhoseData() async -> Bool {
+        await withCheckedContinuation { done in
+            let alert = UIAlertController(title: NSLocalizedString("Keep Which Servers and Settings?", comment: "ng account"),
+                                          message: NSLocalizedString("Your NG Account already has servers and settings, and so does this iPhone. Servers are combined either way. Choose whose settings to keep, and whose version of a server you have in both places.", comment: "ng account"),
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Keep This iPhone's", comment: "ng account"), style: .default) { _ in done.resume(returning: true) })
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Use My Account's", comment: "ng account"), style: .default) { _ in done.resume(returning: false) })
+            present(alert, animated: true)
+        }
+    }
+
     @MainActor
     private func perform() async throws {
         let center = NGAccountCenter.shared
+        center.askWhoseData = { [weak self] in await self?.askWhoseData() ?? false }
         switch kind {
         case .signIn:
             try await center.signIn(email: trimmed(0), password: value(1))

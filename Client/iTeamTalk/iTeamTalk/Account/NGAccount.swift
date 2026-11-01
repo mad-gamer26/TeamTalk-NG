@@ -33,6 +33,11 @@ final class NGAccountCenter {
 
     private init() {}
 
+    /// Asks, on signing in to an account that already has servers and
+    /// settings from an iPhone that has its own, whose to keep: true for
+    /// this iPhone's. Set by the sign-in screen.
+    var askWhoseData: (@MainActor () async -> Bool)?
+
     /// This iPhone's sign-in, if signed in.
     var signIn: MonitorAccount? {
         MonitorAccountStore.ngAccount.flatMap { $0.baseURL == MonitorService.baseURL ? $0 : nil }
@@ -140,6 +145,8 @@ final class NGAccountCenter {
     private func signedIn(_ r: NGSignedIn, firstTime: Bool) async {
         let account = MonitorAccount(ref: UUID().uuidString, name: "TeamTalk NG", baseURL: MonitorService.baseURL,
                                      token: r.token, pushKey: r.pushKey, deviceID: r.deviceId, email: r.account.email)
+        // No syncing until whose servers and settings to keep is decided.
+        NGSync.shared.holdForSignIn()
         MonitorAccountStore.saveSignIn(account)
         MonitorCenter.shared.reload()
         // Monitors from other sign-ups this iPhone knows of join too (the
@@ -147,7 +154,17 @@ final class NGAccountCenter {
         // leave iCloud Keychain.
         await absorbOldSignUps()
         MonitorNotifications.shared.registerIfAllowed()
-        NGSync.shared.signedIn(newAccount: firstTime)
+        // An account with servers and settings of its own, and an iPhone
+        // with its own that differ from them: ask whose to keep. (A new
+        // iPhone just takes the account's, and identical ones need no
+        // choice.)
+        var keepThisPhone = false
+        if !firstTime, NGSync.phoneHasData, let ask = askWhoseData,
+           let pulled = try? await api.pull(since: 0), pulled.rev > 0,
+           NGSync.shared.differs(from: pulled.records) {
+            keepThisPhone = await ask()
+        }
+        NGSync.shared.signedIn(newAccount: firstTime, keepThisPhone: keepThisPhone)
         NGPackSync.shared.syncSoon()
         NotificationCenter.default.post(name: .ngAccountChanged, object: nil)
         UIAccessibility.post(notification: .announcement, argument: String(format: NSLocalizedString("Signed in as %@", comment: "ng account"), r.account.email))
@@ -162,6 +179,22 @@ final class NGAccountCenter {
         let api = self.api
         try? await api.signOut()
         forget(removeLocalCopy: removeLocalCopy)
+    }
+
+    /// Leave NG Account for iCloud sync. `takeMonitors`: the account's
+    /// monitors move to a sign-up of their own, kept in iCloud Keychain as
+    /// before NG Account, so they stay on this iPhone; otherwise they stay in
+    /// the account. This iPhone's servers and settings become iCloud's.
+    @MainActor
+    func switchToICloud(takeMonitors: Bool, keepThisPhone: Bool) async throws {
+        if takeMonitors {
+            let r = try await signed { try await $0.releaseMonitors() }
+            MonitorAccountStore.save(MonitorAccount(ref: UUID().uuidString, name: r.name, baseURL: MonitorService.baseURL,
+                                                    token: r.token, pushKey: r.pushKey, deviceID: r.deviceId))
+        }
+        await signOut(removeLocalCopy: false)
+        ICloudSync.shared.join(keepThisPhone: keepThisPhone)
+        MonitorNotifications.shared.registerIfAllowed()
     }
 
     @MainActor

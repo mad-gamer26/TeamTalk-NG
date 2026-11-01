@@ -495,6 +495,8 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
     var siri_shortcuts_items = [UITableViewCell]()
     var version_items = [UITableViewCell]()
     var iCloud_items = [UITableViewCell]()
+    var iCloudSwitch: UISwitch?
+    var accountCell: UITableViewCell?
     var expandedSections = Set<Int>()
     var settingsSectionHeaderHosts = [Int: UIViewController]()
     
@@ -801,21 +803,107 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
         diagnosticLogsCell.accessibilityHint = NSLocalizedString("Creates a zip file of app logs and opens sharing options.", comment: "preferences")
         version_items.append(diagnosticLogsCell)
 
-        // NG Account replaces iCloud sync.
-        let accountCell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-        accountCell.textLabel?.text = NSLocalizedString("NG Account", comment: "preferences")
+        // Sync: iCloud as before, or (optionally) an NG Account; one or
+        // the other.
+        let iCloudCell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+        iCloudSwitch = newTableCellSwitch(iCloudCell,
+                                           label: NSLocalizedString("Sync with iCloud", comment: "preferences"),
+                                           initial: ICloudSync.shared.isEnabled)
+        iCloudSwitch?.addTarget(self, action: #selector(SettingsViewController.iCloudSyncChanged(_:)), for: .valueChanged)
+        iCloud_items.append(iCloudCell)
+
+        let account = UITableViewCell(style: .value1, reuseIdentifier: nil)
+        account.textLabel?.text = NSLocalizedString("NG Account", comment: "preferences")
         if #available(iOS 13.0, *) {
-            accountCell.imageView?.image = UIImage(systemName: "person.crop.circle")
+            account.imageView?.image = UIImage(systemName: "person.crop.circle")
         }
-        accountCell.accessoryType = .disclosureIndicator
-        iCloud_items.append(accountCell)
+        account.accessoryType = .disclosureIndicator
+        accountCell = account
+        iCloud_items.append(account)
         updateAccountCell()
         NotificationCenter.default.addObserver(self, selector: #selector(updateAccountCell), name: .ngAccountChanged, object: nil)
     }
 
     @objc private func updateAccountCell() {
-        guard let cell = iCloud_items.first else { return }
-        cell.detailTextLabel?.text = NGAccountCenter.shared.email ?? NSLocalizedString("Not Signed In", comment: "preferences")
+        accountCell?.detailTextLabel?.text = NGAccountCenter.shared.email ?? NSLocalizedString("Not Signed In", comment: "preferences")
+        // Signing in turns iCloud sync off.
+        iCloudSwitch?.setOn(ICloudSync.shared.isEnabled, animated: true)
+    }
+
+    @objc func iCloudSyncChanged(_ sender: UISwitch) {
+        guard sender.isOn else {
+            ICloudSync.shared.setEnabled(false)
+            return
+        }
+        guard NGAccountCenter.shared.isSignedIn else {
+            chooseWhoseData(sender) { keep in ICloudSync.shared.join(keepThisPhone: keep) }
+            return
+        }
+        // One or the other: iCloud sync replaces the NG Account here. Ask
+        // about monitors only if the account has some.
+        Task { @MainActor in
+            let monitors = try? await MonitorCenter.shared.connection?.api.servers()
+            confirmICloud(sender, askAboutMonitors: monitors.map { !$0.isEmpty } ?? true)
+        }
+    }
+
+    private func confirmICloud(_ sender: UISwitch, askAboutMonitors: Bool) {
+        let intro = NSLocalizedString("Sync with iCloud replaces your NG Account on this iPhone, so you'll be signed out of it. Your account keeps its servers and settings.", comment: "preferences")
+        let alert = UIAlertController(title: NSLocalizedString("Use iCloud Instead of NG Account?", comment: "preferences"),
+                                      message: askAboutMonitors
+                                          ? intro + "\n\n" + NSLocalizedString("Your monitors can come with you (kept with iCloud, as before NG Account), or stay in your account for the next time you sign in.", comment: "preferences")
+                                          : intro,
+                                      preferredStyle: .alert)
+        func switchOver(takeMonitors: Bool) {
+            chooseWhoseData(sender) { keep in
+                Task { @MainActor in
+                    do {
+                        try await NGAccountCenter.shared.switchToICloud(takeMonitors: takeMonitors, keepThisPhone: keep)
+                        sender.setOn(true, animated: true)
+                    } catch {
+                        sender.setOn(false, animated: true)
+                        let failed = UIAlertController(title: nil, message: error.localizedDescription, preferredStyle: .alert)
+                        failed.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "preferences"), style: .default))
+                        self.present(failed, animated: true)
+                    }
+                }
+            }
+        }
+        if askAboutMonitors {
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Take My Monitors With Me", comment: "preferences"), style: .default) { _ in
+                switchOver(takeMonitors: true)
+            })
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Leave Monitors in My Account", comment: "preferences"), style: .default) { _ in
+                switchOver(takeMonitors: false)
+            })
+        } else {
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Sign Out and Use iCloud", comment: "preferences"), style: .default) { _ in
+                switchOver(takeMonitors: false)
+            })
+        }
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "preferences"), style: .cancel) { _ in
+            sender.setOn(false, animated: true)
+        })
+        present(alert, animated: true)
+    }
+
+    /// Turning iCloud sync on where iCloud has servers and settings that
+    /// differ from this iPhone's: ask whose to keep (true: this iPhone's).
+    /// Servers are combined either way; identical ones need no choice.
+    private func chooseWhoseData(_ sender: UISwitch, then: @escaping (Bool) -> Void) {
+        guard let snapshot = ICloudSync.shared.cloudSnapshot(), ICloudSync.shared.differs(from: snapshot) else {
+            then(true)
+            return
+        }
+        let alert = UIAlertController(title: NSLocalizedString("Keep Which Servers and Settings?", comment: "preferences"),
+                                      message: NSLocalizedString("iCloud already has servers and settings, and so does this iPhone. Servers are combined either way. Choose whose settings to keep, and whose version of a server you have in both places.", comment: "preferences"),
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Keep This iPhone's", comment: "preferences"), style: .default) { _ in then(true) })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Use iCloud's", comment: "preferences"), style: .default) { _ in then(false) })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "preferences"), style: .cancel) { _ in
+            sender.setOn(false, animated: true)
+        })
+        present(alert, animated: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -1302,7 +1390,7 @@ class SettingsViewController : UITableViewController, UITextFieldDelegate, TeamT
             tableView.deselectRow(at: indexPath, animated: true)
             configureSiriShortcuts(tableView.cellForRow(at: indexPath))
         }
-        else if logicalSection == SECTION_ICLOUD {
+        else if logicalSection == SECTION_ICLOUD && tableView.cellForRow(at: indexPath) === accountCell {
             tableView.deselectRow(at: indexPath, animated: true)
             navigationController?.pushViewController(NGAccountViewController(), animated: true)
         }

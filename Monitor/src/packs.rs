@@ -19,6 +19,9 @@ use crate::store::{Store, now_ms};
 
 pub const MAX_PACK_BYTES: i64 = 25 * 1024 * 1024;
 pub const MAX_ACCOUNT_BYTES: i64 = 250 * 1024 * 1024;
+/// Sound changes to a published pack this soon after its last new version
+/// belong to that version.
+const VERSION_WINDOW_MS: i64 = 5 * 60 * 1000;
 const MAX_PACKS_PER_ACCOUNT: i64 = 200;
 
 /// The sounds a pack may have, as TeamTalk NG names them.
@@ -108,6 +111,13 @@ impl Store {
         )?;
         if self.db.prepare("SELECT publishing_blocked FROM accounts LIMIT 0").is_err() {
             self.db.execute_batch("ALTER TABLE accounts ADD COLUMN publishing_blocked INTEGER NOT NULL DEFAULT 0")?;
+        }
+        // When the sounds last changed, and when the version last went up.
+        if self.db.prepare("SELECT sounds_changed FROM packs LIMIT 0").is_err() {
+            self.db.execute_batch(
+                "ALTER TABLE packs ADD COLUMN sounds_changed INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE packs ADD COLUMN versioned INTEGER NOT NULL DEFAULT 0;",
+            )?;
         }
         Ok(())
     }
@@ -244,12 +254,26 @@ impl Store {
                 return Err(HubError::Refused("This NG Account can't publish sound packs".into()));
             }
         }
+        let now = now_ms();
         self.db
             .execute(
                 "UPDATE packs SET name = ?2, author = ?3, description = ?4, public = ?5, updated = ?6 WHERE id = ?1",
-                params![id, name, author, description, public, now_ms()],
+                params![id, name, author, description, public, now],
             )
             .map_err(anyhow::Error::from)?;
+        if public && !p.public {
+            // Published: version 1 the first time; after being unpublished, a
+            // new version only if its sounds changed meanwhile.
+            self.db
+                .execute(
+                    "UPDATE packs SET
+                        version = CASE WHEN version = 0 THEN 1 WHEN sounds_changed > versioned THEN version + 1 ELSE version END,
+                        versioned = ?2
+                     WHERE id = ?1",
+                    params![id, now],
+                )
+                .map_err(anyhow::Error::from)?;
+        }
         Ok(self.pack(id)?.expect("exists"))
     }
 
@@ -283,8 +307,18 @@ impl Store {
         Ok(self.pack(id)?.expect("exists"))
     }
 
+    /// A pack's sounds changed. Only a published pack gets a new version
+    /// (what offers an update to people who installed it), and changes
+    /// within a few minutes of the last new version are part of it.
     fn pack_changed(&self, id: &str) -> anyhow::Result<()> {
-        self.db.execute("UPDATE packs SET version = version + 1, updated = ?2 WHERE id = ?1", params![id, now_ms()])?;
+        let now = now_ms();
+        self.db.execute(
+            "UPDATE packs SET sounds_changed = ?2, updated = ?2,
+                version = CASE WHEN public = 1 AND ?2 - versioned > ?3 THEN version + 1 ELSE version END,
+                versioned = CASE WHEN public = 1 AND ?2 - versioned > ?3 THEN ?2 ELSE versioned END
+             WHERE id = ?1",
+            params![id, now, VERSION_WINDOW_MS],
+        )?;
         Ok(())
     }
 
@@ -573,12 +607,25 @@ mod tests {
         // A new format of the same sound replaces it.
         let p2 = st.put_pack_file(1, &p.id, "logged_on.mp3", &"b".repeat(64), 900).unwrap();
         assert_eq!(p2.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["logged_on.mp3"]);
-        assert_eq!(p2.version, "2");
+        assert_eq!(p2.version, "0", "a private pack's edits don't make versions");
         assert!(st.put_pack_file(1, &p.id, "logged_off.wav", &"c".repeat(64), MAX_PACK_BYTES).is_err(), "pack limit");
         // Someone else can't touch it.
         assert!(st.change_pack(2, &p.id, &PackChange { name: Some("x".into()), ..Default::default() }).is_err());
         let public = st.change_pack(1, &p.id, &PackChange { public: Some(true), author: Some("Matt".into()), ..Default::default() }).unwrap();
         assert!(public.public);
+        assert_eq!(public.version, "1", "publishing makes version 1");
+        // Edits soon after are part of version 1; later ones make version 2.
+        assert_eq!(st.put_pack_file(1, &p.id, "logged_off.wav", &"d".repeat(64), 10).unwrap().version, "1");
+        st.db.execute("UPDATE packs SET versioned = versioned - ?2 WHERE id = ?1", params![p.id, VERSION_WINDOW_MS + 1]).unwrap();
+        assert_eq!(st.put_pack_file(1, &p.id, "user_msg.wav", &"e".repeat(64), 10).unwrap().version, "2");
+        assert_eq!(st.put_pack_file(1, &p.id, "user_msg.wav", &"f".repeat(64), 10).unwrap().version, "2");
+        // Unpublished, edited, published again: a new version.
+        st.change_pack(1, &p.id, &PackChange { public: Some(false), ..Default::default() }).unwrap();
+        assert_eq!(st.put_pack_file(1, &p.id, "on.wav", &"g".repeat(64), 10).unwrap().version, "2");
+        assert_eq!(st.change_pack(1, &p.id, &PackChange { public: Some(true), ..Default::default() }).unwrap().version, "3");
+        // Unpublished and published again unchanged: the same version.
+        st.change_pack(1, &p.id, &PackChange { public: Some(false), ..Default::default() }).unwrap();
+        assert_eq!(st.change_pack(1, &p.id, &PackChange { public: Some(true), ..Default::default() }).unwrap().version, "3");
         assert_eq!(st.catalog("matt", false).unwrap().len(), 1);
         assert_eq!(st.catalog("nothing like it", false).unwrap().len(), 0);
         let private = st.backup_pack(1, "local-2", "Private").unwrap();

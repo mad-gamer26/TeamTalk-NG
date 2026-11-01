@@ -241,7 +241,7 @@ def main():
         subprocess.run(ngmon + ["pack", "show", p["id"]], check=True)
 
         print("Passwords")
-        check(requests.post(API + "/v1/account/password", headers=HA, json={"current": "nope", "new": "brand new pw"}).status_code == 401, "changing needs the current password")
+        check(requests.post(API + "/v1/account/password", headers=HA, json={"current": "nope", "new": "brand new pw"}).status_code == 409, "changing needs the current password")
         check(requests.post(API + "/v1/account/password", headers=HA, json={"current": "correct horse", "new": "brand new pw"}).status_code == 204, "password changed")
         check(requests.get(API + "/v1/account", headers=HB).status_code == 401, "other phones are signed out")
         check(requests.get(API + "/v1/account", headers=HA).ok, "this phone stays signed in")
@@ -274,6 +274,19 @@ def main():
         r2 = requests.post(API + "/v1/servers", headers=HA, json={"name": "Work", "host": "127.0.0.1", "tcp_port": 2, "nickname": "Mon", "username": "u", "password": "p"})
         check(r.status_code == 201 and r2.status_code == 201, "and can monitor again")
 
+        print("Taking monitors out of the account")
+        before = sorted(x["name"] for x in requests.get(API + "/v1/servers", headers=HA).json()["servers"])
+        r = requests.post(API + "/v1/account/release-monitors", headers=HA)
+        check(r.ok and r.json()["token"] and r.json()["push_key"], "the account's monitors move to a sign-up of their own")
+        HR = {"Authorization": "Bearer " + r.json()["token"]}
+        check(sorted(x["name"] for x in requests.get(API + "/v1/servers", headers=HR).json()["servers"]) == before, "the new sign-up has them")
+        check(requests.get(API + "/v1/servers", headers=HA).json()["servers"] == [], "the account has none now")
+        check(requests.get(API + "/v1/account", headers=HR).status_code == 401, "the new sign-up isn't an account session")
+        # Back in: signing in with it as the sign-up to claim.
+        r = requests.post(API + "/v1/account/signin", json={"email": email, "password": "after reset pw", **install("phone-a"), "claim_token": r.json()["token"]})
+        HA = {"Authorization": "Bearer " + r.json()["token"]}
+        check(sorted(x["name"] for x in requests.get(API + "/v1/servers", headers=HA).json()["servers"]) == before, "signing in again brings them back into the account")
+
         print("Export")
         ex = requests.get(API + "/v1/account/export", headers=HA)
         body = ex.json()
@@ -289,7 +302,7 @@ def main():
         check(codes[:5] == [202] * 5 and codes[5] == 429, "codes to one address are limited")
 
         print("Deleting the account")
-        check(requests.post(API + "/v1/account/delete", headers=HA, json={"password": "wrong"}).status_code == 401, "deleting needs the password")
+        check(requests.post(API + "/v1/account/delete", headers=HA, json={"password": "wrong"}).status_code == 409, "deleting needs the password")
         check(requests.post(API + "/v1/account/delete", headers=HA, json={"password": "after reset pw"}).status_code == 204, "account deleted")
         check(requests.get(API + "/v1/servers", headers=HA).status_code == 401, "its session is gone")
         check(requests.get(API + "/v1/servers", headers=HO).status_code == 401, "and the old sign-up with it")

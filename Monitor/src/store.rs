@@ -85,6 +85,8 @@ pub struct PushTarget {
     pub sandbox: bool,
     /// Sent back in every push so the app knows which key opens it.
     pub app_ref: String,
+    /// An Android phone: `apns_token` is Firebase's token for it.
+    pub android: bool,
 }
 
 /// What a sweep for abandoned sign-ups did.
@@ -357,6 +359,9 @@ impl Store {
         if db.prepare("SELECT checked FROM push_targets LIMIT 0").is_err() {
             db.execute_batch("ALTER TABLE push_targets ADD COLUMN checked INTEGER NOT NULL DEFAULT 0")?;
         }
+        if db.prepare("SELECT android FROM push_targets LIMIT 0").is_err() {
+            db.execute_batch("ALTER TABLE push_targets ADD COLUMN android INTEGER NOT NULL DEFAULT 0")?;
+        }
         // Push registrations once lived on the device row.
         db.execute(
             "INSERT OR IGNORE INTO push_targets (device_id, install_id, app_ref, apns_token, sandbox, updated)
@@ -384,7 +389,7 @@ impl Store {
             .unwrap_or(0))
     }
 
-    fn bump_servers_version(&self) -> anyhow::Result<()> {
+    pub(crate) fn bump_servers_version(&self) -> anyhow::Result<()> {
         let v = self.servers_version()? + 1;
         self.db.execute("INSERT INTO meta (key, value) VALUES ('servers_version', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1", [v.to_string()])?;
         Ok(())
@@ -542,7 +547,7 @@ impl Store {
 
     /// Register (or, with no token, unregister) one installed copy of the
     /// app for pushes.
-    pub fn set_push_target(&self, device_id: i64, install_id: &str, apns_token: Option<&str>, sandbox: bool, app_ref: &str) -> anyhow::Result<()> {
+    pub fn set_push_target(&self, device_id: i64, install_id: &str, apns_token: Option<&str>, sandbox: bool, app_ref: &str, android: bool) -> anyhow::Result<()> {
         match apns_token {
             None => {
                 self.db.execute("DELETE FROM push_targets WHERE device_id = ?1 AND install_id = ?2", params![device_id, install_id])?;
@@ -554,9 +559,9 @@ impl Store {
                     params![token, device_id, install_id],
                 )?;
                 self.db.execute(
-                    "INSERT INTO push_targets (device_id, install_id, app_ref, apns_token, sandbox, updated, gone_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)
-                     ON CONFLICT (device_id, install_id) DO UPDATE SET app_ref = ?3, apns_token = ?4, sandbox = ?5, updated = ?6, gone_at = NULL",
-                    params![device_id, install_id, app_ref, token, sandbox, now_ms()],
+                    "INSERT INTO push_targets (device_id, install_id, app_ref, apns_token, sandbox, updated, gone_at, android) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)
+                     ON CONFLICT (device_id, install_id) DO UPDATE SET app_ref = ?3, apns_token = ?4, sandbox = ?5, updated = ?6, gone_at = NULL, android = ?7",
+                    params![device_id, install_id, app_ref, token, sandbox, now_ms(), android],
                 )?;
             }
         }
@@ -565,8 +570,8 @@ impl Store {
 
     /// The copies of the app to push to.
     pub fn push_targets(&self, device_id: i64) -> anyhow::Result<Vec<PushTarget>> {
-        let mut st = self.db.prepare("SELECT install_id, apns_token, sandbox, app_ref FROM push_targets WHERE device_id = ?1 AND gone_at IS NULL ORDER BY id")?;
-        let rows = st.query_map([device_id], |r| Ok(PushTarget { install_id: r.get(0)?, apns_token: r.get(1)?, sandbox: r.get(2)?, app_ref: r.get(3)? }))?;
+        let mut st = self.db.prepare("SELECT install_id, apns_token, sandbox, app_ref, android FROM push_targets WHERE device_id = ?1 AND gone_at IS NULL ORDER BY id")?;
+        let rows = st.query_map([device_id], |r| Ok(PushTarget { install_id: r.get(0)?, apns_token: r.get(1)?, sandbox: r.get(2)?, app_ref: r.get(3)?, android: r.get(4)? }))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
@@ -574,9 +579,9 @@ impl Store {
     pub fn push_targets_due(&self, now: i64, every: i64) -> anyhow::Result<Vec<PushTarget>> {
         let due: Vec<PushTarget> = {
             let mut st = self.db.prepare(
-                "SELECT install_id, apns_token, sandbox, app_ref FROM push_targets WHERE gone_at IS NULL AND checked <= ?1 ORDER BY id",
+                "SELECT install_id, apns_token, sandbox, app_ref, android FROM push_targets WHERE gone_at IS NULL AND checked <= ?1 ORDER BY id",
             )?;
-            st.query_map([now - every], |r| Ok(PushTarget { install_id: r.get(0)?, apns_token: r.get(1)?, sandbox: r.get(2)?, app_ref: r.get(3)? }))?
+            st.query_map([now - every], |r| Ok(PushTarget { install_id: r.get(0)?, apns_token: r.get(1)?, sandbox: r.get(2)?, app_ref: r.get(3)?, android: r.get(4)? }))?
                 .collect::<Result<_, _>>()?
         };
         self.db.execute("UPDATE push_targets SET checked = ?1 WHERE gone_at IS NULL AND checked <= ?2", params![now, now - every])?;
@@ -1032,15 +1037,15 @@ mod tests {
     fn each_copy_of_the_app_gets_pushes() {
         let st = Store::memory();
         let d = st.add_device("me", "h", &[0; 32], &Prefs::default()).unwrap();
-        st.set_push_target(d, "phone", Some("aa"), false, "ref").unwrap();
-        st.set_push_target(d, "ipad", Some("bb"), true, "ref").unwrap();
-        st.set_push_target(d, "phone", Some("cc"), false, "ref").unwrap();
+        st.set_push_target(d, "phone", Some("aa"), false, "ref", false).unwrap();
+        st.set_push_target(d, "ipad", Some("bb"), true, "ref", false).unwrap();
+        st.set_push_target(d, "phone", Some("cc"), false, "ref", false).unwrap();
         let t = st.push_targets(d).unwrap();
         assert_eq!(t.iter().map(|t| t.apns_token.as_str()).collect::<Vec<_>>(), vec!["cc", "bb"]);
         assert!(st.device(d).unwrap()[0].has_push);
         st.drop_apns_token("cc").unwrap();
         assert_eq!(st.push_targets(d).unwrap().len(), 1);
-        st.set_push_target(d, "ipad", None, false, "").unwrap();
+        st.set_push_target(d, "ipad", None, false, "", false).unwrap();
         assert!(!st.device(d).unwrap()[0].has_push);
     }
 
@@ -1053,9 +1058,9 @@ mod tests {
         let s_new = server(&st, new);
         let c = st.conversation_for(s_new, 5, "A", "a", 1).unwrap();
         st.add_message(c, s_new, false, "hi", 1).unwrap();
-        st.set_push_target(old, "phone-1", Some("aa"), false, "r").unwrap();
-        st.set_push_target(new, "phone-2", Some("bb"), false, "r").unwrap();
-        st.set_push_target(new, "phone-1", Some("cc"), false, "r").unwrap();
+        st.set_push_target(old, "phone-1", Some("aa"), false, "r", false).unwrap();
+        st.set_push_target(new, "phone-2", Some("bb"), false, "r", false).unwrap();
+        st.set_push_target(new, "phone-1", Some("cc"), false, "r", false).unwrap();
         st.merge_devices(old, new).unwrap();
         assert_eq!(st.servers_of(old).unwrap().iter().map(|s| s.id).collect::<Vec<_>>(), vec![s_old, s_new]);
         assert_eq!(st.conversations(old, None).unwrap()[0].last_text, "hi");
@@ -1069,8 +1074,8 @@ mod tests {
     fn phones_are_checked_once_a_day() {
         let st = Store::memory();
         let d = st.add_device("me", "h", &[0; 32], &Prefs::default()).unwrap();
-        st.set_push_target(d, "a", Some("aa"), false, "r").unwrap();
-        st.set_push_target(d, "b", Some("bb"), false, "r").unwrap();
+        st.set_push_target(d, "a", Some("aa"), false, "r", false).unwrap();
+        st.set_push_target(d, "b", Some("bb"), false, "r", false).unwrap();
         st.drop_apns_token("bb").unwrap();
         let now = 100 * DAY_MS;
         let due = st.push_targets_due(now, PHONE_CHECK_EVERY_MS).unwrap();
@@ -1092,7 +1097,7 @@ mod tests {
         st.touch_device_at(quiet, now - 15 * DAY_MS).unwrap();
         st.touch_device_at(uninstalled, now - 2 * DAY_MS).unwrap();
         st.touch_device_at(gone, now - 181 * DAY_MS).unwrap();
-        st.set_push_target(uninstalled, "x", Some("dead"), false, "r").unwrap();
+        st.set_push_target(uninstalled, "x", Some("dead"), false, "r", false).unwrap();
         st.drop_apns_token("dead").unwrap();
         let s = server(&st, gone);
         let v = st.servers_version().unwrap();

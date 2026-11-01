@@ -17,8 +17,8 @@ final class NGPackSync {
     /// Settings this keeps up to date for syncing: installed catalog packs,
     /// and the chosen pack ("catalog:<id>", "account:<pack id>" or
     /// "default").
-    static let installedCatalogKey = "ng_installed_catalog_packs"
-    static let selectedPackKey = "ng_selected_sound_pack"
+    static let installedCatalogKey = NGSync.packKeys[0]
+    static let selectedPackKey = NGSync.packKeys[1]
 
     /// What this iPhone last backed up: the account's pack for each of its
     /// packs, and each sound's hash.

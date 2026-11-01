@@ -254,8 +254,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             let store = cfg.open_store()?;
             let due = store.push_targets_due(store::now_ms(), 0)?;
             let mut gone = 0;
-            for t in &due {
-                let job = push::PushJob { apns_token: t.apns_token.clone(), sandbox: t.sandbox, payload: push::silent_payload(), background: true };
+            // Apple's phones here; the running service checks Android ones.
+            for t in due.iter().filter(|t| !t.android) {
+                let job = push::PushJob { apns_token: t.apns_token.clone(), sandbox: t.sandbox, android: t.android, payload: push::silent_payload(), background: true };
                 if let Err(push::PushError::Unregistered) = apns.send(&job).await {
                     store.drop_apns_token(&t.apns_token)?;
                     gone += 1;
@@ -292,7 +293,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 data: serde_json::json!({ "event": "test" }),
             };
             let payload = push::payload(&n, key.as_deref().filter(|_| cfg.push.encrypt), &app_ref)?;
-            match apns.send(&push::PushJob { apns_token: token, sandbox, payload, background: false }).await {
+            match apns.send(&push::PushJob { apns_token: token, sandbox, android: false, payload, background: false }).await {
                 Ok(()) => println!("Apple accepted the notification."),
                 Err(push::PushError::Unregistered) => println!("Apple accepted the key but says that device token is not valid."),
                 Err(e) => bail!("{e}"),

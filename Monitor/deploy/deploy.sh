@@ -16,6 +16,12 @@ trap 'rm -rf "$stage"' EXIT
 cp -R "$here/Cargo.toml" "$here/Cargo.lock" "$here/src" "$stage/"
 mkdir "$stage/deploy"
 cp "$site/ngmon.toml" "$site/ngmon.service" "$site/nginx.conf" "$stage/deploy/"
+# Android notifications: a Firebase service account key beside the settings
+# turns them on. Without it the service runs as before.
+if [ -f "$site/firebase-service-account.json" ]; then
+    scp -q "$site/firebase-service-account.json" "$host:ngmon/firebase-service-account.json"
+    ssh "$host" 'chmod 600 ~/ngmon/firebase-service-account.json'
+fi
 tar -C "$stage" -czf - Cargo.toml Cargo.lock src deploy | ssh "$host" 'rm -rf ~/ngmon/src-new && mkdir -p ~/ngmon/src-new && tar -C ~/ngmon/src-new -xzf -'
 ssh "$host" "NGINX_SITE='$nginx_site' URL='$url' sh -s" <<'REMOTE'
 set -eu
@@ -26,6 +32,9 @@ rm -rf src-build && mv src-new src-build
 mkdir -p bin data
 install -m 755 src-build/target/release/ngmon bin/ngmon.new && mv bin/ngmon.new bin/ngmon
 [ -f ngmon.toml ] || cp src-build/deploy/ngmon.toml ngmon.toml
+if [ -f firebase-service-account.json ] && ! grep -q '^\[push\.fcm\]' ngmon.toml; then
+    printf '\n[push.fcm]\nservice_account_file = "%s/firebase-service-account.json"\n' "$PWD" >> ngmon.toml
+fi
 if ! cmp -s src-build/deploy/ngmon.service /etc/systemd/system/ngmon.service; then
     sudo cp src-build/deploy/ngmon.service /etc/systemd/system/ngmon.service
     sudo systemctl daemon-reload

@@ -114,8 +114,11 @@ pub enum PushMode {
     /// No push notifications (the app still gets everything live).
     #[default]
     None,
-    /// To Apple with the app's APNs key.
+    /// To Apple with the app's APNs key (and to Android phones too, when
+    /// `[push.fcm]` is set).
     Apns,
+    /// To Android phones only, through Firebase Cloud Messaging.
+    Fcm,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -129,12 +132,27 @@ pub struct PushConfig {
     pub encrypt: bool,
     #[serde(default)]
     pub apns: Option<ApnsConfig>,
+    #[serde(default)]
+    pub fcm: Option<FcmConfig>,
 }
 
 impl Default for PushConfig {
     fn default() -> Self {
-        PushConfig { mode: PushMode::None, encrypt: true, apns: None }
+        PushConfig { mode: PushMode::None, encrypt: true, apns: None, fcm: None }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FcmConfig {
+    /// A service account's JSON key from the Firebase project.
+    pub service_account_file: String,
+    /// The Firebase project; by default the service account's.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Send somewhere other than Google (for tests).
+    #[serde(default)]
+    pub endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -234,6 +252,11 @@ impl Config {
         {
             apns.key_file = base.join(&apns.key_file).to_string_lossy().into_owned();
         }
+        if let Some(fcm) = cfg.push.fcm.as_mut()
+            && Path::new(&fcm.service_account_file).is_relative()
+        {
+            fcm.service_account_file = base.join(&fcm.service_account_file).to_string_lossy().into_owned();
+        }
         Ok(cfg)
     }
 
@@ -271,7 +294,7 @@ servers_total = 2000
 registrations_per_address_per_hour = 20
 
 [push]
-# "none" or "apns".
+# "none", "apns" or "fcm".
 mode = "none"
 # Seal notification text so Apple sees only a placeholder.
 encrypt = true
@@ -281,6 +304,10 @@ encrypt = true
 # key_id = "XXXXXXXXXX"
 # team_id = "5NJK4F832Z"
 # topic = "com.matthewdovi.TeamTalk-NG"
+
+# For the Android app, as well as [push.apns] or alone (mode = "fcm"):
+# [push.fcm]
+# service_account_file = "firebase-service-account.json"
 
 [mail]
 # How NG Account emails sign-up and password reset codes: "none" (no

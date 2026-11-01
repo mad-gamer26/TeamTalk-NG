@@ -20,7 +20,8 @@ TeamTalk SDK and no audio. Other users see it as a text client named
 ```
 TeamTalk servers ◄── TCP/TLS ── ngmon ◄── nginx (HTTPS, WebSocket) ◄── TeamTalk NG
                                   │
-                                  └── APNs (the team's key) ──► phones
+                                  ├── APNs (the team's key) ──► iPhones
+                                  └── FCM (a Firebase project) ──► Android phones
 ```
 
 ## How people use it
@@ -89,6 +90,12 @@ TeamTalk servers ◄── TCP/TLS ── ngmon ◄── nginx (HTTPS, WebSocke
 - **Sealed notifications.** Notification text is sealed with a key only
   the install has. Apple sees "New activity on a monitored server", and the
   app's notification service extension opens the real text on the phone.
+- **Android phones** get data messages through Firebase Cloud Messaging: the
+  `ttng` part of the payload as a JSON string, sealed the same way, which the app
+  opens and shows itself. Google sees no text. Set `[push.fcm]` in the settings,
+  with `service_account_file` naming a service account's JSON key of the Firebase
+  project the Android app is registered in. It works next to `[push.apns]`, or
+  alone with `mode = "fcm"`.
 - **TLS certificates.** Encrypted TeamTalk servers' certificates are not
   checked, because they are almost always self-signed. This matches
   TeamTalk clients' default.
@@ -159,7 +166,7 @@ All JSON. `Authorization: Bearer <token>` on everything but `/v1/info` and
 | `GET /v1/info` | Service name and API version |
 | `POST /v1/register` `{device_name}` | Sign up an install; returns `token`, `push_key`, `device_id` |
 | `GET/PATCH/DELETE /v1/me` | This install; rename; forget it and everything it monitored |
-| `PUT /v1/me/push` `{apns_token, sandbox, app_ref}` | Register for pushes (`app_ref` comes back in each push as `ttng.ref`) |
+| `PUT /v1/me/push` `{apns_token, sandbox, app_ref}` or `{fcm_token, app_ref}` | Register for pushes, from an iPhone or an Android phone (`app_ref` comes back in each push as `ttng.ref`) |
 | `GET/PUT /v1/me/prefs` | Notification preferences |
 | `GET/POST /v1/servers` | This install's servers with status; monitor one (`status_mode` carries the monitor's gender: 256 female, 4096 neutral, 0 male; changing it, `status_msg` or `nickname` applies without logging in again) |
 | `GET/PUT/DELETE /v1/servers/{id}` | Full live state (`server`, `state`, `seq`); change; stop monitoring |

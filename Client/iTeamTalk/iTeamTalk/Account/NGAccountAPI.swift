@@ -260,6 +260,12 @@ struct NGAccountAPI {
         _ = try await send("POST", "v1/account/password", json: ["current": current, "new": new])
     }
 
+    /// Move the account's monitors to a sign-up of their own, which this
+    /// iPhone keeps (as before NG Account) after signing out.
+    func releaseMonitors() async throws -> MonitorRegistration {
+        try Self.decoder.decode(MonitorRegistration.self, from: try await send("POST", "v1/account/release-monitors"))
+    }
+
     func signOut() async throws {
         _ = try await send("POST", "v1/account/signout")
     }

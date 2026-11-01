@@ -19,6 +19,11 @@ key_id = "XXXXXXXXXX"
 team_id = "YOURTEAMID"
 topic = "com.example.TeamTalk-NG"
 
+# Android: put the Firebase service account key at
+# deploy/site/firebase-service-account.json and deploy.sh sets this up.
+# [push.fcm]
+# service_account_file = "/home/you/ngmon/firebase-service-account.json"
+
 # NG Account emails sign-up and password reset codes through an SMTP relay.
 [mail]
 mode = "smtp"
