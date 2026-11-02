@@ -69,6 +69,7 @@ to that folder). Without it, release builds are unsigned.
 | Keychain | `SecretStore.kt`, encrypted with a key in the Android Keystore |
 | QuickLook | The phone's own apps, through `ACTION_VIEW` |
 | APNs and the notification extension | Firebase data messages, opened in `PushService` |
+| Sounds prepared for the notification extension | One notification channel for each sound, which Android plays (`MonitorNotificationSounds`) |
 
 Settings use the iPhone app's keys, and NG Account sync carries them between the
 two apps. Sound packs, servers and monitors work the same way on both.

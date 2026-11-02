@@ -8,17 +8,20 @@ package com.matthewdovi.teamtalkng
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.NotificationChannelGroup
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioManager
+import android.media.AudioAttributes
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
@@ -26,6 +29,8 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 import kotlin.math.abs
 
 const val CHANNEL_MONITOR = "monitor"
@@ -48,18 +53,63 @@ object MonitorNotificationSounds {
         "channel_msg" to Sounds.ChanMsg, "broadcast_msg" to Sounds.BroadcastMsg, "serverlost" to Sounds.SrvLost,
     )
 
-    /** The iPhone app prepares sound files here; Android plays the pack's directly. */
-    fun refresh() {}
+    private const val GROUP = "monitors"
+    private const val PREFIX = "monitor_sound_"
+    private const val FOLDER = "NotificationSounds"
+    /** A sound's channel, by the name the service gives it. */
+    private val channels = HashMap<String, String>()
 
-    /** Plays the pack's sound for a notification, when the phone isn't silenced. */
-    fun playFor(context: Context, serviceSound: String?) {
-        if (choice != Choice.SoundPack) return
-        val sound = events[serviceSound?.substringBeforeLast('.')] ?: return
+    /**
+     * Brings the channels in line with the selected sound pack. An app in the
+     * background may not play sound itself, so each sound has a channel and
+     * Android plays it; the iPhone app likewise prepares the sounds for iOS to
+     * play. A channel's sound can't change, so a new sound gets a new channel,
+     * named by a hash of the sound. Cheap when nothing changed.
+     */
+    @Synchronized
+    fun refresh() {
+        val context = TeamTalkApp.context
         val manager = context.getSystemService<NotificationManager>() ?: return
-        val audio = context.getSystemService<AudioManager>() ?: return
-        if (manager.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) return
-        if (audio.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
-        playSound(sound)
+        val folder = File(context.filesDir, FOLDER).apply { mkdirs() }
+        val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        manager.createNotificationChannelGroup(NotificationChannelGroup(GROUP, "Monitors"))
+        val kept = HashSet<String>()
+        val files = HashSet<String>()
+        for ((name, sound) in events) {
+            val source = SoundPackStore.soundFile(sound)
+            val bytes = runCatching {
+                source?.readBytes() ?: context.assets.open("sounds/${sound.fileName}.wav").use { it.readBytes() }
+            }.getOrNull() ?: continue
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).take(8).joinToString("") { "%02x".format(it) }
+            val file = File(folder, "$hash.${source?.extension?.ifEmpty { null } ?: "wav"}")
+            if (!file.exists()) file.writeBytes(bytes)
+            files.add(file.name)
+            val id = "$PREFIX${name}_$hash"
+            kept.add(id)
+            channels[name] = id
+            if (manager.getNotificationChannel(id) == null) {
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                // Android's own processes play it.
+                for (reader in listOf("android", "com.android.systemui")) {
+                    context.grantUriPermission(reader, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                manager.createNotificationChannel(NotificationChannel(id, "Monitors: ${sound.title}", NotificationManager.IMPORTANCE_HIGH).apply {
+                    group = GROUP
+                    setSound(uri, attributes)
+                })
+            }
+        }
+        manager.notificationChannels.filter { it.id.startsWith(PREFIX) && it.id !in kept }.forEach { manager.deleteNotificationChannel(it.id) }
+        folder.listFiles().orEmpty().filter { it.name !in files }.forEach { it.delete() }
+    }
+
+    /** The channel for a notification's sound; silent when that sound is turned off in Sound Events. */
+    fun channelFor(serviceSound: String?): String {
+        val name = serviceSound?.substringBeforeLast('.')
+        if (events[name]?.enabled != true) return CHANNEL_MONITOR_SILENT
+        runCatching { refresh() }.onFailure { Log.w("Monitor", "Notification sounds: ${it.message}") }
+        return channels[name] ?: CHANNEL_MONITOR_SILENT
     }
 }
 
@@ -74,8 +124,7 @@ object MonitorNotifications {
     fun createChannels(context: Context) {
         val manager = context.getSystemService<NotificationManager>() ?: return
         manager.createNotificationChannel(NotificationChannel(CHANNEL_MONITOR, "Monitors", NotificationManager.IMPORTANCE_HIGH))
-        // The sound pack's sounds are played by the app itself; a channel's sound is fixed once made.
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_MONITOR_SILENT, "Monitors (sound pack)", NotificationManager.IMPORTANCE_HIGH).apply {
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_MONITOR_SILENT, "Monitors (silent)", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(null, null)
         })
     }
@@ -107,7 +156,11 @@ object MonitorNotifications {
 
         val category = content.str("category")
         val choice = MonitorNotificationSounds.choice
-        val channel = if (choice == MonitorNotificationSounds.Choice.System) CHANNEL_MONITOR else CHANNEL_MONITOR_SILENT
+        val channel = when (choice) {
+            MonitorNotificationSounds.Choice.System -> CHANNEL_MONITOR
+            MonitorNotificationSounds.Choice.SoundPack -> MonitorNotificationSounds.channelFor(content.str("sound"))
+            MonitorNotificationSounds.Choice.None -> CHANNEL_MONITOR_SILENT
+        }
         val id = abs((ref + content.str("thread") + content.str("title") + System.currentTimeMillis()).hashCode())
         val dataText = data.toString()
 
@@ -144,7 +197,6 @@ object MonitorNotifications {
 
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(id, builder.build())
-            MonitorNotificationSounds.playFor(context, content.str("sound"))
         }
     }
 
