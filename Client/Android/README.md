@@ -40,7 +40,6 @@ for TalkBack first, the way the iPhone app is built for VoiceOver.
 
     gradlew assembleDebug
 
-On Windows, set `JAVA_HOME` to `C:\Program Files\Android\Android Studio\jbr` first.
 Point a build at another service with `-PteamtalkNgService=https://example.com`.
 
 Release signing: put `storeFile`, `storePassword`, `keyAlias` and `keyPassword` in
