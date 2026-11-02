@@ -463,6 +463,8 @@ class LiveMediaServer(private val format: AudioBlockFormat, private val fill: (S
     private val token = UUID.randomUUID().toString()
     private val newest = AtomicInteger(0)
     @Volatile private var closed = false
+    /** How much the library has sent to the channel. */
+    @Volatile var playedMSec = -1L
 
     val url = "http://127.0.0.1:${listener.localPort}/$token.wav"
 
@@ -502,29 +504,39 @@ class LiveMediaServer(private val format: AudioBlockFormat, private val fill: (S
         out.flush()
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
 
-        val frames = max(1, format.sampleRate * LIVE_BLOCK_MSEC / 1000)
+        val frames = max(1, (format.sampleRate * LIVE_BLOCK_MSEC / 1000).toInt())
         val blockNanos = LIVE_BLOCK_MSEC * 1_000_000L
         val samples = ShortArray(frames * format.channels)
         val bytes = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
         val shorts = bytes.asShortBuffer()
         val started = System.nanoTime()
         var next = started
-        var written = 0L
+        var written = LIVE_LEAD_MSEC
         var lowest = Long.MAX_VALUE
         var checked = started
+        var catchingUp = false
         while (!closed && newest.get() == id) {
             fill(samples)
-            shorts.clear()
-            shorts.put(samples)
-            out.write(bytes.array())
-            out.flush()
+            // The library starts reading some time after it connects, and what
+            // was sent meanwhile would stay as delay. So how far this is ahead
+            // of what has played decides: too far, and the sound goes unsent
+            // until it's back to the lead.
+            val played = playedMSec
+            val ahead = if (played >= 0) written - played else LIVE_LEAD_MSEC
+            if (ahead > LIVE_LEAD_MSEC + LIVE_SLACK_MSEC) catchingUp = true else if (ahead <= LIVE_LEAD_MSEC) catchingUp = false
+            if (!catchingUp) {
+                shorts.clear()
+                shorts.put(samples)
+                out.write(bytes.array())
+                out.flush()
+                written += LIVE_BLOCK_MSEC
+            }
             next += blockNanos
-            written += blockNanos
             val now = System.nanoTime()
-            // How far ahead of real time the stream is: gone, and listeners hear a gap.
-            lowest = min(lowest, LIVE_LEAD_MSEC + (written - (now - started)) / 1_000_000)
+            // Run out, and listeners hear a gap.
+            if (played >= 0) lowest = min(lowest, ahead)
             if (now - checked > 10_000_000_000L) {
-                Log.i(TAG, "Live stream lead over the last 10 s: at least $lowest msec of $LIVE_LEAD_MSEC")
+                Log.i(TAG, "Live stream over the last 10 s: at least $lowest msec ahead of what's playing, now $ahead")
                 lowest = Long.MAX_VALUE
                 checked = now
             }
@@ -551,8 +563,9 @@ class LiveMediaServer(private val format: AudioBlockFormat, private val fill: (S
     }
 
     private companion object {
-        const val LIVE_BLOCK_MSEC = 40
+        const val LIVE_BLOCK_MSEC = 40L
         const val LIVE_LEAD_MSEC = 500L
+        const val LIVE_SLACK_MSEC = 250L
         const val CATCH_UP_LIMIT_NANOS = 2_000_000_000L
     }
 }
@@ -690,6 +703,7 @@ class ChannelStreaming(private val session: ServerSession) {
     fun mediaFileEvent(info: MediaFileInfo) {
         liveMedia?.let { live ->
             if (info.szFileName == live.url) {
+                live.playedMSec = info.uElapsedMSec.toLong()
                 if (info.nStatus in listOf(MediaFileStatus.MFS_FINISHED, MediaFileStatus.MFS_ABORTED, MediaFileStatus.MFS_ERROR)) {
                     Log.w(TAG, "The live stream ended with status ${info.nStatus} after ${info.uElapsedMSec} msec.")
                     liveStreamEnded()
