@@ -42,6 +42,10 @@ for TalkBack first, the way the iPhone app is built for VoiceOver.
 
 Point a build at another service with `-PteamtalkNgService=https://example.com`.
 
+To publish a release, raise `versionCode` in `app/build.gradle.kts`, build it with
+`gradlew assembleRelease`, and run `./publish.sh <apk> "What's new."`. The app's
+Check for Updates reads `android.json` from `/downloads/` on the service's site.
+
 Release signing: put `storeFile`, `storePassword`, `keyAlias` and `keyPassword` in
 `~/.teamtalkng-release/android-signing.properties` (the keystore's path relative
 to that folder). Without it, release builds are unsigned.

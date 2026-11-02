@@ -72,7 +72,7 @@ android {
         targetSdk = 37
         // versionName matches the iPhone app's MARKETING_VERSION. versionCode
         // goes up with every Android release: the updater offers only a higher one.
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0"
         buildConfigField("String", "SERVICE_URL", "\"${project.property("teamtalkNgService")}\"")
         buildConfigField("String", "UPDATES_URL", "\"https://ttmonitor.mad-gamer.com/downloads/android.json\"")

@@ -33,6 +33,7 @@ object Updater {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return "Allow TeamTalk NG to install apps, then check again."
             }
+            announce("Downloading version ${json.getString("version_name")}.")
             val file = File(context.cacheDir, "update.apk")
             val sha = withContext(Dispatchers.IO) {
                 val digest = MessageDigest.getInstance("SHA-256")
