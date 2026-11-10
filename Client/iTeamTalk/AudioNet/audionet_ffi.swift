@@ -503,6 +503,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
     typealias FfiType = Float
     typealias SwiftType = Float
@@ -585,6 +601,231 @@ fileprivate struct FfiConverterString: FfiConverter {
         writeBytes(&buf, value.utf8)
     }
 }
+
+
+
+
+/**
+ * A source the app writes audio into (see the module documentation).
+ */
+public protocol AppSourceProtocol: AnyObject, Sendable {
+    
+    func channels()  -> UInt32
+    
+    /**
+     * Blocks dropped so far because the stream's buffer was full (the app
+     * wrote faster than real time, or the stream stalled).
+     */
+    func droppedBlocks()  -> UInt64
+    
+    /**
+     * Whether a stream is sending this source.
+     */
+    func isSending()  -> Bool
+    
+    func sampleRate()  -> UInt32
+    
+    /**
+     * The source id to send with (`Client::send`).
+     */
+    func sourceId()  -> String
+    
+    /**
+     * Writes interleaved samples (a whole number of frames). Returns the
+     * frames taken: 0 while no stream sends this source, or when the block
+     * does not fit (it is dropped). Never waits.
+     */
+    func write(samples: [Float])  -> UInt32
+    
+}
+/**
+ * A source the app writes audio into (see the module documentation).
+ */
+open class AppSource: AppSourceProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_audionet_ffi_fn_clone_appsource(self.handle, $0) }
+    }
+    /**
+     * A source taking `sample_rate` Hz with `channels` channels (1 or 2).
+     * `name` says what it is, in words ("Game sound"); the stream's status
+     * uses it.
+     */
+public convenience init(name: String, sampleRate: UInt32, channels: UInt32) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_constructor_appsource_new(
+        FfiConverterString.lower(name),
+        FfiConverterUInt32.lower(sampleRate),
+        FfiConverterUInt32.lower(channels),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_audionet_ffi_fn_free_appsource(handle, $0) }
+    }
+
+    
+
+    
+open func channels() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_channels(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Blocks dropped so far because the stream's buffer was full (the app
+     * wrote faster than real time, or the stream stalled).
+     */
+open func droppedBlocks() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_dropped_blocks(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether a stream is sending this source.
+     */
+open func isSending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_is_sending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func sampleRate() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_sample_rate(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The source id to send with (`Client::send`).
+     */
+open func sourceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_source_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Writes interleaved samples (a whole number of frames). Returns the
+     * frames taken: 0 while no stream sends this source, or when the block
+     * does not fit (it is dropped). Never waits.
+     */
+open func write(samples: [Float]) -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_appsource_write(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(samples),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppSource: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = AppSource
+
+    public static func lift(_ handle: UInt64) throws -> AppSource {
+        return AppSource(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: AppSource) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppSource {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AppSource, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppSource_lift(_ handle: UInt64) throws -> AppSource {
+    return try FfiConverterTypeAppSource.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppSource_lower(_ value: AppSource) -> UInt64 {
+    return FfiConverterTypeAppSource.lower(value)
+}
+
+
 
 
 
@@ -1024,7 +1265,7 @@ public protocol ClientProtocol: AnyObject, Sendable {
     
     func isRunning()  -> Bool
     
-    func isSharing()  -> Bool
+    func isVisible()  -> Bool
     
     /**
      * Listens to another device's source on one of this device's
@@ -1045,16 +1286,6 @@ public protocol ClientProtocol: AnyObject, Sendable {
     func send(nodeId: String, sourceId: String, outputId: String) throws  -> String
     
     /**
-     * Whether this device shares its audio in this account: others may
-     * listen to it, and it may send its own. Not sharing, it stays online:
-     * it sees the devices, listens to them and plays what they send it.
-     * Set it before `start` (the app keeps the choice); changing it while
-     * running tells the server at once, which ends every stream this
-     * device sends.
-     */
-    func setSharing(sharing: Bool) 
-    
-    /**
      * A stream's volume and mute on this device: for a stream this app
      * listens to, what it plays here; for one it sends, what is sent.
      * `volume` is the slider position, 0.0 to 1.0 (heard on a square
@@ -1063,8 +1294,19 @@ public protocol ClientProtocol: AnyObject, Sendable {
     func setStreamVolume(sessionId: String, volume: Float, muted: Bool) 
     
     /**
-     * Connects this device to its account: online (sharing or not, as
-     * set), with the remote. Does nothing if already running.
+     * Whether this device is visible to the account's other devices
+     * (on by default): listed to them, and they may listen to it and send
+     * to it. Not visible, it is a visitor: listed nowhere and reachable by
+     * no one, but it still sees the visible devices, listens to them and
+     * sends to them. Set it before `start` (the app keeps the choice);
+     * changing it while running tells the server at once, which ends the
+     * streams other devices have with this one.
+     */
+    func setVisible(visible: Bool) 
+    
+    /**
+     * Connects this device to its account (visible or not, as set), with
+     * the remote. Does nothing if already running.
      */
     func start() 
     
@@ -1184,10 +1426,10 @@ open func isRunning() -> Bool  {
 })
 }
     
-open func isSharing() -> Bool  {
+open func isVisible() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_audionet_ffi_fn_method_client_is_sharing(
+    uniffi_audionet_ffi_fn_method_client_is_visible(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1238,23 +1480,6 @@ open func send(nodeId: String, sourceId: String, outputId: String)throws  -> Str
 }
     
     /**
-     * Whether this device shares its audio in this account: others may
-     * listen to it, and it may send its own. Not sharing, it stays online:
-     * it sees the devices, listens to them and plays what they send it.
-     * Set it before `start` (the app keeps the choice); changing it while
-     * running tells the server at once, which ends every stream this
-     * device sends.
-     */
-open func setSharing(sharing: Bool)  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_audionet_ffi_fn_method_client_set_sharing(
-            self.uniffiCloneHandle(),
-        FfiConverterBool.lower(sharing),uniffiCallStatus
-    )
-}
-}
-    
-    /**
      * A stream's volume and mute on this device: for a stream this app
      * listens to, what it plays here; for one it sends, what is sent.
      * `volume` is the slider position, 0.0 to 1.0 (heard on a square
@@ -1272,8 +1497,26 @@ open func setStreamVolume(sessionId: String, volume: Float, muted: Bool)  {try! 
 }
     
     /**
-     * Connects this device to its account: online (sharing or not, as
-     * set), with the remote. Does nothing if already running.
+     * Whether this device is visible to the account's other devices
+     * (on by default): listed to them, and they may listen to it and send
+     * to it. Not visible, it is a visitor: listed nowhere and reachable by
+     * no one, but it still sees the visible devices, listens to them and
+     * sends to them. Set it before `start` (the app keeps the choice);
+     * changing it while running tells the server at once, which ends the
+     * streams other devices have with this one.
+     */
+open func setVisible(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_method_client_set_visible(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Connects this device to its account (visible or not, as set), with
+     * the remote. Does nothing if already running.
      */
 open func start()  {try! rustCall() {
         uniffiCallStatus in
@@ -1638,15 +1881,6 @@ public struct Device: Equatable, Hashable {
     public var nodeId: String
     public var name: String
     /**
-     * Its AudioNet is running and connected.
-     */
-    public var online: Bool
-    /**
-     * It shares its audio: it can be listened to. An online device that
-     * does not share can still be sent to.
-     */
-    public var sharing: Bool
-    /**
      * "windows", "macos", "ios", … or empty when unknown.
      */
     public var platform: String
@@ -1657,19 +1891,10 @@ public struct Device: Equatable, Hashable {
     // declare one manually.
     public init(nodeId: String, name: String, 
         /**
-         * Its AudioNet is running and connected.
-         */online: Bool, 
-        /**
-         * It shares its audio: it can be listened to. An online device that
-         * does not share can still be sent to.
-         */sharing: Bool, 
-        /**
          * "windows", "macos", "ios", … or empty when unknown.
          */platform: String, sources: [Source], outputs: [Output]) {
         self.nodeId = nodeId
         self.name = name
-        self.online = online
-        self.sharing = sharing
         self.platform = platform
         self.sources = sources
         self.outputs = outputs
@@ -1693,8 +1918,6 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
             try Device(
                 nodeId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
-                online: FfiConverterBool.read(from: &buf), 
-                sharing: FfiConverterBool.read(from: &buf), 
                 platform: FfiConverterString.read(from: &buf), 
                 sources: FfiConverterSequenceTypeSource.read(from: &buf), 
                 outputs: FfiConverterSequenceTypeOutput.read(from: &buf)
@@ -1704,8 +1927,6 @@ public struct FfiConverterTypeDevice: FfiConverterRustBuffer {
     public static func write(_ value: Device, into buf: inout [UInt8]) {
         FfiConverterString.write(value.nodeId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
-        FfiConverterBool.write(value.online, into: &buf)
-        FfiConverterBool.write(value.sharing, into: &buf)
         FfiConverterString.write(value.platform, into: &buf)
         FfiConverterSequenceTypeSource.write(value.sources, into: &buf)
         FfiConverterSequenceTypeOutput.write(value.outputs, into: &buf)
@@ -1782,6 +2003,72 @@ public func FfiConverterTypeLocalAudio_lift(_ buf: RustBuffer) throws -> LocalAu
 #endif
 public func FfiConverterTypeLocalAudio_lower(_ value: LocalAudio) -> RustBuffer {
     return FfiConverterTypeLocalAudio.lower(value)
+}
+
+
+/**
+ * One of this phone's microphones (Android), to choose which one its
+ * "Microphone" source records from.
+ */
+public struct MicrophoneChoice: Equatable, Hashable {
+    public var id: String
+    /**
+     * What it is: "Built-in microphone (bottom)", "Bluetooth headset
+     * microphone: AirPods Pro".
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * What it is: "Built-in microphone (bottom)", "Bluetooth headset
+         * microphone: AirPods Pro".
+         */name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MicrophoneChoice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMicrophoneChoice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MicrophoneChoice {
+        return
+            try MicrophoneChoice(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MicrophoneChoice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMicrophoneChoice_lift(_ buf: RustBuffer) throws -> MicrophoneChoice {
+    return try FfiConverterTypeMicrophoneChoice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMicrophoneChoice_lower(_ value: MicrophoneChoice) -> RustBuffer {
+    return FfiConverterTypeMicrophoneChoice.lower(value)
 }
 
 
@@ -2066,7 +2353,8 @@ public func FfiConverterTypeAudioNetError_lower(_ value: AudioNetError) -> RustB
 public enum Event: Equatable, Hashable {
     
     /**
-     * Online: signed in to the server; this device is shared.
+     * Signed in to the server (visible to the account's other devices, or
+     * not, as set with `set_visible`).
      */
     case connected
     /**
@@ -2080,14 +2368,21 @@ public enum Event: Equatable, Hashable {
     case status(text: String
     )
     /**
-     * The account's other devices (this device is left out).
+     * The account's other visible devices (this device is left out). Only
+     * visible devices are ever listed.
      */
     case devices(devices: [Device]
     )
     /**
-     * One device changed (online, offline, or its sounds and outputs).
+     * A visible device appeared, or changed (its name, sounds or outputs).
      */
     case deviceChanged(device: Device
+    )
+    /**
+     * A device is no longer visible (it turned visibility off, or
+     * disconnected): remove it.
+     */
+    case deviceGone(nodeId: String
     )
     /**
      * Progress of a stream this app started.
@@ -2147,19 +2442,22 @@ public struct FfiConverterTypeEvent: FfiConverterRustBuffer {
         case 5: return .deviceChanged(device: try FfiConverterTypeDevice.read(from: &buf)
         )
         
-        case 6: return .stream(sessionId: try FfiConverterString.read(from: &buf), state: try FfiConverterTypeStreamState.read(from: &buf), detail: try FfiConverterString.read(from: &buf)
+        case 6: return .deviceGone(nodeId: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .streamEnded(sessionId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf)
+        case 7: return .stream(sessionId: try FfiConverterString.read(from: &buf), state: try FfiConverterTypeStreamState.read(from: &buf), detail: try FfiConverterString.read(from: &buf)
         )
         
-        case 8: return .diagnostics(sessionId: try FfiConverterString.read(from: &buf), text: try FfiConverterString.read(from: &buf)
+        case 8: return .streamEnded(sessionId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf)
         )
         
-        case 9: return .serverProblem(message: try FfiConverterString.read(from: &buf)
+        case 9: return .diagnostics(sessionId: try FfiConverterString.read(from: &buf), text: try FfiConverterString.read(from: &buf)
         )
         
-        case 10: return .stopped(error: try FfiConverterOptionString.read(from: &buf)
+        case 10: return .serverProblem(message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 11: return .stopped(error: try FfiConverterOptionString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -2194,32 +2492,37 @@ public struct FfiConverterTypeEvent: FfiConverterRustBuffer {
             FfiConverterTypeDevice.write(device, into: &buf)
             
         
-        case let .stream(sessionId,state,detail):
+        case let .deviceGone(nodeId):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(nodeId, into: &buf)
+            
+        
+        case let .stream(sessionId,state,detail):
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(sessionId, into: &buf)
             FfiConverterTypeStreamState.write(state, into: &buf)
             FfiConverterString.write(detail, into: &buf)
             
         
         case let .streamEnded(sessionId,reason):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(sessionId, into: &buf)
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .diagnostics(sessionId,text):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(sessionId, into: &buf)
             FfiConverterString.write(text, into: &buf)
             
         
         case let .serverProblem(message):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(message, into: &buf)
             
         
         case let .stopped(error):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(11))
             FfiConverterOptionString.write(error, into: &buf)
             
         }
@@ -2398,6 +2701,31 @@ fileprivate struct FfiConverterSequenceInt16: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
+    typealias SwiftType = [Float]
+
+    public static func write(_ value: [Float], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterFloat.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Float] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Float]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterFloat.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeDevice: FfiConverterRustBuffer {
     typealias SwiftType = [Device]
 
@@ -2415,6 +2743,31 @@ fileprivate struct FfiConverterSequenceTypeDevice: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeDevice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMicrophoneChoice: FfiConverterRustBuffer {
+    typealias SwiftType = [MicrophoneChoice]
+
+    public static func write(_ value: [MicrophoneChoice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMicrophoneChoice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MicrophoneChoice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MicrophoneChoice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMicrophoneChoice.read(from: &buf))
         }
         return seq
     }
@@ -2470,6 +2823,18 @@ fileprivate struct FfiConverterSequenceTypeSource: FfiConverterRustBuffer {
     }
 }
 /**
+ * Chooses which microphone this phone's "Microphone" source records from
+ * (an id from [`microphones`]), or Android's own choice with `None`. A
+ * stream recording now switches to it at once. Android only.
+ */
+public func chooseMicrophone(id: String?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_func_choose_microphone(
+        FfiConverterOptionString.lower(id),uniffiCallStatus
+    )
+}
+}
+/**
  * The engine's version, e.g. "0.4.0".
  */
 public func engineVersion() -> String  {
@@ -2490,6 +2855,29 @@ public func localAudio()throws  -> LocalAudio  {
 })
 }
 /**
+ * Android's microphones an app can record from. Empty elsewhere (the
+ * iPhone app lists its microphones through iOS itself).
+ */
+public func microphones() -> [MicrophoneChoice]  {
+    return try!  FfiConverterSequenceTypeMicrophoneChoice.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_func_microphones(uniffiCallStatus
+    )
+})
+}
+/**
+ * What "Mute this Mac's sound while it is streamed" is doing now, in
+ * words (for Settings): off, waiting for a stream, each output muted, or
+ * why one could not be.
+ */
+public func outputMuteStatus() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_func_output_mute_status(uniffiCallStatus
+    )
+})
+}
+/**
  * Removes this device from its account on the server (signing out): its
  * record and credential there are deleted, so nothing is left behind.
  * Blocking (network): call it off the main thread.
@@ -2505,6 +2893,19 @@ public func setAudioUseListener(listener: AudioUseListener?)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_audionet_ffi_fn_func_set_audio_use_listener(
         FfiConverterOptionTypeAudioUseListener.lower(listener),uniffiCallStatus
+    )
+}
+}
+/**
+ * Turns "Mute this Mac's sound while it is streamed" (macOS, off by
+ * default) on or off: while this device streams what one of its outputs
+ * plays, that output stays silent (AudioNet's own mute, not the system
+ * volume or mute). Microphones are never affected.
+ */
+public func setMuteStreamedOutput(on: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_audionet_ffi_fn_func_set_mute_streamed_output(
+        FfiConverterBool.lower(on),uniffiCallStatus
     )
 }
 }
@@ -2575,16 +2976,28 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_audionet_ffi_checksum_func_choose_microphone() != 7297) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_audionet_ffi_checksum_func_engine_version() != 54135) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_func_local_audio() != 15174) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_audionet_ffi_checksum_func_microphones() != 55256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_func_output_mute_status() != 17308) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_audionet_ffi_checksum_func_remove_device() != 34455) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_func_set_audio_use_listener() != 30098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_func_set_mute_streamed_output() != 50967) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_func_set_show_measurements() != 21734) {
@@ -2608,7 +3021,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_audionet_ffi_checksum_method_client_is_running() != 21172) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_audionet_ffi_checksum_method_client_is_sharing() != 16004) {
+    if (uniffi_audionet_ffi_checksum_method_client_is_visible() != 6871) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_method_client_listen() != 31784) {
@@ -2620,13 +3033,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_audionet_ffi_checksum_method_client_send() != 4365) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_audionet_ffi_checksum_method_client_set_sharing() != 25140) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_audionet_ffi_checksum_method_client_set_stream_volume() != 26880) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_audionet_ffi_checksum_method_client_start() != 50683) {
+    if (uniffi_audionet_ffi_checksum_method_client_set_visible() != 60692) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_client_start() != 52708) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_method_client_stop() != 14155) {
@@ -2636,6 +3049,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_method_eventlistener_on_event() != 61466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_channels() != 26680) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_dropped_blocks() != 20510) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_is_sending() != 52265) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_sample_rate() != 27535) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_source_id() != 43039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_method_appsource_write() != 15580) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_method_audiotap_channels() != 47322) {
@@ -2657,6 +3088,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_constructor_client_visitor() != 14847) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_audionet_ffi_checksum_constructor_appsource_new() != 51507) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_audionet_ffi_checksum_constructor_audiotap_new() != 29219) {

@@ -860,7 +860,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkNotifications/iTeamTalkNotifications.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkNotifications/Info.plist;
@@ -888,7 +888,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkNotifications/iTeamTalkNotifications.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkNotifications/Info.plist;
@@ -1036,7 +1036,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalk/iTeamTalk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				ENABLE_BITCODE = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
@@ -1079,7 +1079,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalk/iTeamTalk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				ENABLE_BITCODE = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
@@ -1120,7 +1120,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkControls/iTeamTalkControls.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkControls/Info.plist;
@@ -1148,7 +1148,7 @@
 				CODE_SIGN_ENTITLEMENTS = iTeamTalkControls/iTeamTalkControls.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEVELOPMENT_TEAM = 5NJK4F832Z;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iTeamTalkControls/Info.plist;

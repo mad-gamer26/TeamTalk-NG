@@ -325,9 +325,9 @@ uint32_t uniffi_audionet_ffi_fn_method_client_active_streams(uint64_t ptr, RustC
 int8_t uniffi_audionet_ffi_fn_method_client_is_running(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_IS_SHARING
-#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_IS_SHARING
-int8_t uniffi_audionet_ffi_fn_method_client_is_sharing(uint64_t ptr, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_IS_VISIBLE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_IS_VISIBLE
+int8_t uniffi_audionet_ffi_fn_method_client_is_visible(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_LISTEN
@@ -345,14 +345,14 @@ void uniffi_audionet_ffi_fn_method_client_refresh_devices(uint64_t ptr, RustCall
 RustBuffer uniffi_audionet_ffi_fn_method_client_send(uint64_t ptr, RustBuffer node_id, RustBuffer source_id, RustBuffer output_id, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_SHARING
-#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_SHARING
-void uniffi_audionet_ffi_fn_method_client_set_sharing(uint64_t ptr, int8_t sharing, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_STREAM_VOLUME
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_STREAM_VOLUME
 void uniffi_audionet_ffi_fn_method_client_set_stream_volume(uint64_t ptr, RustBuffer session_id, float volume, int8_t muted, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_VISIBLE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_SET_VISIBLE
+void uniffi_audionet_ffi_fn_method_client_set_visible(uint64_t ptr, int8_t visible, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_CLIENT_START
@@ -388,6 +388,51 @@ void uniffi_audionet_ffi_fn_init_callback_vtable_eventlistener(const UniffiVTabl
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_EVENTLISTENER_ON_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_EVENTLISTENER_ON_EVENT
 void uniffi_audionet_ffi_fn_method_eventlistener_on_event(uint64_t ptr, RustBuffer event, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_CLONE_APPSOURCE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_CLONE_APPSOURCE
+uint64_t uniffi_audionet_ffi_fn_clone_appsource(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FREE_APPSOURCE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FREE_APPSOURCE
+void uniffi_audionet_ffi_fn_free_appsource(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_CONSTRUCTOR_APPSOURCE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_CONSTRUCTOR_APPSOURCE_NEW
+uint64_t uniffi_audionet_ffi_fn_constructor_appsource_new(RustBuffer name, uint32_t sample_rate, uint32_t channels, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_CHANNELS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_CHANNELS
+uint32_t uniffi_audionet_ffi_fn_method_appsource_channels(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_DROPPED_BLOCKS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_DROPPED_BLOCKS
+uint64_t uniffi_audionet_ffi_fn_method_appsource_dropped_blocks(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_IS_SENDING
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_IS_SENDING
+int8_t uniffi_audionet_ffi_fn_method_appsource_is_sending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_SAMPLE_RATE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_SAMPLE_RATE
+uint32_t uniffi_audionet_ffi_fn_method_appsource_sample_rate(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_SOURCE_ID
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_SOURCE_ID
+RustBuffer uniffi_audionet_ffi_fn_method_appsource_source_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_WRITE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_METHOD_APPSOURCE_WRITE
+uint32_t uniffi_audionet_ffi_fn_method_appsource_write(uint64_t ptr, RustBuffer samples, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_CLONE_AUDIOTAP
@@ -430,6 +475,11 @@ RustBuffer uniffi_audionet_ffi_fn_method_audiotap_read(uint64_t ptr, uint32_t fr
 uint32_t uniffi_audionet_ffi_fn_method_audiotap_sample_rate(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_CHOOSE_MICROPHONE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_CHOOSE_MICROPHONE
+void uniffi_audionet_ffi_fn_func_choose_microphone(RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_ENGINE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_ENGINE_VERSION
 RustBuffer uniffi_audionet_ffi_fn_func_engine_version(RustCallStatus *_Nonnull out_status
@@ -442,6 +492,18 @@ RustBuffer uniffi_audionet_ffi_fn_func_local_audio(RustCallStatus *_Nonnull out_
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_MICROPHONES
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_MICROPHONES
+RustBuffer uniffi_audionet_ffi_fn_func_microphones(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_OUTPUT_MUTE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_OUTPUT_MUTE_STATUS
+RustBuffer uniffi_audionet_ffi_fn_func_output_mute_status(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_REMOVE_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_REMOVE_DEVICE
 void uniffi_audionet_ffi_fn_func_remove_device(RustBuffer account, RustCallStatus *_Nonnull out_status
@@ -450,6 +512,11 @@ void uniffi_audionet_ffi_fn_func_remove_device(RustBuffer account, RustCallStatu
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_SET_AUDIO_USE_LISTENER
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_SET_AUDIO_USE_LISTENER
 void uniffi_audionet_ffi_fn_func_set_audio_use_listener(RustBuffer listener, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_SET_MUTE_STREAMED_OUTPUT
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_SET_MUTE_STREAMED_OUTPUT
+void uniffi_audionet_ffi_fn_func_set_mute_streamed_output(int8_t on, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_FN_FUNC_SET_SHOW_MEASUREMENTS
@@ -732,6 +799,12 @@ void ffi_audionet_ffi_rust_future_free_void(uint64_t handle
 void ffi_audionet_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_CHOOSE_MICROPHONE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_CHOOSE_MICROPHONE
+uint16_t uniffi_audionet_ffi_checksum_func_choose_microphone(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_ENGINE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_ENGINE_VERSION
 uint16_t uniffi_audionet_ffi_checksum_func_engine_version(void
@@ -744,6 +817,18 @@ uint16_t uniffi_audionet_ffi_checksum_func_local_audio(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_MICROPHONES
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_MICROPHONES
+uint16_t uniffi_audionet_ffi_checksum_func_microphones(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_OUTPUT_MUTE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_OUTPUT_MUTE_STATUS
+uint16_t uniffi_audionet_ffi_checksum_func_output_mute_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_REMOVE_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_REMOVE_DEVICE
 uint16_t uniffi_audionet_ffi_checksum_func_remove_device(void
@@ -753,6 +838,12 @@ uint16_t uniffi_audionet_ffi_checksum_func_remove_device(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_SET_AUDIO_USE_LISTENER
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_SET_AUDIO_USE_LISTENER
 uint16_t uniffi_audionet_ffi_checksum_func_set_audio_use_listener(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_SET_MUTE_STREAMED_OUTPUT
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_FUNC_SET_MUTE_STREAMED_OUTPUT
+uint16_t uniffi_audionet_ffi_checksum_func_set_mute_streamed_output(void
     
 );
 #endif
@@ -798,9 +889,9 @@ uint16_t uniffi_audionet_ffi_checksum_method_client_is_running(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_IS_SHARING
-#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_IS_SHARING
-uint16_t uniffi_audionet_ffi_checksum_method_client_is_sharing(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_IS_VISIBLE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_IS_VISIBLE
+uint16_t uniffi_audionet_ffi_checksum_method_client_is_visible(void
     
 );
 #endif
@@ -822,15 +913,15 @@ uint16_t uniffi_audionet_ffi_checksum_method_client_send(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_SHARING
-#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_SHARING
-uint16_t uniffi_audionet_ffi_checksum_method_client_set_sharing(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_STREAM_VOLUME
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_STREAM_VOLUME
 uint16_t uniffi_audionet_ffi_checksum_method_client_set_stream_volume(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_VISIBLE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_CLIENT_SET_VISIBLE
+uint16_t uniffi_audionet_ffi_checksum_method_client_set_visible(void
     
 );
 #endif
@@ -855,6 +946,42 @@ uint16_t uniffi_audionet_ffi_checksum_method_client_stop_stream(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_EVENTLISTENER_ON_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_EVENTLISTENER_ON_EVENT
 uint16_t uniffi_audionet_ffi_checksum_method_eventlistener_on_event(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_CHANNELS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_CHANNELS
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_channels(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_DROPPED_BLOCKS
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_DROPPED_BLOCKS
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_dropped_blocks(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_IS_SENDING
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_IS_SENDING
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_is_sending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_SAMPLE_RATE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_SAMPLE_RATE
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_sample_rate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_SOURCE_ID
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_SOURCE_ID
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_source_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_WRITE
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_METHOD_APPSOURCE_WRITE
+uint16_t uniffi_audionet_ffi_checksum_method_appsource_write(void
     
 );
 #endif
@@ -897,6 +1024,12 @@ uint16_t uniffi_audionet_ffi_checksum_constructor_client_new(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_CONSTRUCTOR_CLIENT_VISITOR
 #define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_CONSTRUCTOR_CLIENT_VISITOR
 uint16_t uniffi_audionet_ffi_checksum_constructor_client_visitor(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_CONSTRUCTOR_APPSOURCE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_AUDIONET_FFI_CHECKSUM_CONSTRUCTOR_APPSOURCE_NEW
+uint16_t uniffi_audionet_ffi_checksum_constructor_appsource_new(void
     
 );
 #endif

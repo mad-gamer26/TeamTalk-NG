@@ -1,6 +1,7 @@
 /*
- * AudioNet in TeamTalk NG: send what one of your AudioNet devices is sharing
- * into the current TeamTalk channel.
+ * AudioNet in TeamTalk NG: send the sound of one of your visible AudioNet
+ * devices into the current TeamTalk channel. (AudioNet lists only visible
+ * devices: one with visibility off, or not running, is not listed.)
  *
  * TeamTalk NG signs in to the AudioNet account as a visitor, like AudioNet's
  * web client: no device is added to the account. It listens to the chosen
@@ -201,6 +202,8 @@ object AudioNetBridge {
                 val i = devices.indexOfFirst { it.nodeId == event.device.nodeId }
                 if (i >= 0) devices[i] = event.device else devices.add(event.device)
             }
+            // No longer visible (visibility turned off, or AudioNet stopped there).
+            is Event.DeviceGone -> devices.removeAll { it.nodeId == event.nodeId }
             is Event.Stream -> when (event.state) {
                 StreamState.ACTIVE -> if (sending?.sessionID == event.sessionId && !sendingActive) {
                     sendingActive = true
@@ -304,7 +307,7 @@ fun AudioNetContent(session: ServerSession) {
     ScreenFrame("AudioNet") {
         GroupedBody {
             if (bridge.login == null) {
-                GroupedSection(footer = "Sign in to your AudioNet account to send what one of your devices is sharing into this channel. TeamTalk NG signs in as a visitor: no device is added to your account.") {
+                GroupedSection(footer = "Sign in to your AudioNet account to send the sound of one of your visible devices into this channel. TeamTalk NG signs in as a visitor: no device is added to your account.") {
                     TextRow(if (bridge.busy) "Signing In…" else "Sign In to AudioNet", enabled = !bridge.busy, onClick = { signingIn = true })
                 }
             } else {
@@ -333,18 +336,17 @@ fun AudioNetContent(session: ServerSession) {
                 GroupedSection(header = "Devices", footer = if (canSend) "Choose a device to send its sound into this channel." else "You cannot send audio in this channel.") {
                     val devices = bridge.devices.sortedBy { it.name.lowercase() }
                     if (devices.isEmpty()) {
-                        Text(if (bridge.connection == AudioNetBridge.Connection.Connected) "No other devices in this account." else "Connecting to AudioNet…",
+                        Text(if (bridge.connection == AudioNetBridge.Connection.Connected) "None of your devices is visible. A device appears here while AudioNet runs on it with visibility on." else "Connecting to AudioNet…",
                             modifier = Modifier.padding(RowPadding))
                     }
                     devices.forEachIndexed { i, d ->
                         if (i > 0) RowDivider()
-                        val state2 = when {
-                            !d.online -> "offline"
-                            !d.sharing || d.sources.isEmpty() -> "not sharing"
-                            d.sources.size == 1 -> "1 sound"
+                        val state2 = when (d.sources.size) {
+                            0 -> "no sounds"
+                            1 -> "1 sound"
                             else -> "${d.sources.size} sounds"
                         }
-                        val enabled = d.online && d.sharing && d.sources.isNotEmpty() && canSend
+                        val enabled = d.sources.isNotEmpty() && canSend
                         TextRow("${d.name}, $state2", enabled = enabled, onClick = { choosing = d })
                     }
                 }

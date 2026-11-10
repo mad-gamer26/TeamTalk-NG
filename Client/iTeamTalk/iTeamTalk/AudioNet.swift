@@ -1,7 +1,8 @@
 /*
- * AudioNet in TeamTalk NG: send what one of your AudioNet devices is
- * sharing (its microphone, or the sound playing on it) into the current
- * TeamTalk channel as your voice.
+ * AudioNet in TeamTalk NG: send the sound of one of your visible AudioNet
+ * devices (its microphone, or the sound playing on it) into the current
+ * TeamTalk channel as your voice. (AudioNet lists only visible devices: one
+ * with visibility off, or not running, is not listed.)
  *
  * TeamTalk NG signs in to the AudioNet account as a visitor, like
  * AudioNet's web client: no device is added to the account. It listens to
@@ -188,6 +189,9 @@ final class AudioNetBridge {
             } else {
                 devices.append(device)
             }
+        case .deviceGone(let nodeId):
+            // No longer visible (visibility turned off, or AudioNet stopped there).
+            devices.removeAll { $0.nodeId == nodeId }
         case .stream(let sessionID, let state, let detail):
             switch state {
             case .active:
@@ -341,7 +345,7 @@ final class AudioNetViewController: UITableViewController {
         var result: [(String?, String?, [Row])] = []
         if bridge.login == nil {
             result.append((nil,
-                           NSLocalizedString("Sign in to your AudioNet account to send what one of your devices is sharing into this channel. TeamTalk NG signs in as a visitor: no device is added to your account.", comment: "audionet"),
+                           NSLocalizedString("Sign in to your AudioNet account to send the sound of one of your visible devices into this channel. TeamTalk NG signs in as a visitor: no device is added to your account.", comment: "audionet"),
                            [.signIn]))
         } else {
             result.append((NSLocalizedString("Account", comment: "audionet"), statusFooter(), [.account, .signOut]))
@@ -423,16 +427,14 @@ final class AudioNetViewController: UITableViewController {
             button = true
         case .device(let d):
             let state: String
-            if d.online == false {
-                state = NSLocalizedString("offline", comment: "audionet")
-            } else if d.sharing == false || d.sources.isEmpty {
-                state = NSLocalizedString("not sharing", comment: "audionet")
+            if d.sources.isEmpty {
+                state = NSLocalizedString("no sounds", comment: "audionet")
             } else {
                 state = d.sources.count == 1 ? NSLocalizedString("1 sound", comment: "audionet")
                     : String(format: NSLocalizedString("%d sounds", comment: "audionet"), d.sources.count)
             }
             text = "\(d.name), \(state)"
-            enabled = d.online && d.sharing && d.sources.isEmpty == false && canSend()
+            enabled = d.sources.isEmpty == false && canSend()
             color = enabled ? view.tintColor : .secondaryLabel
             button = true
         case .volume:
@@ -448,7 +450,7 @@ final class AudioNetViewController: UITableViewController {
             volumeCell.textLabel?.accessibilityElementsHidden = true
             return volumeCell
         case .noDevices:
-            text = bridge.connection.isConnected ? NSLocalizedString("No other devices in this account.", comment: "audionet")
+            text = bridge.connection.isConnected ? NSLocalizedString("None of your devices is visible. A device appears here while AudioNet runs on it with visibility on.", comment: "audionet")
                                                  : NSLocalizedString("Connecting to AudioNet…", comment: "audionet")
         }
         cell.textLabel?.text = text
@@ -472,7 +474,7 @@ final class AudioNetViewController: UITableViewController {
         case .stopSending:
             stop()
         case .device(let d):
-            guard d.online, d.sharing, d.sources.isEmpty == false, canSend() else { return }
+            guard d.sources.isEmpty == false, canSend() else { return }
             chooseSource(of: d, from: cell)
         default:
             break
