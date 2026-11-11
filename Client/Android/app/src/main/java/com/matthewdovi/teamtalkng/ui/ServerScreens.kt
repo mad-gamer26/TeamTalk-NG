@@ -52,7 +52,6 @@ import com.matthewdovi.teamtalkng.ServerLink
 import com.matthewdovi.teamtalkng.ServerStore
 import com.matthewdovi.teamtalkng.SessionManager
 import com.matthewdovi.teamtalkng.updateShortcuts
-import java.io.File
 
 private fun connect(server: Server) {
     Navigator.show(SessionManager.connect(server))
@@ -88,6 +87,21 @@ fun ServerListScreen() {
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(::import) }
+
+    // Export goes through the system "save" picker, so the file can be kept anywhere (Downloads,
+    // Drive, a USB drive…). The share sheet can't save files on most phones.
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val toExport = ServerStore.servers.filter { !SessionManager.isConnected(it) }
+        val saved = runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(ServerFiles.export(toExport).toByteArray()) }
+        }.getOrNull()
+        message = if (saved != null) {
+            "Export Complete" to "Saved ${toExport.size} ${if (toExport.size == 1) "server" else "servers"} to .TT file."
+        } else {
+            "Export Failed" to "Unable to save .TT file."
+        }
+    }
     LaunchedEffect(Navigator.pendingImport.value) {
         Navigator.pendingImport.value?.let {
             Navigator.pendingImport.value = null
@@ -114,9 +128,7 @@ fun ServerListScreen() {
                     if (servers.isNotEmpty()) {
                         DropdownMenuItem(text = { Text("Export Server List") }, onClick = {
                             menu = false
-                            val file = File(context.cacheDir, "TeamTalk Servers.tt")
-                            file.writeText(ServerFiles.export(servers))
-                            shareFile(context, file, "application/octet-stream")
+                            exporter.launch("TeamTalk Servers.tt")
                         })
                         DropdownMenuItem(text = { Text("Delete All Servers") }, onClick = { menu = false; deleteAll = true })
                     }
