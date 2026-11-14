@@ -201,6 +201,74 @@ final class ServerConnection {
 
     func clearHistory() { lines = [] }
 
+    // MARK: Administration
+
+    var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false) }
+
+    func kick(_ user: User, fromChannel: Bool) {
+        run("Couldn't kick") { try $0.kickUser(userId: user.id, fromChannel: fromChannel) }
+    }
+
+    /// Bans, then kicks them off the server.
+    func ban(_ user: User, by kind: BanKind) {
+        run("Couldn't ban") { c in
+            try c.banUser(userId: user.id, kind: kind)
+            try c.kickUser(userId: user.id, fromChannel: false)
+        }
+    }
+
+    func move(_ user: User, to channel: Channel) {
+        run("Couldn't move") { try $0.moveUser(userId: user.id, channelId: channel.id) }
+    }
+
+    /// Makes a channel, or (`temporary`) makes one and joins it.
+    func makeChannel(_ spec: ChannelSpec, temporary: Bool) {
+        run("Couldn't make the channel") { c in
+            if temporary { try c.joinNewChannel(spec: spec) } else { try c.makeChannel(spec: spec) }
+        }
+    }
+
+    func updateChannel(_ channel: Channel, _ spec: ChannelSpec) {
+        run("Couldn't change the channel") { try $0.updateChannel(channelId: channel.id, spec: spec) }
+    }
+
+    func removeChannel(_ channel: Channel) {
+        run("Couldn't delete the channel") { try $0.removeChannel(channelId: channel.id) }
+    }
+
+    func updateServer(name: String, motd: String) {
+        run("Couldn't change the server") { try $0.updateServer(name: name, motd: motd) }
+    }
+
+    func broadcast(_ text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        run("Couldn't broadcast") { try $0.sendMessage(target: .broadcast, text: text) }
+    }
+
+    /// The server's bans (nil and announced when they can't be listed).
+    func bans() async -> [Ban]? {
+        let client = self.client
+        let result: Result<[Ban], Error> = await Task.detached {
+            do { return .success(try client.listBans()) } catch { return .failure(error) }
+        }.value
+        switch result {
+        case .success(let b): return b
+        case .failure(let e):
+            announce("Couldn't list the bans: \(words(e))")
+            return nil
+        }
+    }
+
+    func unban(_ ban: Ban) async -> Bool {
+        let client = self.client
+        let failed: String? = await Task.detached {
+            do { try client.unban(ban: ban); return nil } catch { return words(error) }
+        }.value
+        if let failed { announce("Couldn't remove the ban: \(failed)") }
+        return failed == nil
+    }
+
     /// Runs a core call off the main thread; failures are announced.
     private func run(_ what: String, _ call: @escaping @Sendable (TtClient) throws -> Void) {
         let client = self.client

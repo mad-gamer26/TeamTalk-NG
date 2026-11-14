@@ -11,6 +11,13 @@ struct ServerView: View {
     @State private var privateWith: User?
     @State private var volumeFor: User?
     @State private var showStatus = false
+    @State private var channelSheet: ChannelSheet?
+    @State private var movingUser: User?
+    @State private var deletingChannel: Channel?
+    @State private var showServerSettings = false
+    @State private var showBans = false
+    @State private var broadcasting = false
+    @State private var broadcastText = ""
 
     enum Tab: String, CaseIterable, Identifiable {
         case channels = "Channels", chat = "Chat", files = "Files"
@@ -45,6 +52,18 @@ struct ServerView: View {
                             Button("Leave channel") { connection.leaveChannel() }
                         }
                         Button("Status") { showStatus = true }
+                        if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
+                            Button("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) }
+                        }
+                        if connection.rights.broadcast {
+                            Button("Broadcast message") { broadcasting = true }
+                        }
+                        if connection.rights.updateServer {
+                            Button("Server settings") { showServerSettings = true }
+                        }
+                        if connection.rights.ban {
+                            Button("Bans") { showBans = true }
+                        }
                         Button("Clear chat history") { connection.clearHistory() }
                         Button("Disconnect", role: .destructive) { connection.disconnect() }
                     }
@@ -79,6 +98,34 @@ struct ServerView: View {
         .sheet(isPresented: $showStatus) {
             StatusView(connection: connection)
         }
+        .sheet(item: $channelSheet) { sheet in
+            ChannelEditView(connection: connection, sheet: sheet)
+        }
+        .sheet(item: $movingUser) { user in
+            MoveView(connection: connection, user: user)
+        }
+        .sheet(isPresented: $showServerSettings) {
+            ServerSettingsView(connection: connection)
+        }
+        .sheet(isPresented: $showBans) {
+            BansView(connection: connection)
+        }
+        .alert("Broadcast message", isPresented: $broadcasting) {
+            TextField("Message to everyone", text: $broadcastText)
+            Button("Send") { connection.broadcast(broadcastText); broadcastText = "" }
+            Button("Cancel", role: .cancel) { broadcastText = "" }
+        } message: {
+            Text("Everyone on the server gets it.")
+        }
+        .confirmationDialog(
+            "Delete \(deletingChannel?.name ?? "this channel")?",
+            isPresented: Binding(get: { deletingChannel != nil }, set: { if !$0 { deletingChannel = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { if let c = deletingChannel { connection.removeChannel(c) } }
+        } message: {
+            Text("Its subchannels and files go too.")
+        }
     }
 
     private var notConnected: some View {
@@ -96,13 +143,18 @@ struct ServerView: View {
         .padding()
     }
 
+    private var rootId: Int32 { connection.snapshot?.channels.first { $0.parentId == 0 }?.id ?? 0 }
+
     private var channels: some View {
         let snap = connection.snapshot
         let rows = snap.map(ChannelTree.rows) ?? []
         return List(rows) { row in
             switch row {
             case .channel(let c, let depth):
-                ChannelRow(channel: c, depth: depth, snapshot: snap!) {
+                ChannelRow(channel: c, depth: depth, snapshot: snap!, rights: connection.rights,
+                           newSub: { channelSheet = .new(parent: c.id, temporary: !connection.rights.modifyChannels) },
+                           edit: { channelSheet = .edit(c) },
+                           delete: { deletingChannel = c }) {
                     if c.hasPassword && c.id != snap?.myChannelId {
                         passwordFor = c
                     } else if c.id != snap?.myChannelId {
@@ -110,8 +162,11 @@ struct ServerView: View {
                     }
                 }
             case .user(let u, let depth):
-                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId,
-                        message: { privateWith = u }, volume: { volumeFor = u })
+                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, rights: connection.rights,
+                        message: { privateWith = u }, volume: { volumeFor = u },
+                        move: { movingUser = u },
+                        kick: { connection.kick(u, fromChannel: $0) },
+                        ban: { connection.ban(u, by: $0) })
             }
         }
         .listStyle(.plain)
@@ -156,6 +211,10 @@ private struct ChannelRow: View {
     let channel: Channel
     let depth: Int
     let snapshot: Snapshot
+    let rights: MyRights
+    let newSub: () -> Void
+    let edit: () -> Void
+    let delete: () -> Void
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
@@ -188,6 +247,18 @@ private struct ChannelRow: View {
         .accessibilityValue(details)
         .accessibilityHint(here ? "" : "Double-tap to join.")
         .accessibilityAddTraits(.isButton)
+        .contextMenu { actions }
+        .accessibilityActions { actions }
+    }
+
+    @ViewBuilder private var actions: some View {
+        if rights.modifyChannels || rights.createTemporaryChannels {
+            Button("New channel inside", action: newSub)
+        }
+        if rights.modifyChannels {
+            Button("Edit channel", action: edit)
+            if channel.parentId != 0 { Button("Delete channel", role: .destructive, action: delete) }
+        }
     }
 }
 
@@ -195,8 +266,12 @@ private struct UserRow: View {
     let user: User
     let depth: Int
     let isMe: Bool
+    let rights: MyRights
     let message: () -> Void
     let volume: () -> Void
+    let move: () -> Void
+    let kick: (_ fromChannel: Bool) -> Void
+    let ban: (BanKind) -> Void
 
     /// Their state, said with their name.
     private var label: String {
@@ -229,6 +304,15 @@ private struct UserRow: View {
     @ViewBuilder private var actions: some View {
         Button("Message privately", action: message)
         Button("Volume", action: volume)
+        if rights.moveUsers { Button("Move to a channel", action: move) }
+        if rights.kick {
+            if user.channelId > 0 { Button("Kick from the channel") { kick(true) } }
+            Button("Kick from the server") { kick(false) }
+        }
+        if rights.ban {
+            Button("Ban by account and kick") { ban(.username) }
+            Button("Ban by IP address and kick") { ban(.ipAddress) }
+        }
     }
 }
 
