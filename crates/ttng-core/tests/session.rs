@@ -212,3 +212,82 @@ fn disconnecting_is_clean_and_calls_then_say_not_connected() {
         Err(Error::NotConnected)
     );
 }
+
+#[test]
+fn voice_activation_talks_when_there_is_sound() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let alice_id = a.client.snapshot().my_user_id;
+    // Silence first: voice activation on, nothing sent.
+    a.client.set_voice_activation(true, 10, 500).unwrap();
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(
+        !b.client.snapshot().user(alice_id).unwrap().talking,
+        "silence isn't sent"
+    );
+    // A tone: the level rises, voice activation starts sending.
+    a.client.set_test_tone(440).unwrap();
+    a.wait_for("voice activation starting", |e| {
+        matches!(e, Event::VoiceActivated(true)).then_some(())
+    });
+    b.wait_for("Alice talking", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == alice_id).then_some(())
+    });
+    assert!(
+        a.client.input_level() > 10,
+        "the level meter reads the tone: {}",
+        a.client.input_level()
+    );
+    // Quiet again: it stops after the delay.
+    a.client.set_test_tone(0).unwrap();
+    a.wait_for("voice activation stopping", |e| {
+        matches!(e, Event::VoiceActivated(false)).then_some(())
+    });
+    b.wait_for("Alice stopping", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: false } if *user_id == alice_id).then_some(())
+    });
+    // Someone's volume, in percent.
+    b.client.set_user_volume(alice_id, 200).unwrap();
+    b.client.set_user_muted(alice_id, true).unwrap();
+}
+
+#[test]
+fn several_servers_at_once() {
+    let one = Server::start();
+    let two = Server::start();
+    // One app, two connections.
+    let a1 = TestClient::logged_in(&one, "alice");
+    let a2 = TestClient::logged_in(&two, "alice");
+    let b1 = TestClient::logged_in(&one, "bob");
+    let c2 = TestClient::logged_in(&two, "carol");
+    for c in [&a1, &a2, &b1, &c2] {
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    a1.client
+        .send_message(
+            MessageTarget::Channel(a1.client.snapshot().my_channel_id),
+            "on server one",
+        )
+        .unwrap();
+    a2.client
+        .send_message(
+            MessageTarget::Channel(a2.client.snapshot().my_channel_id),
+            "on server two",
+        )
+        .unwrap();
+    b1.wait_for("server one's message", |e| {
+        matches!(e, Event::MessageReceived(m) if m.text == "on server one").then_some(())
+    });
+    c2.wait_for("server two's message", |e| {
+        matches!(e, Event::MessageReceived(m) if m.text == "on server two").then_some(())
+    });
+    // Each connection only knows its own server's people.
+    assert!(a1.client.snapshot().users.iter().any(|u| u.username == "bob"));
+    assert!(!a1.client.snapshot().users.iter().any(|u| u.username == "carol"));
+    assert!(a2.client.snapshot().users.iter().any(|u| u.username == "carol"));
+}

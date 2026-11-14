@@ -262,6 +262,8 @@ pub enum Event {
         talking: bool,
     },
     MessageReceived(TextMessage),
+    /// Voice activation started (true) or stopped (false) sending my voice.
+    VoiceActivated(bool),
     /// I was kicked: from a channel (`channel_id` > 0) or the server.
     Kicked {
         by_user_id: i32,

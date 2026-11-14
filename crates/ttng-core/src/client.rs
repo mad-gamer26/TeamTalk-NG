@@ -49,6 +49,9 @@ pub struct ConnectOptions {
 pub enum AudioDevices {
     /// The system's default input and output.
     Default,
+    /// The default devices, shared with other connections (several servers
+    /// at once; each `Client` opens them in this mode).
+    Shared,
     /// The SDK's virtual device: no hardware (tests, and listening without
     /// a microphone).
     Virtual,
@@ -94,6 +97,12 @@ enum Request {
     SetNickname(String, Reply),
     InitAudio(AudioDevices, Reply),
     SetTransmitting(bool, Reply),
+    SetVoiceActivation {
+        on: bool,
+        level: i32,
+        stop_delay_ms: i32,
+        reply: Reply,
+    },
     SetUserVolume {
         user_id: i32,
         volume: i32,
@@ -123,6 +132,7 @@ struct Model {
 pub struct Client {
     tx: Sender<Request>,
     model: Arc<Mutex<Model>>,
+    level: Arc<std::sync::atomic::AtomicI32>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -151,13 +161,16 @@ impl Client {
             })
             .expect("can't start the event thread");
         let m = Arc::clone(&model);
+        let level = Arc::new(std::sync::atomic::AtomicI32::new(0));
+        let l = Arc::clone(&level);
         let worker = thread::Builder::new()
             .name("ttng-sdk".into())
-            .spawn(move || Worker::new(rx, etx, m).run())
+            .spawn(move || Worker::new(rx, etx, m, l).run())
             .expect("can't start the SDK thread");
         Client {
             tx,
             model,
+            level,
             worker: Some(worker),
         }
     }
@@ -235,10 +248,28 @@ impl Client {
         self.ask(|r| Request::SetTransmitting(on, r))
     }
 
-    /// Someone's volume for me only (0 to 100, 50 is normal... see the SDK's
-    /// `SOUND_VOLUME_*`; the apps map their own scale onto it).
-    pub fn set_user_volume(&self, user_id: i32, volume: i32) -> Result<()> {
+    /// Voice activation: talks while the microphone's level (0 to 100) is at
+    /// or above `level`, and for `stop_delay_ms` after it drops.
+    pub fn set_voice_activation(&self, on: bool, level: i32, stop_delay_ms: i32) -> Result<()> {
+        self.ask(|reply| Request::SetVoiceActivation {
+            on,
+            level,
+            stop_delay_ms,
+            reply,
+        })
+    }
+
+    /// Someone's volume for me only, in percent: 100 is as they send it, up
+    /// to 400.
+    pub fn set_user_volume(&self, user_id: i32, percent: i32) -> Result<()> {
+        let volume = (percent.clamp(0, 400) * sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32) / 100;
         self.ask(|reply| Request::SetUserVolume { user_id, volume, reply })
+    }
+
+    /// The microphone's level right now, 0 to 100 (for a meter, and for
+    /// choosing a voice activation level).
+    pub fn input_level(&self) -> i32 {
+        self.level.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Mutes someone for me only.
@@ -311,10 +342,19 @@ struct Worker {
     partial: HashMap<(u32, i32, i32), String>,
     /// Set when the server kicked or logged us out (don't reconnect).
     no_reconnect: bool,
+    /// The microphone's level, refreshed while the sound devices are open.
+    level: Arc<std::sync::atomic::AtomicI32>,
+    audio_open: bool,
+    last_level: Instant,
 }
 
 impl Worker {
-    fn new(rx: Receiver<Request>, events: Sender<Event>, model: Arc<Mutex<Model>>) -> Worker {
+    fn new(
+        rx: Receiver<Request>,
+        events: Sender<Event>,
+        model: Arc<Mutex<Model>>,
+        level: Arc<std::sync::atomic::AtomicI32>,
+    ) -> Worker {
         // SAFETY: creates an SDK instance; it's used and closed on this thread only.
         let inst = unsafe { sys::TT_InitTeamTalkPoll() };
         Worker {
@@ -329,6 +369,9 @@ impl Worker {
             retry: None,
             partial: HashMap::new(),
             no_reconnect: false,
+            level,
+            audio_open: false,
+            last_level: Instant::now(),
         }
     }
 
@@ -358,6 +401,12 @@ impl Worker {
                 self.start_connect(n);
             }
             self.expire_pending();
+            if self.audio_open && self.last_level.elapsed() >= Duration::from_millis(50) {
+                self.last_level = Instant::now();
+                // SAFETY: inst is live.
+                let l = unsafe { sys::TT_GetSoundInputLevel(self.inst) };
+                self.level.store(l, std::sync::atomic::Ordering::Relaxed);
+            }
             let mut msg = sys::TTMessage::default();
             // SAFETY: inst is live; msg is a valid TTMessage for the SDK to fill.
             let got = unsafe { sys::TT_GetMessage(self.inst, &mut msg, &PUMP_MS) } != 0;
@@ -494,6 +543,26 @@ impl Worker {
                     ))
                 });
             }
+            Request::SetVoiceActivation {
+                on,
+                level,
+                stop_delay_ms,
+                reply,
+            } => {
+                // SAFETY (all three): inst is live.
+                let ok = unsafe {
+                    sys::TT_SetVoiceActivationLevel(self.inst, level.clamp(0, 100)) != 0
+                        && sys::TT_SetVoiceActivationStopDelay(self.inst, stop_delay_ms.max(0)) != 0
+                        && sys::TT_EnableVoiceActivation(self.inst, on as sys::TTBOOL) != 0
+                };
+                let _ = reply.send(if ok {
+                    Ok(())
+                } else {
+                    Err(Error::Refused(
+                        "Voice activation isn't possible: the microphone isn't open.".into(),
+                    ))
+                });
+            }
             Request::SetUserVolume { user_id, volume, reply } => {
                 // SAFETY: inst is live.
                 let ok =
@@ -540,10 +609,14 @@ impl Worker {
                 input = sys::TT_SOUNDDEVICE_ID_TEAMTALK_VIRTUAL as i32;
                 output = input;
             }
-            AudioDevices::Default => {
+            AudioDevices::Default | AudioDevices::Shared => {
                 // SAFETY: both pointers are valid for the SDK to write.
                 if unsafe { sys::TT_GetDefaultSoundDevices(&mut input, &mut output) } == 0 {
                     return Err(Error::Refused("No sound devices were found.".into()));
+                }
+                if devices == AudioDevices::Shared {
+                    input |= sys::TT_SOUNDDEVICE_ID_SHARED_FLAG as i32;
+                    output |= sys::TT_SOUNDDEVICE_ID_SHARED_FLAG as i32;
                 }
             }
         }
@@ -558,6 +631,7 @@ impl Worker {
                 return Err(Error::Refused("The speakers couldn't be opened.".into()));
             }
         }
+        self.audio_open = true;
         Ok(())
     }
 
@@ -860,6 +934,11 @@ impl Worker {
                     self.emit(Event::UserLeft { user: u, channel_id });
                 }
             }
+            sys::ClientEvent_CLIENTEVENT_VOICE_ACTIVATION if msg.ttType == sys::TTType___TTBOOL => {
+                // SAFETY: checked ttType.
+                let on = unsafe { union.bActive } != 0;
+                self.emit(Event::VoiceActivated(on));
+            }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_TEXTMSG if msg.ttType == sys::TTType___TEXTMESSAGE => {
                 // SAFETY: checked ttType.
                 let t = unsafe { &union.textmessage };
@@ -995,6 +1074,7 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::InitAudio(_, r)
         | Request::SetTransmitting(_, r)
         | Request::TestTone(_, r) => r,
+        Request::SetVoiceActivation { reply, .. } => reply,
         Request::JoinChannel { reply, .. }
         | Request::JoinPath { reply, .. }
         | Request::SendMessage { reply, .. }
