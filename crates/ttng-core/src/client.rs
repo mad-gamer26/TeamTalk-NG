@@ -549,7 +549,7 @@ impl Worker {
                 stop_delay_ms,
                 reply,
             } => {
-                // SAFETY (all three): inst is live.
+                // SAFETY: inst is live (for all three calls).
                 let ok = unsafe {
                     sys::TT_SetVoiceActivationLevel(self.inst, level.clamp(0, 100)) != 0
                         && sys::TT_SetVoiceActivationStopDelay(self.inst, stop_delay_ms.max(0)) != 0
