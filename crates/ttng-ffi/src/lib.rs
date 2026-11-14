@@ -12,6 +12,9 @@ use ttng_core as core;
 
 uniffi::setup_scaffolding!();
 
+mod services;
+pub use services::*;
+
 /// What went wrong, in words the apps can show as they are (`message`).
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Error)]
 pub enum TtError {

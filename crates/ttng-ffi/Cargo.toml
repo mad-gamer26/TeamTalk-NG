@@ -20,6 +20,8 @@ bindgen = ["uniffi/cli"]
 
 [dependencies]
 ttng-core = { path = "../ttng-core" }
+ttng-services = { path = "../ttng-services" }
+serde_json = "1"
 uniffi = "0.32"
 
 [build-dependencies]
