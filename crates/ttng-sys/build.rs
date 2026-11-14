@@ -91,6 +91,8 @@ fn main() {
             println!("cargo:rustc-link-lib=framework={f}");
         }
         println!("cargo:rustc-link-lib=c++");
+        // zlib (desktop sharing in the SDK), from the system.
+        println!("cargo:rustc-link-lib=z");
     } else {
         println!("cargo:rustc-link-lib=dylib=TeamTalk5");
     }

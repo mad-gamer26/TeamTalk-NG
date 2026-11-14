@@ -95,6 +95,12 @@ fn people_join_talk_and_message_each_other() {
         (got.target, got.text.as_str(), got.from_username.as_str()),
         (MessageTarget::Channel(root), "Hello, channel!", "alice")
     );
+    // The sender gets their own channel message back (the server echoes it),
+    // so the apps show it from the event. Private messages aren't echoed:
+    // the apps show those when sent.
+    a.wait_for("Alice's own message", |e| {
+        matches!(e, Event::MessageReceived(m) if m.text == "Hello, channel!").then_some(())
+    });
 
     // A private message.
     let alice_id = a.client.snapshot().my_user_id;

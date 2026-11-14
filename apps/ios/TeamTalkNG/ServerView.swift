@@ -1,0 +1,394 @@
+import SwiftUI
+
+/// One server: its channels with the people in them, the conversation, and
+/// talking. Magic Tap (two-finger double-tap) talks or mutes from anywhere.
+struct ServerView: View {
+    @Environment(AppModel.self) private var model
+    let connection: ServerConnection
+    @State private var tab = Tab.channels
+    @State private var passwordFor: Channel?
+    @State private var channelPassword = ""
+    @State private var privateWith: User?
+    @State private var volumeFor: User?
+    @State private var showStatus = false
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case channels = "Channels", chat = "Chat"
+        var id: Self { self }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !connection.isConnected {
+                notConnected
+            } else {
+                Picker("Show", selection: $tab) {
+                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                switch tab {
+                case .channels: channels
+                case .chat: ChatView(connection: connection, privateWith: nil)
+                }
+                TalkBar(connection: connection)
+            }
+        }
+        .navigationTitle(connection.snapshot?.server.name.nonEmpty ?? connection.server.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if connection.isConnected {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu("More", systemImage: "ellipsis.circle") {
+                        if (connection.snapshot?.myChannelId ?? 0) > 0 {
+                            Button("Leave channel") { connection.leaveChannel() }
+                        }
+                        Button("Status") { showStatus = true }
+                        Button("Disconnect", role: .destructive) { connection.disconnect() }
+                    }
+                }
+            }
+        }
+        .accessibilityAction(.magicTap) { connection.toggleTalking() }
+        .onAppear { connection.connect() }
+        .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
+            SecureField("Password", text: $channelPassword)
+            Button("Join") {
+                if let c = passwordFor { connection.join(c, password: channelPassword) }
+                channelPassword = ""
+            }
+            Button("Cancel", role: .cancel) { channelPassword = "" }
+        } message: {
+            Text("\(passwordFor?.name ?? "This channel") needs a password.")
+        }
+        .sheet(item: $privateWith) { user in
+            NavigationStack {
+                ChatView(connection: connection, privateWith: user)
+                    .navigationTitle(user.displayName)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { privateWith = nil } }
+                    }
+            }
+        }
+        .sheet(item: $volumeFor) { user in
+            VolumeView(connection: connection, user: user)
+        }
+        .sheet(isPresented: $showStatus) {
+            StatusView(connection: connection)
+        }
+    }
+
+    private var notConnected: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Text(connection.stateText)
+                .multilineTextAlignment(.center)
+            if connection.state == .disconnected {
+                Button(connection.busy ? "Connecting…" : "Connect") { connection.connect() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(connection.busy)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    private var channels: some View {
+        let snap = connection.snapshot
+        let rows = snap.map(ChannelTree.rows) ?? []
+        return List(rows) { row in
+            switch row {
+            case .channel(let c, let depth):
+                ChannelRow(channel: c, depth: depth, snapshot: snap!) {
+                    if c.hasPassword && c.id != snap?.myChannelId {
+                        passwordFor = c
+                    } else if c.id != snap?.myChannelId {
+                        connection.join(c)
+                    }
+                }
+            case .user(let u, let depth):
+                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId,
+                        message: { privateWith = u }, volume: { volumeFor = u })
+            }
+        }
+        .listStyle(.plain)
+    }
+}
+
+extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
+}
+
+/// The channel tree, flattened: each channel, then its people, then its
+/// subchannels, alphabetically.
+enum ChannelTree {
+    enum Row: Identifiable {
+        case channel(Channel, depth: Int)
+        case user(User, depth: Int)
+        var id: String {
+            switch self {
+            case .channel(let c, _): "c\(c.id)"
+            case .user(let u, _): "u\(u.id)"
+            }
+        }
+    }
+
+    static func rows(_ s: Snapshot) -> [Row] {
+        var out: [Row] = []
+        func add(_ c: Channel, _ depth: Int) {
+            out.append(.channel(c, depth: depth))
+            for u in s.users.filter({ $0.channelId == c.id }).sorted(by: { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
+                out.append(.user(u, depth: depth + 1))
+            }
+            for sub in s.channels.filter({ $0.parentId == c.id }).sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
+                add(sub, depth + 1)
+            }
+        }
+        for root in s.channels where root.parentId == 0 { add(root, 0) }
+        return out
+    }
+}
+
+private struct ChannelRow: View {
+    let channel: Channel
+    let depth: Int
+    let snapshot: Snapshot
+    let join: () -> Void
+
+    private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
+    private var here: Bool { snapshot.myChannelId == channel.id }
+
+    private var details: String {
+        let n = snapshot.users.filter { $0.channelId == channel.id }.count
+        var parts = [n == 1 ? "1 person" : "\(n) people"]
+        if here { parts.insert("you're here", at: 0) }
+        if channel.hasPassword { parts.append("password") }
+        if !channel.topic.isEmpty { parts.append(channel.topic) }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        Button(action: join) {
+            HStack {
+                Image(systemName: here ? "folder.fill" : "folder")
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading) {
+                    Text(name).font(.body.weight(here ? .semibold : .regular))
+                    Text(details).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, CGFloat(depth) * 16)
+        }
+        .foregroundStyle(.primary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name), channel")
+        .accessibilityValue(details)
+        .accessibilityHint(here ? "" : "Double-tap to join.")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+private struct UserRow: View {
+    let user: User
+    let depth: Int
+    let isMe: Bool
+    let message: () -> Void
+    let volume: () -> Void
+
+    /// Their state, said with their name.
+    private var label: String {
+        var parts = [isMe ? "\(user.displayName) (you)" : user.displayName]
+        if user.talking { parts.append("talking") }
+        switch user.status {
+        case .away: parts.append("away")
+        case .question: parts.append("has a question")
+        case .available: break
+        }
+        if !user.statusMessage.isEmpty { parts.append(user.statusMessage) }
+        if user.admin { parts.append("admin") }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        HStack {
+            Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
+                .foregroundStyle(user.talking ? .green : .secondary)
+                .accessibilityHidden(true)
+            Text(label)
+        }
+        .padding(.leading, CGFloat(depth) * 16)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .contextMenu { if !isMe { actions } }
+        .accessibilityActions { if !isMe { actions } }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button("Message privately", action: message)
+        Button("Volume", action: volume)
+    }
+}
+
+/// Push to talk, or the microphone's state in the other modes.
+private struct TalkBar: View {
+    @Environment(AppModel.self) private var model
+    let connection: ServerConnection
+    @GestureState private var holding = false
+
+    var body: some View {
+        Group {
+            switch model.talkMode {
+            case .pushToTalk:
+                Text(connection.transmitting ? "Talking" : "Hold to talk")
+                    .font(.title3.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .background(connection.transmitting ? Color.green : Color.accentColor, in: .rect(cornerRadius: 14))
+                    .foregroundStyle(.white)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .updating($holding) { _, s, _ in s = true }
+                    )
+                    .onChange(of: holding) { _, on in connection.setTransmitting(on) }
+                    .accessibilityElement()
+                    .accessibilityLabel("Talk")
+                    .accessibilityValue(connection.transmitting ? "Talking" : "Not talking")
+                    .accessibilityHint("Double-tap to start or stop talking. Magic Tap does the same anywhere.")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { connection.setTransmitting(!connection.transmitting) }
+            case .voiceActivation, .alwaysOn:
+                HStack {
+                    Text(micText).frame(maxWidth: .infinity, alignment: .leading)
+                    Button(connection.muted ? "Unmute" : "Mute") { connection.setMicMuted(!connection.muted) }
+                        .buttonStyle(.borderedProminent)
+                        .tint(connection.muted ? .red : .accentColor)
+                        .accessibilityHint("Magic Tap does the same anywhere.")
+                }
+                .frame(minHeight: 64)
+            }
+        }
+        .padding()
+    }
+
+    private var micText: String {
+        if connection.muted { return "Microphone muted" }
+        if model.talkMode == .alwaysOn { return "Microphone on" }
+        return connection.voiceActive ? "Voice activation: sending" : "Voice activation: waiting for sound"
+    }
+}
+
+/// The channel conversation, or one person's private messages.
+struct ChatView: View {
+    let connection: ServerConnection
+    let privateWith: User?
+    @State private var draft = ""
+    @FocusState private var typing: Bool
+
+    private var lines: [ChatLine] {
+        connection.lines.filter { privateWith == nil ? true : $0.privateWith == privateWith!.displayName }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                List(lines) { line in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
+                            .font(.caption.weight(.semibold))
+                        Text(line.text)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .id(line.id)
+                }
+                .listStyle(.plain)
+                .overlay {
+                    if lines.isEmpty {
+                        Text(privateWith == nil ? "No messages yet." : "No private messages yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: lines.count) {
+                    if let last = lines.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+            HStack {
+                TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($typing)
+                    .onSubmit(send)
+                Button("Send", action: send)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func send() {
+        connection.send(draft, to: privateWith)
+        draft = ""
+    }
+}
+
+/// Someone's volume, in percent.
+private struct VolumeView: View {
+    @Environment(\.dismiss) private var dismiss
+    let connection: ServerConnection
+    let user: User
+    @State private var percent = 100.0
+    @State private var muted = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Slider(value: $percent, in: 0...400, step: 10) { Text("Volume") }
+                    .accessibilityValue("\(Int(percent)) percent")
+                    .onChange(of: percent) { _, v in connection.setVolume(user, percent: Int(v)) }
+                Toggle("Mute", isOn: $muted)
+                    .onChange(of: muted) { _, v in connection.setMuted(user, v) }
+            }
+            .navigationTitle(user.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+/// My status on this server.
+private struct StatusView: View {
+    @Environment(\.dismiss) private var dismiss
+    let connection: ServerConnection
+    @State private var mode = StatusMode.available
+    @State private var message = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("Status", selection: $mode) {
+                    Text("Available").tag(StatusMode.available)
+                    Text("Away").tag(StatusMode.away)
+                    Text("Question").tag(StatusMode.question)
+                }
+                TextField("Status message", text: $message)
+            }
+            .navigationTitle("Status")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Set") { connection.setStatus(mode, message); dismiss() }
+                }
+            }
+            .onAppear {
+                if let s = connection.snapshot, let me = s.users.first(where: { $0.id == s.myUserId }) {
+                    mode = me.status
+                    message = me.statusMessage
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+extension User: Identifiable {}
