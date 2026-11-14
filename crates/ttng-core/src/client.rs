@@ -166,6 +166,12 @@ enum Request {
         motd: String,
         reply: Reply,
     },
+    StartRecording {
+        path: String,
+        format: RecordingFormat,
+        reply: Reply,
+    },
+    StopRecording(Reply),
     Quit,
 }
 
@@ -181,6 +187,8 @@ struct Model {
     users: HashMap<i32, User>,
     files: HashMap<i32, RemoteFile>,
     transfers: HashMap<i32, Transfer>,
+    /// The channel being recorded, and the file.
+    recording: Option<(i32, String)>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -460,6 +468,20 @@ impl Client {
         })
     }
 
+    /// Records my channel's voices (mine included) to `path`, until
+    /// stopped or I leave the channel.
+    pub fn start_recording(&self, path: &str, format: RecordingFormat) -> Result<()> {
+        self.ask(|reply| Request::StartRecording {
+            path: path.into(),
+            format,
+            reply,
+        })
+    }
+
+    pub fn stop_recording(&self) -> Result<()> {
+        self.ask(Request::StopRecording)
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -481,6 +503,7 @@ impl Client {
             users,
             files,
             transfers,
+            recording_path: m.recording.as_ref().map(|(_, p)| p.clone()).unwrap_or_default(),
         }
     }
 }
@@ -968,8 +991,75 @@ impl Worker {
                 let cmd = unsafe { sys::TT_DoUpdateServer(self.inst, &p) };
                 self.track(cmd, Pending::Reply(reply), "Changing the server");
             }
+            Request::StartRecording { path, format, reply } => {
+                let (channel, no_recording, already) = self
+                    .model
+                    .lock()
+                    .map(|m| {
+                        (
+                            m.my_channel_id,
+                            m.channels.get(&m.my_channel_id).is_some_and(|c| c.no_recording),
+                            m.recording.is_some(),
+                        )
+                    })
+                    .unwrap_or((0, false, false));
+                let refuse = |why: &str| Err(Error::Refused(why.into()));
+                let answer = if !self.logged_in() {
+                    Err(Error::NotConnected)
+                } else if channel == 0 {
+                    refuse("Join a channel to record it.")
+                } else if no_recording {
+                    refuse("This channel doesn't allow recording.")
+                } else if already {
+                    refuse("Already recording.")
+                } else {
+                    let p = arg(&path);
+                    let aff = match format {
+                        RecordingFormat::Wave => sys::AudioFileFormat_AFF_WAVE_FORMAT,
+                        RecordingFormat::Mp3 => sys::AudioFileFormat_AFF_MP3_128KBIT_FORMAT,
+                    };
+                    // SAFETY: inst is live; p is NUL-terminated and outlives the call.
+                    if unsafe { sys::TT_StartRecordingMuxedAudioFileEx(self.inst, channel, p.as_ptr(), aff) } != 0 {
+                        if let Ok(mut m) = self.model.lock() {
+                            m.recording = Some((channel, path.clone()));
+                        }
+                        self.emit(Event::RecordingChanged {
+                            path,
+                            active: true,
+                            error: None,
+                        });
+                        Ok(())
+                    } else {
+                        refuse("The recording couldn't start (can the file be written there?).")
+                    }
+                };
+                let _ = reply.send(answer);
+            }
+            Request::StopRecording(reply) => {
+                let stopped = self.stop_recording(None);
+                let _ = reply.send(if stopped {
+                    Ok(())
+                } else {
+                    Err(Error::Refused("Nothing is being recorded.".into()))
+                });
+            }
             Request::Quit => {}
         }
+    }
+
+    /// Ends a recording, if there is one (`error`: why it broke off).
+    fn stop_recording(&mut self, error: Option<String>) -> bool {
+        let Some((channel, path)) = self.model.lock().ok().and_then(|mut m| m.recording.take()) else {
+            return false;
+        };
+        // SAFETY: inst is live.
+        unsafe { sys::TT_StopRecordingMuxedAudioFileEx(self.inst, channel) };
+        self.emit(Event::RecordingChanged {
+            path,
+            active: false,
+            error,
+        });
+        true
     }
 
     fn missing_channel(&self) -> Error {
@@ -1172,6 +1262,9 @@ impl Worker {
     }
 
     fn clear_model(&mut self) {
+        if self.model.lock().map(|m| m.recording.is_some()).unwrap_or(false) {
+            self.stop_recording(Some("Disconnected.".into()));
+        }
         let mut m = self.model.lock().unwrap_or_else(|e| e.into_inner());
         m.channels.clear();
         m.users.clear();
@@ -1343,13 +1436,22 @@ impl Worker {
                 if let Some(mut u) = user() {
                     let channel_id = msg.nSource;
                     u.channel_id = 0;
-                    if let Ok(mut m) = self.model.lock() {
-                        if u.id == m.my_user_id {
-                            m.my_channel_id = 0;
-                        }
-                        m.users.insert(u.id, u.clone());
-                    }
+                    let me = self
+                        .model
+                        .lock()
+                        .map(|mut m| {
+                            let me = u.id == m.my_user_id;
+                            if me {
+                                m.my_channel_id = 0;
+                            }
+                            m.users.insert(u.id, u.clone());
+                            me
+                        })
+                        .unwrap_or(false);
                     self.emit(Event::UserLeft { user: u, channel_id });
+                    if me {
+                        self.stop_recording(None);
+                    }
                 }
             }
             sys::ClientEvent_CLIENTEVENT_VOICE_ACTIVATION if msg.ttType == sys::TTType___TTBOOL => {
@@ -1561,7 +1663,9 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::MoveUser { reply, .. }
         | Request::MakeChannel { reply, .. }
         | Request::UpdateChannel { reply, .. }
-        | Request::UpdateServer { reply, .. } => reply,
+        | Request::UpdateServer { reply, .. }
+        | Request::StartRecording { reply, .. } => reply,
+        Request::StopRecording(r) => r,
         Request::CancelTransfer(_, r) | Request::Unban(_, r) | Request::RemoveChannel(_, r) => r,
         Request::ListBans(r) => {
             let _ = r.send(Err(Error::Refused("The TeamTalk SDK couldn't start.".into())));

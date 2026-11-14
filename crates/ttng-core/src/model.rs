@@ -263,6 +263,15 @@ impl From<&sys::FileTransfer> for Transfer {
     }
 }
 
+/// What a recording is saved as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordingFormat {
+    /// Uncompressed (large, any app plays it).
+    Wave,
+    /// MP3 at 128 kbit/s.
+    Mp3,
+}
+
 /// What I may do on this server (from my account).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MyRights {
@@ -372,6 +381,8 @@ pub struct Snapshot {
     pub files: Vec<RemoteFile>,
     /// Uploads and downloads under way.
     pub transfers: Vec<Transfer>,
+    /// The file being recorded to (my channel's voices); empty when not.
+    pub recording_path: String,
 }
 
 impl Snapshot {
@@ -444,6 +455,12 @@ pub enum Event {
     MessageReceived(TextMessage),
     /// Voice activation started (true) or stopped (false) sending my voice.
     VoiceActivated(bool),
+    /// A recording started (`path` set) or ended (with why, if it broke).
+    RecordingChanged {
+        path: String,
+        active: bool,
+        error: Option<String>,
+    },
     FileAdded(RemoteFile),
     FileRemoved(RemoteFile),
     /// A transfer started, moved on (a few times a second at most), or

@@ -307,3 +307,61 @@ fn several_servers_at_once() {
     assert!(!a1.client.snapshot().users.iter().any(|u| u.username == "carol"));
     assert!(a2.client.snapshot().users.iter().any(|u| u.username == "carol"));
 }
+
+#[test]
+fn recording_the_channel_saves_its_voices() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let path = std::env::temp_dir().join(format!("ttng-rec-{}-{}.wav", std::process::id(), server.port));
+    a.client
+        .start_recording(path.to_str().unwrap(), RecordingFormat::Wave)
+        .expect("recording");
+    assert_eq!(a.client.snapshot().recording_path, path.to_str().unwrap());
+    assert_eq!(
+        a.client.start_recording("/tmp/other.wav", RecordingFormat::Wave),
+        Err(Error::Refused("Already recording.".into()))
+    );
+    // Bob talks (a tone) for a while.
+    b.client.set_test_tone(440).unwrap();
+    b.client.set_transmitting(true).unwrap();
+    std::thread::sleep(Duration::from_millis(2000));
+    b.client.set_transmitting(false).unwrap();
+    // Leaving the channel ends the recording.
+    a.client.leave_channel().unwrap();
+    a.wait_for("the recording ending", |e| {
+        matches!(
+            e,
+            Event::RecordingChanged {
+                active: false,
+                error: None,
+                ..
+            }
+        )
+        .then_some(())
+    });
+    assert!(a.client.snapshot().recording_path.is_empty());
+    let wav = std::fs::read(&path).expect("the file");
+    assert_eq!(&wav[..4], b"RIFF");
+    let samples: Vec<i16> = wav[44..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| i16::from_le_bytes(*c))
+        .collect();
+    let loud = samples.iter().filter(|s| s.unsigned_abs() > 1000).count();
+    assert!(
+        loud > 4800,
+        "Bob's tone is in it ({loud} loud samples of {})",
+        samples.len()
+    );
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(
+        a.client.stop_recording(),
+        Err(Error::Refused("Nothing is being recorded.".into()))
+    );
+}

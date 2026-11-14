@@ -203,6 +203,29 @@ final class ServerConnection {
 
     func clearHistory() { lines = [] }
 
+    // MARK: Recording
+
+    var recording: Bool { !(snapshot?.recordingPath.isEmpty ?? true) }
+
+    /// Records the channel into the app's documents (in the Files app),
+    /// named for the server, channel and time.
+    func startRecording(mp3: Bool) {
+        guard let s = snapshot, s.myChannelId > 0 else { return }
+        let channel = s.channels.first { $0.id == s.myChannelId }
+        let place = channel.map { $0.parentId == 0 ? "Root" : $0.name } ?? "Channel"
+        let stamp = Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        let name = "\(server.title) \(place) \(stamp).\(mp3 ? "mp3" : "wav")"
+            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Recordings")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let path = dir.appendingPathComponent(name).path
+        run("Couldn't record") { try $0.startRecording(path: path, format: mp3 ? .mp3 : .wave) }
+    }
+
+    func stopRecording() {
+        run("Couldn't stop recording") { try $0.stopRecording() }
+    }
+
     // MARK: Administration
 
     var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false) }
@@ -435,6 +458,15 @@ final class ServerConnection {
             case .cancelled:
                 transfers[t.id] = nil
                 announce("Cancelled \(t.remoteName)")
+            }
+        case .recordingChanged(let path, let active, let error):
+            let name = (path as NSString).lastPathComponent
+            if active {
+                announce("Recording")
+            } else if let error {
+                announce("The recording stopped: \(error). Saved as \(name)")
+            } else {
+                announce("Recording saved as \(name), in the Files app")
             }
         case .fileAdded(let f):
             if f.channelId == myChannel, f.uploader != me?.username {

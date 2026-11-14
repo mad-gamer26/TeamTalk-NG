@@ -398,6 +398,13 @@ impl From<core::Transfer> for Transfer {
     }
 }
 
+/// What a recording is saved as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum RecordingFormat {
+    Wave,
+    Mp3,
+}
+
 /// What I may do on this server.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct MyRights {
@@ -536,6 +543,8 @@ pub struct Snapshot {
     pub files: Vec<RemoteFile>,
     /// Uploads and downloads under way.
     pub transfers: Vec<Transfer>,
+    /// The file being recorded to; empty when not.
+    pub recording_path: String,
 }
 
 impl From<core::Snapshot> for Snapshot {
@@ -550,6 +559,7 @@ impl From<core::Snapshot> for Snapshot {
             users: s.users.into_iter().map(Into::into).collect(),
             files: s.files.into_iter().map(Into::into).collect(),
             transfers: s.transfers.into_iter().map(Into::into).collect(),
+            recording_path: s.recording_path,
         }
     }
 }
@@ -605,6 +615,12 @@ pub enum Event {
     VoiceActivated {
         sending: bool,
     },
+    /// A recording started or ended (`error`: why it broke off).
+    RecordingChanged {
+        path: String,
+        active: bool,
+        error: Option<String>,
+    },
     FileAdded {
         file: RemoteFile,
     },
@@ -646,6 +662,7 @@ impl From<core::Event> for Event {
             E::TalkingChanged { user_id, talking } => Self::TalkingChanged { user_id, talking },
             E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             E::VoiceActivated(sending) => Self::VoiceActivated { sending },
+            E::RecordingChanged { path, active, error } => Self::RecordingChanged { path, active, error },
             E::FileAdded(f) => Self::FileAdded { file: f.into() },
             E::FileRemoved(f) => Self::FileRemoved { file: f.into() },
             E::TransferChanged(t) => Self::TransferChanged { transfer: t.into() },
@@ -816,6 +833,19 @@ impl TtClient {
     /// Changes the server's name and message of the day.
     pub fn update_server(&self, name: String, motd: String) -> Result<()> {
         Ok(self.inner.update_server(&name, &motd)?)
+    }
+
+    /// Records my channel's voices to `path` until stopped or I leave.
+    pub fn start_recording(&self, path: String, format: RecordingFormat) -> Result<()> {
+        let f = match format {
+            RecordingFormat::Wave => core::RecordingFormat::Wave,
+            RecordingFormat::Mp3 => core::RecordingFormat::Mp3,
+        };
+        Ok(self.inner.start_recording(&path, f)?)
+    }
+
+    pub fn stop_recording(&self) -> Result<()> {
+        Ok(self.inner.stop_recording()?)
     }
 
     /// A channel's path ("/Lobby/Music/"), "/" for the root.

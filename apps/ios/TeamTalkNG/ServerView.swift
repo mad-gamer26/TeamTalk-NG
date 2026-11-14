@@ -52,6 +52,14 @@ struct ServerView: View {
                             Button("Leave channel") { connection.leaveChannel() }
                         }
                         Button("Status") { showStatus = true }
+                        if (connection.snapshot?.myChannelId ?? 0) > 0 {
+                            if connection.recording {
+                                Button("Stop recording") { connection.stopRecording() }
+                            } else {
+                                Button("Record the channel (MP3)") { connection.startRecording(mp3: true) }
+                                Button("Record the channel (WAV)") { connection.startRecording(mp3: false) }
+                            }
+                        }
                         if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
                             Button("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) }
                         }
