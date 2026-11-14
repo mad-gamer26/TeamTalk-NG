@@ -13,7 +13,19 @@ struct ServerListView: View {
                     NavigationLink {
                         MonitorListView()
                     } label: {
-                        LabeledContent("Monitor", value: model.monitor.unread > 0 ? "\(model.monitor.unread) unread" : "")
+                        // A label with an empty value read as nothing to
+                        // VoiceOver: the name always, the count when any.
+                        let unread = model.monitor.unread
+                        HStack {
+                            Label("Monitor", systemImage: "eye")
+                            Spacer()
+                            if unread > 0 {
+                                Text("\(unread) unread").foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Monitor")
+                        .accessibilityValue(unread > 0 ? "\(unread) unread private messages" : "")
                     }
                 }
                 if model.servers.isEmpty {
@@ -173,7 +185,15 @@ struct SettingsView: View {
                     NavigationLink {
                         NGAccountView()
                     } label: {
-                        LabeledContent("NG Account", value: model.account.email ?? "Not signed in")
+                        let who = model.account.email ?? "Not signed in"
+                        HStack {
+                            Text("NG Account")
+                            Spacer()
+                            Text(who).foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("NG Account")
+                        .accessibilityValue(who)
                     }
                 }
                 Section {
