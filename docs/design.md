@@ -39,3 +39,16 @@
 2. **iPhone app** at parity with the old one: servers, channels, users, messages, settings, sound packs, Monitor, NG Account, AudioNet, recording, admin; migration from the old app.
 3. **Android app** on the same core.
 4. **Mac and Windows apps**, and what neither old app had: voice activation, connection statistics, audio tuning, a microphone test, server statistics, channel operators, the full ban tools, the SDK's multi-track recording, 3D positioning.
+
+## The SDK's trial (found 2026-11-14)
+
+BearWare's prebuilt SDK files are trials: the SDK prints "running in TRAIL
+MODE", and its documentation says the trial binaries "disable themselves
+after 30 days of use" and that an end-user application needs a license
+from BearWare.dk (`TT_SetLicenseInformation(name, key)` before the first
+instance turns trial mode off). In trial mode the SDK runs a background
+check over HTTPS (`perform_check`); a process that exits while it runs can
+crash in the SDK's static destructors (seen in the test programs, after
+every test has passed). BearWare's source repository (GitHub
+BearWare/TeamTalk5) carries the same license agreement. The way forward is
+the owner's decision.

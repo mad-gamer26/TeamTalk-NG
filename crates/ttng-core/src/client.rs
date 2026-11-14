@@ -133,6 +133,39 @@ enum Request {
         reply: Reply,
     },
     CancelTransfer(i32, Reply),
+    Kick {
+        user_id: i32,
+        from_channel: bool,
+        reply: Reply,
+    },
+    BanUser {
+        user_id: i32,
+        kind: BanKind,
+        reply: Reply,
+    },
+    ListBans(Sender<Result<Vec<Ban>>>),
+    Unban(Box<Ban>, Reply),
+    MoveUser {
+        user_id: i32,
+        channel_id: i32,
+        reply: Reply,
+    },
+    MakeChannel {
+        spec: Box<ChannelSpec>,
+        join: bool,
+        reply: Reply,
+    },
+    UpdateChannel {
+        id: i32,
+        spec: Box<ChannelSpec>,
+        reply: Reply,
+    },
+    RemoveChannel(i32, Reply),
+    UpdateServer {
+        name: String,
+        motd: String,
+        reply: Reply,
+    },
     Quit,
 }
 
@@ -143,6 +176,7 @@ struct Model {
     server: ServerInfo,
     my_user_id: i32,
     my_channel_id: i32,
+    my_rights: MyRights,
     channels: HashMap<i32, Channel>,
     users: HashMap<i32, User>,
     files: HashMap<i32, RemoteFile>,
@@ -341,6 +375,91 @@ impl Client {
         self.ask(|r| Request::CancelTransfer(transfer_id, r))
     }
 
+    /// Kicks someone out of their channel, or (`from_channel` false) off the
+    /// server.
+    pub fn kick_user(&self, user_id: i32, from_channel: bool) -> Result<()> {
+        self.ask(|reply| Request::Kick {
+            user_id,
+            from_channel,
+            reply,
+        })
+    }
+
+    /// Bans someone from the server (kick them too, or they stay until they
+    /// leave).
+    pub fn ban_user(&self, user_id: i32, kind: BanKind) -> Result<()> {
+        self.ask(|reply| Request::BanUser { user_id, kind, reply })
+    }
+
+    /// The server's bans.
+    pub fn list_bans(&self) -> Result<Vec<Ban>> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx.send(Request::ListBans(rtx)).map_err(|_| Error::NotConnected)?;
+        match rrx.recv_timeout(ANSWER_TIMEOUT) {
+            Ok(r) => r,
+            Err(RecvTimeoutError::Timeout) => Err(Error::Timeout),
+            Err(RecvTimeoutError::Disconnected) => Err(Error::NotConnected),
+        }
+    }
+
+    pub fn unban(&self, ban: &Ban) -> Result<()> {
+        self.ask(|r| Request::Unban(Box::new(ban.clone()), r))
+    }
+
+    /// Moves someone into a channel.
+    pub fn move_user(&self, user_id: i32, channel_id: i32) -> Result<()> {
+        self.ask(|reply| Request::MoveUser {
+            user_id,
+            channel_id,
+            reply,
+        })
+    }
+
+    /// Makes a channel (needs the right to modify channels), with the
+    /// parent channel's audio settings.
+    pub fn make_channel(&self, spec: &ChannelSpec) -> Result<()> {
+        self.ask(|reply| Request::MakeChannel {
+            spec: Box::new(spec.clone()),
+            join: false,
+            reply,
+        })
+    }
+
+    /// Makes a temporary channel and joins it (it goes when the last person
+    /// leaves); for people who may make temporary channels.
+    pub fn join_new_channel(&self, spec: &ChannelSpec) -> Result<()> {
+        self.ask(|reply| Request::MakeChannel {
+            spec: Box::new(ChannelSpec {
+                permanent: false,
+                ..spec.clone()
+            }),
+            join: true,
+            reply,
+        })
+    }
+
+    /// Changes a channel's settings (name, topic, password, flags).
+    pub fn update_channel(&self, id: i32, spec: &ChannelSpec) -> Result<()> {
+        self.ask(|reply| Request::UpdateChannel {
+            id,
+            spec: Box::new(spec.clone()),
+            reply,
+        })
+    }
+
+    pub fn remove_channel(&self, id: i32) -> Result<()> {
+        self.ask(|r| Request::RemoveChannel(id, r))
+    }
+
+    /// Changes the server's name and message of the day.
+    pub fn update_server(&self, name: &str, motd: &str) -> Result<()> {
+        self.ask(|reply| Request::UpdateServer {
+            name: name.into(),
+            motd: motd.into(),
+            reply,
+        })
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -357,6 +476,7 @@ impl Client {
             server: m.server.clone(),
             my_user_id: m.my_user_id,
             my_channel_id: m.my_channel_id,
+            my_rights: m.my_rights,
             channels,
             users,
             files,
@@ -384,6 +504,8 @@ enum Pending {
     Rejoin,
     /// An earlier part of a long message (only the last part answers).
     Part,
+    /// A ban list being collected.
+    Bans(Vec<Ban>, Sender<Result<Vec<Ban>>>),
 }
 
 /// A connection being made: who asked (if anyone is waiting), and what for.
@@ -725,7 +847,136 @@ impl Worker {
                     }
                 }
             }
+            Request::Kick {
+                user_id,
+                from_channel,
+                reply,
+            } => {
+                let channel = if from_channel {
+                    self.model
+                        .lock()
+                        .ok()
+                        .and_then(|m| m.users.get(&user_id).map(|u| u.channel_id))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                if from_channel && channel == 0 {
+                    let _ = reply.send(Err(Error::Refused("They're not in a channel.".into())));
+                    return;
+                }
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoKickUser(self.inst, user_id, channel) };
+                self.track(cmd, Pending::Reply(reply), "Kicking");
+            }
+            Request::BanUser { user_id, kind, reply } => {
+                let types = match kind {
+                    BanKind::IpAddress => sys::BanType_BANTYPE_IPADDR,
+                    BanKind::Username => sys::BanType_BANTYPE_USERNAME,
+                };
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoBanUserEx(self.inst, user_id, types) };
+                self.track(cmd, Pending::Reply(reply), "Banning");
+            }
+            Request::ListBans(reply) => {
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoListBans(self.inst, 0, 0, 100_000) };
+                if cmd > 0 {
+                    self.pending
+                        .insert(cmd, (Pending::Bans(Vec::new(), reply), Instant::now()));
+                } else {
+                    let _ = reply.send(Err(if self.logged_in() {
+                        Error::Refused("The bans can't be listed right now.".into())
+                    } else {
+                        Error::NotConnected
+                    }));
+                }
+            }
+            Request::Unban(ban, reply) => {
+                let b = sys::BannedUser {
+                    szIPAddress: to_tt(&ban.ip_address),
+                    szUsername: to_tt(&ban.username),
+                    szChannelPath: to_tt(&ban.channel_path),
+                    uBanTypes: ban.raw_types,
+                    ..Default::default()
+                };
+                // SAFETY: inst is live; b is a valid BannedUser.
+                let cmd = unsafe { sys::TT_DoUnBanUserEx(self.inst, &b) };
+                self.track(cmd, Pending::Reply(reply), "Removing the ban");
+            }
+            Request::MoveUser {
+                user_id,
+                channel_id,
+                reply,
+            } => {
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoMoveUser(self.inst, user_id, channel_id) };
+                self.track(cmd, Pending::Reply(reply), "Moving");
+            }
+            Request::MakeChannel { spec, join, reply } => {
+                let mut c = sys::Channel::default();
+                // The parent's audio settings (a channel needs a codec).
+                // SAFETY: inst is live; c is a valid Channel for the SDK to fill.
+                if unsafe { sys::TT_GetChannel(self.inst, spec.parent_id, &mut c) } == 0 {
+                    let _ = reply.send(Err(self.missing_channel()));
+                    return;
+                }
+                c.nParentID = spec.parent_id;
+                c.nChannelID = 0;
+                c.szOpPassword = [0; 512];
+                c.nDiskQuota = 0;
+                c.transmitUsers = [[0; 2]; 128];
+                c.transmitUsersQueue = [0; 16];
+                apply_spec(&mut c, &spec, true);
+                // SAFETY: inst is live; c is a valid Channel.
+                let cmd = unsafe {
+                    if join {
+                        sys::TT_DoJoinChannel(self.inst, &c)
+                    } else {
+                        sys::TT_DoMakeChannel(self.inst, &c)
+                    }
+                };
+                self.track(cmd, Pending::Reply(reply), "Making the channel");
+            }
+            Request::UpdateChannel { id, spec, reply } => {
+                let mut c = sys::Channel::default();
+                // SAFETY: inst is live; c is a valid Channel for the SDK to fill.
+                if unsafe { sys::TT_GetChannel(self.inst, id, &mut c) } == 0 {
+                    let _ = reply.send(Err(self.missing_channel()));
+                    return;
+                }
+                apply_spec(&mut c, &spec, false);
+                // SAFETY: inst is live; c is a valid Channel.
+                let cmd = unsafe { sys::TT_DoUpdateChannel(self.inst, &c) };
+                self.track(cmd, Pending::Reply(reply), "Changing the channel");
+            }
+            Request::RemoveChannel(id, reply) => {
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoRemoveChannel(self.inst, id) };
+                self.track(cmd, Pending::Reply(reply), "Removing the channel");
+            }
+            Request::UpdateServer { name, motd, reply } => {
+                let mut p = sys::ServerProperties::default();
+                // SAFETY: inst is live; p is valid for the SDK to fill.
+                if unsafe { sys::TT_GetServerProperties(self.inst, &mut p) } == 0 {
+                    let _ = reply.send(Err(Error::NotConnected));
+                    return;
+                }
+                p.szServerName = to_tt(&name);
+                p.szMOTDRaw = to_tt(&motd);
+                // SAFETY: inst is live; p is valid.
+                let cmd = unsafe { sys::TT_DoUpdateServer(self.inst, &p) };
+                self.track(cmd, Pending::Reply(reply), "Changing the server");
+            }
             Request::Quit => {}
+        }
+    }
+
+    fn missing_channel(&self) -> Error {
+        if self.logged_in() {
+            Error::Refused("That channel isn't there any more.".into())
+        } else {
+            Error::NotConnected
         }
     }
 
@@ -928,6 +1179,7 @@ impl Worker {
         m.transfers.clear();
         m.my_user_id = 0;
         m.my_channel_id = 0;
+        m.my_rights = MyRights::default();
         m.server = ServerInfo::default();
         self.partial.clear();
     }
@@ -1105,6 +1357,16 @@ impl Worker {
                 let on = unsafe { union.bActive } != 0;
                 self.emit(Event::VoiceActivated(on));
             }
+            sys::ClientEvent_CLIENTEVENT_CMD_BANNEDUSER if msg.ttType == sys::TTType___BANNEDUSER => {
+                // SAFETY: checked ttType.
+                let ban = Ban::from(unsafe { &union.banneduser });
+                // Bans arrive while their list command runs (one at a time).
+                if let Some((Pending::Bans(list, _), _)) =
+                    self.pending.values_mut().find(|(p, _)| matches!(p, Pending::Bans(..)))
+                {
+                    list.push(ban);
+                }
+            }
             sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW | sys::ClientEvent_CLIENTEVENT_CMD_FILE_REMOVE
                 if msg.ttType == sys::TTType___REMOTEFILE =>
             {
@@ -1180,8 +1442,21 @@ impl Worker {
                 let _ = r.send(result);
             }
             Pending::Part => {}
+            Pending::Bans(bans, r) => {
+                let _ = r.send(result.map(|()| bans));
+            }
             Pending::Login => match result {
                 Ok(()) => {
+                    // SAFETY: inst is live.
+                    let rights = unsafe {
+                        MyRights::from_raw(
+                            sys::TT_GetMyUserRights(self.inst),
+                            sys::TT_GetMyUserType(self.inst) & sys::UserType_USERTYPE_ADMIN != 0,
+                        )
+                    };
+                    if let Ok(mut m) = self.model.lock() {
+                        m.my_rights = rights;
+                    }
                     self.set_state(ConnectionState::LoggedIn);
                     match self.rejoin.clone() {
                         Some((path, password)) => self.join_after_login(&path, &password),
@@ -1281,7 +1556,17 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::Upload { reply, .. }
         | Request::Download { reply, .. }
         | Request::DeleteFile { reply, .. } => reply,
-        Request::CancelTransfer(_, r) => r,
+        Request::Kick { reply, .. }
+        | Request::BanUser { reply, .. }
+        | Request::MoveUser { reply, .. }
+        | Request::MakeChannel { reply, .. }
+        | Request::UpdateChannel { reply, .. }
+        | Request::UpdateServer { reply, .. } => reply,
+        Request::CancelTransfer(_, r) | Request::Unban(_, r) | Request::RemoveChannel(_, r) => r,
+        Request::ListBans(r) => {
+            let _ = r.send(Err(Error::Refused("The TeamTalk SDK couldn't start.".into())));
+            return None;
+        }
         Request::Quit => return None,
     })
 }
@@ -1302,6 +1587,13 @@ fn server_error_text(code: i32, server_text: &str) -> String {
         sys::ClientError_CMDERR_USER_NOT_FOUND => "That person isn't on the server any more.",
         sys::ClientError_CMDERR_ALREADY_IN_CHANNEL => "You're already in that channel.",
         sys::ClientError_CMDERR_NOT_IN_CHANNEL => "You're not in a channel.",
+        sys::ClientError_CMDERR_CHANNEL_ALREADY_EXISTS => "There's already a channel with that name there.",
+        sys::ClientError_CMDERR_CHANNEL_HAS_USERS => "That channel still has people in it.",
+        sys::ClientError_CMDERR_BAN_NOT_FOUND => "That ban isn't there any more.",
+        sys::ClientError_CMDERR_MAX_DISKUSAGE_EXCEEDED => "There's no room for that file on the server.",
+        sys::ClientError_CMDERR_FILE_ALREADY_EXISTS => "That channel already has a file with that name.",
+        sys::ClientError_CMDERR_FILESHARING_DISABLED => "This server doesn't share files.",
+        sys::ClientError_CMDERR_MAX_CHANNELS_EXCEEDED => "The server has as many channels as it allows.",
         sys::ClientError_CMDERR_INCOMPATIBLE_PROTOCOLS => "The server's TeamTalk version is incompatible.",
         _ => "",
     };
@@ -1311,5 +1603,37 @@ fn server_error_text(code: i32, server_text: &str) -> String {
         format!("The server refused that (error {code}).")
     } else {
         server_text.to_owned()
+    }
+}
+
+/// Sets a channel's settings from a spec (`making`: a new channel, where
+/// no password means none).
+fn apply_spec(c: &mut sys::Channel, spec: &ChannelSpec, making: bool) {
+    c.szName = to_tt(&spec.name);
+    c.szTopic = to_tt(&spec.topic);
+    match (&spec.password, making) {
+        (Some(p), _) => c.szPassword = to_tt(p),
+        (None, true) => c.szPassword = [0; 512],
+        (None, false) => {}
+    }
+    // 0 keeps the limit there is (the parent's, for a new channel): to
+    // TeamTalk, 0 would mean nobody may join.
+    if spec.max_users > 0 {
+        c.nMaxUsers = spec.max_users;
+    }
+    let flags = [
+        (spec.permanent, sys::ChannelType_CHANNEL_PERMANENT),
+        (spec.solo_transmit, sys::ChannelType_CHANNEL_SOLO_TRANSMIT),
+        (spec.classroom, sys::ChannelType_CHANNEL_CLASSROOM),
+        (spec.no_voice_activation, sys::ChannelType_CHANNEL_NO_VOICEACTIVATION),
+        (spec.no_recording, sys::ChannelType_CHANNEL_NO_RECORDING),
+        (spec.hidden, sys::ChannelType_CHANNEL_HIDDEN),
+    ];
+    for (on, flag) in flags {
+        if on {
+            c.uChannelType |= flag;
+        } else {
+            c.uChannelType &= !flag;
+        }
     }
 }

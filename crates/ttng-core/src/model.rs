@@ -263,6 +263,101 @@ impl From<&sys::FileTransfer> for Transfer {
     }
 }
 
+/// What I may do on this server (from my account).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MyRights {
+    pub admin: bool,
+    pub create_temporary_channels: bool,
+    pub modify_channels: bool,
+    pub broadcast: bool,
+    pub kick: bool,
+    pub ban: bool,
+    pub move_users: bool,
+    pub upload_files: bool,
+    pub download_files: bool,
+    pub update_server: bool,
+}
+
+impl MyRights {
+    pub(crate) fn from_raw(rights: u32, admin: bool) -> Self {
+        let has = |r: sys::UserRight| admin || rights & r != 0;
+        MyRights {
+            admin,
+            create_temporary_channels: has(sys::UserRight_USERRIGHT_CREATE_TEMPORARY_CHANNEL),
+            modify_channels: has(sys::UserRight_USERRIGHT_MODIFY_CHANNELS),
+            broadcast: has(sys::UserRight_USERRIGHT_TEXTMESSAGE_BROADCAST),
+            kick: has(sys::UserRight_USERRIGHT_KICK_USERS),
+            ban: has(sys::UserRight_USERRIGHT_BAN_USERS),
+            move_users: has(sys::UserRight_USERRIGHT_MOVE_USERS),
+            upload_files: has(sys::UserRight_USERRIGHT_UPLOAD_FILES),
+            download_files: has(sys::UserRight_USERRIGHT_DOWNLOAD_FILES),
+            update_server: has(sys::UserRight_USERRIGHT_UPDATE_SERVERPROPERTIES),
+        }
+    }
+}
+
+/// A channel to make, or a channel's new settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChannelSpec {
+    /// Where it goes (ignored when updating).
+    pub parent_id: i32,
+    pub name: String,
+    pub topic: String,
+    /// A new password ("" for none); `None` keeps the current one.
+    pub password: Option<String>,
+    /// 0 keeps the current limit (a new channel: its parent's).
+    pub max_users: i32,
+    pub permanent: bool,
+    pub solo_transmit: bool,
+    pub classroom: bool,
+    pub no_voice_activation: bool,
+    pub no_recording: bool,
+    pub hidden: bool,
+}
+
+/// How a ban recognises someone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BanKind {
+    /// Their IP address.
+    IpAddress,
+    /// Their account.
+    Username,
+}
+
+/// A ban on the server.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Ban {
+    pub ip_address: String,
+    pub username: String,
+    pub nickname: String,
+    /// When, as the server writes it.
+    pub time: String,
+    /// Who banned them.
+    pub owner: String,
+    /// A channel ban (its path), or empty for the whole server.
+    pub channel_path: String,
+    pub by_ip_address: bool,
+    pub by_username: bool,
+    /// The ban's types as the server gave them (needed to remove it).
+    pub raw_types: u32,
+}
+
+impl From<&sys::BannedUser> for Ban {
+    fn from(b: &sys::BannedUser) -> Self {
+        Ban {
+            ip_address: from_tt(&b.szIPAddress),
+            username: from_tt(&b.szUsername),
+            nickname: from_tt(&b.szNickname),
+            time: from_tt(&b.szBanTime),
+            owner: from_tt(&b.szOwner),
+            channel_path: from_tt(&b.szChannelPath),
+            by_ip_address: b.uBanTypes & sys::BanType_BANTYPE_IPADDR != 0,
+            by_username: b.uBanTypes & sys::BanType_BANTYPE_USERNAME != 0,
+            raw_types: b.uBanTypes,
+        }
+    }
+}
+
 /// Everything the core knows about a connection, at one moment.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
@@ -270,6 +365,7 @@ pub struct Snapshot {
     pub server: ServerInfo,
     pub my_user_id: i32,
     pub my_channel_id: i32,
+    pub my_rights: MyRights,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
     /// Every channel's files (that I may see).

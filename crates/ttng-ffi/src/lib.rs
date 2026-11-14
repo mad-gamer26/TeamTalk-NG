@@ -393,6 +393,131 @@ impl From<core::Transfer> for Transfer {
     }
 }
 
+/// What I may do on this server.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct MyRights {
+    pub admin: bool,
+    pub create_temporary_channels: bool,
+    pub modify_channels: bool,
+    pub broadcast: bool,
+    pub kick: bool,
+    pub ban: bool,
+    pub move_users: bool,
+    pub upload_files: bool,
+    pub download_files: bool,
+    pub update_server: bool,
+}
+
+impl From<core::MyRights> for MyRights {
+    fn from(r: core::MyRights) -> Self {
+        MyRights {
+            admin: r.admin,
+            create_temporary_channels: r.create_temporary_channels,
+            modify_channels: r.modify_channels,
+            broadcast: r.broadcast,
+            kick: r.kick,
+            ban: r.ban,
+            move_users: r.move_users,
+            upload_files: r.upload_files,
+            download_files: r.download_files,
+            update_server: r.update_server,
+        }
+    }
+}
+
+/// A channel to make, or a channel's new settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct ChannelSpec {
+    /// Where it goes (ignored when updating).
+    pub parent_id: i32,
+    pub name: String,
+    pub topic: String,
+    /// A new password ("" for none); nil keeps the current one.
+    pub password: Option<String>,
+    /// 0 keeps the current limit (a new channel: its parent's).
+    pub max_users: i32,
+    pub permanent: bool,
+    pub solo_transmit: bool,
+    pub classroom: bool,
+    pub no_voice_activation: bool,
+    pub no_recording: bool,
+    pub hidden: bool,
+}
+
+impl From<ChannelSpec> for core::ChannelSpec {
+    fn from(s: ChannelSpec) -> Self {
+        core::ChannelSpec {
+            parent_id: s.parent_id,
+            name: s.name,
+            topic: s.topic,
+            password: s.password,
+            max_users: s.max_users,
+            permanent: s.permanent,
+            solo_transmit: s.solo_transmit,
+            classroom: s.classroom,
+            no_voice_activation: s.no_voice_activation,
+            no_recording: s.no_recording,
+            hidden: s.hidden,
+        }
+    }
+}
+
+/// How a ban recognises someone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum BanKind {
+    IpAddress,
+    Username,
+}
+
+/// A ban on the server.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Ban {
+    pub ip_address: String,
+    pub username: String,
+    pub nickname: String,
+    pub time: String,
+    /// Who banned them.
+    pub owner: String,
+    /// A channel ban (its path), or empty for the whole server.
+    pub channel_path: String,
+    pub by_ip_address: bool,
+    pub by_username: bool,
+    /// Keep as it is (needed to remove the ban).
+    pub raw_types: u32,
+}
+
+impl From<core::Ban> for Ban {
+    fn from(b: core::Ban) -> Self {
+        Ban {
+            ip_address: b.ip_address,
+            username: b.username,
+            nickname: b.nickname,
+            time: b.time,
+            owner: b.owner,
+            channel_path: b.channel_path,
+            by_ip_address: b.by_ip_address,
+            by_username: b.by_username,
+            raw_types: b.raw_types,
+        }
+    }
+}
+
+impl From<Ban> for core::Ban {
+    fn from(b: Ban) -> Self {
+        core::Ban {
+            ip_address: b.ip_address,
+            username: b.username,
+            nickname: b.nickname,
+            time: b.time,
+            owner: b.owner,
+            channel_path: b.channel_path,
+            by_ip_address: b.by_ip_address,
+            by_username: b.by_username,
+            raw_types: b.raw_types,
+        }
+    }
+}
+
 /// Everything known about a connection, at one moment.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct Snapshot {
@@ -400,6 +525,7 @@ pub struct Snapshot {
     pub server: ServerInfo,
     pub my_user_id: i32,
     pub my_channel_id: i32,
+    pub my_rights: MyRights,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
     pub files: Vec<RemoteFile>,
@@ -414,6 +540,7 @@ impl From<core::Snapshot> for Snapshot {
             server: s.server.into(),
             my_user_id: s.my_user_id,
             my_channel_id: s.my_channel_id,
+            my_rights: s.my_rights.into(),
             channels: s.channels.into_iter().map(Into::into).collect(),
             users: s.users.into_iter().map(Into::into).collect(),
             files: s.files.into_iter().map(Into::into).collect(),
@@ -635,6 +762,55 @@ impl TtClient {
 
     pub fn cancel_transfer(&self, transfer_id: i32) -> Result<()> {
         Ok(self.inner.cancel_transfer(transfer_id)?)
+    }
+
+    /// Kicks someone from their channel, or (`from_channel` false) the server.
+    pub fn kick_user(&self, user_id: i32, from_channel: bool) -> Result<()> {
+        Ok(self.inner.kick_user(user_id, from_channel)?)
+    }
+
+    /// Bans someone from the server (kick them too).
+    pub fn ban_user(&self, user_id: i32, kind: BanKind) -> Result<()> {
+        let kind = match kind {
+            BanKind::IpAddress => core::BanKind::IpAddress,
+            BanKind::Username => core::BanKind::Username,
+        };
+        Ok(self.inner.ban_user(user_id, kind)?)
+    }
+
+    pub fn list_bans(&self) -> Result<Vec<Ban>> {
+        Ok(self.inner.list_bans()?.into_iter().map(Into::into).collect())
+    }
+
+    pub fn unban(&self, ban: Ban) -> Result<()> {
+        Ok(self.inner.unban(&ban.into())?)
+    }
+
+    pub fn move_user(&self, user_id: i32, channel_id: i32) -> Result<()> {
+        Ok(self.inner.move_user(user_id, channel_id)?)
+    }
+
+    /// Makes a channel (needs the right to modify channels).
+    pub fn make_channel(&self, spec: ChannelSpec) -> Result<()> {
+        Ok(self.inner.make_channel(&spec.into())?)
+    }
+
+    /// Makes a temporary channel and joins it.
+    pub fn join_new_channel(&self, spec: ChannelSpec) -> Result<()> {
+        Ok(self.inner.join_new_channel(&spec.into())?)
+    }
+
+    pub fn update_channel(&self, channel_id: i32, spec: ChannelSpec) -> Result<()> {
+        Ok(self.inner.update_channel(channel_id, &spec.into())?)
+    }
+
+    pub fn remove_channel(&self, channel_id: i32) -> Result<()> {
+        Ok(self.inner.remove_channel(channel_id)?)
+    }
+
+    /// Changes the server's name and message of the day.
+    pub fn update_server(&self, name: String, motd: String) -> Result<()> {
+        Ok(self.inner.update_server(&name, &motd)?)
     }
 
     /// A channel's path ("/Lobby/Music/"), "/" for the root.
