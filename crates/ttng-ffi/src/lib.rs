@@ -187,6 +187,8 @@ pub struct Channel {
     pub no_voice_activation: bool,
     pub no_recording: bool,
     pub hidden: bool,
+    /// Classroom channels: who may send what.
+    pub transmit: Vec<TransmitPermission>,
 }
 
 impl From<core::Channel> for Channel {
@@ -205,6 +207,23 @@ impl From<core::Channel> for Channel {
             no_voice_activation: c.no_voice_activation,
             no_recording: c.no_recording,
             hidden: c.hidden,
+            transmit: c
+                .transmit
+                .iter()
+                .map(|t| TransmitPermission {
+                    user_id: t.user_id,
+                    allowed: [
+                        TransmitStream::Voice,
+                        TransmitStream::Video,
+                        TransmitStream::Desktop,
+                        TransmitStream::MediaFile,
+                        TransmitStream::ChannelMessages,
+                    ]
+                    .into_iter()
+                    .filter(|s| t.allows((*s).into()))
+                    .collect(),
+                })
+                .collect(),
         }
     }
 }
@@ -253,6 +272,195 @@ pub struct User {
     /// Shown to admins only; empty otherwise.
     pub ip_address: String,
     pub talking: bool,
+    pub version: String,
+    pub gender: Gender,
+    pub sending_video: bool,
+    pub sharing_desktop: bool,
+    pub streaming_media: bool,
+    /// What I receive from them, and they from me.
+    pub my_subscriptions: Subscriptions,
+    pub their_subscriptions: Subscriptions,
+    pub voice_muted: bool,
+    pub media_muted: bool,
+    /// Percent (100 as sent).
+    pub voice_volume: i32,
+    pub media_volume: i32,
+    pub voice_left: bool,
+    pub voice_right: bool,
+    pub media_left: bool,
+    pub media_right: bool,
+    /// An operator of their channel.
+    pub operator: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Gender {
+    Male,
+    Female,
+    Neutral,
+}
+
+impl From<core::Gender> for Gender {
+    fn from(g: core::Gender) -> Self {
+        match g {
+            core::Gender::Male => Self::Male,
+            core::Gender::Female => Self::Female,
+            core::Gender::Neutral => Self::Neutral,
+        }
+    }
+}
+
+impl From<Gender> for core::Gender {
+    fn from(g: Gender) -> Self {
+        match g {
+            Gender::Male => Self::Male,
+            Gender::Female => Self::Female,
+            Gender::Neutral => Self::Neutral,
+        }
+    }
+}
+
+/// One kind of thing to receive from someone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum Subscription {
+    UserMessages,
+    ChannelMessages,
+    BroadcastMessages,
+    Voice,
+    Video,
+    Desktop,
+    DesktopAccess,
+    MediaFile,
+    InterceptUserMessages,
+    InterceptChannelMessages,
+    InterceptVoice,
+    InterceptVideo,
+    InterceptDesktop,
+    InterceptMediaFile,
+}
+
+impl From<Subscription> for core::Subscription {
+    fn from(s: Subscription) -> Self {
+        use core::Subscription as S;
+        match s {
+            Subscription::UserMessages => S::UserMessages,
+            Subscription::ChannelMessages => S::ChannelMessages,
+            Subscription::BroadcastMessages => S::BroadcastMessages,
+            Subscription::Voice => S::Voice,
+            Subscription::Video => S::Video,
+            Subscription::Desktop => S::Desktop,
+            Subscription::DesktopAccess => S::DesktopAccess,
+            Subscription::MediaFile => S::MediaFile,
+            Subscription::InterceptUserMessages => S::InterceptUserMessages,
+            Subscription::InterceptChannelMessages => S::InterceptChannelMessages,
+            Subscription::InterceptVoice => S::InterceptVoice,
+            Subscription::InterceptVideo => S::InterceptVideo,
+            Subscription::InterceptDesktop => S::InterceptDesktop,
+            Subscription::InterceptMediaFile => S::InterceptMediaFile,
+        }
+    }
+}
+
+const ALL_SUBSCRIPTIONS: [Subscription; 14] = [
+    Subscription::UserMessages,
+    Subscription::ChannelMessages,
+    Subscription::BroadcastMessages,
+    Subscription::Voice,
+    Subscription::Video,
+    Subscription::Desktop,
+    Subscription::DesktopAccess,
+    Subscription::MediaFile,
+    Subscription::InterceptUserMessages,
+    Subscription::InterceptChannelMessages,
+    Subscription::InterceptVoice,
+    Subscription::InterceptVideo,
+    Subscription::InterceptDesktop,
+    Subscription::InterceptMediaFile,
+];
+
+/// The subscriptions that are on.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct Subscriptions {
+    pub on: Vec<Subscription>,
+}
+
+impl From<core::Subscriptions> for Subscriptions {
+    fn from(s: core::Subscriptions) -> Self {
+        Subscriptions {
+            on: ALL_SUBSCRIPTIONS.into_iter().filter(|x| s.has((*x).into())).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AudioStream {
+    Voice,
+    MediaFile,
+}
+
+impl From<AudioStream> for core::AudioStream {
+    fn from(s: AudioStream) -> Self {
+        match s {
+            AudioStream::Voice => Self::Voice,
+            AudioStream::MediaFile => Self::MediaFile,
+        }
+    }
+}
+
+impl From<core::AudioStream> for AudioStream {
+    fn from(s: core::AudioStream) -> Self {
+        match s {
+            core::AudioStream::Voice => Self::Voice,
+            core::AudioStream::MediaFile => Self::MediaFile,
+        }
+    }
+}
+
+/// A stream someone may send in a classroom channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum TransmitStream {
+    Voice,
+    Video,
+    Desktop,
+    MediaFile,
+    ChannelMessages,
+}
+
+impl From<TransmitStream> for core::TransmitStream {
+    fn from(s: TransmitStream) -> Self {
+        match s {
+            TransmitStream::Voice => Self::Voice,
+            TransmitStream::Video => Self::Video,
+            TransmitStream::Desktop => Self::Desktop,
+            TransmitStream::MediaFile => Self::MediaFile,
+            TransmitStream::ChannelMessages => Self::ChannelMessages,
+        }
+    }
+}
+
+/// Who may send what in a classroom channel (`user_id` 0: everyone).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TransmitPermission {
+    pub user_id: i32,
+    pub allowed: Vec<TransmitStream>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct UserStatistics {
+    pub voice_packets_received: i64,
+    pub voice_packets_lost: i64,
+    pub media_audio_packets_received: i64,
+    pub media_audio_packets_lost: i64,
+    pub video_packets_received: i64,
+    pub video_frames_received: i64,
+    pub video_frames_lost: i64,
+}
+
+/// Whose audio I relay into my channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Relay {
+    pub user_id: i32,
+    pub stream: AudioStream,
 }
 
 impl From<core::User> for User {
@@ -269,6 +477,22 @@ impl From<core::User> for User {
             client_name: u.client_name,
             ip_address: u.ip_address,
             talking: u.talking,
+            version: u.version,
+            gender: u.gender.into(),
+            sending_video: u.sending_video,
+            sharing_desktop: u.sharing_desktop,
+            streaming_media: u.streaming_media,
+            my_subscriptions: u.my_subscriptions.into(),
+            their_subscriptions: u.their_subscriptions.into(),
+            voice_muted: u.voice_muted,
+            media_muted: u.media_muted,
+            voice_volume: u.voice_volume,
+            media_volume: u.media_volume,
+            voice_left: u.voice_left,
+            voice_right: u.voice_right,
+            media_left: u.media_left,
+            media_right: u.media_right,
+            operator: u.operator,
         }
     }
 }
@@ -545,6 +769,8 @@ pub struct Snapshot {
     pub transfers: Vec<Transfer>,
     /// The file being recorded to; empty when not.
     pub recording_path: String,
+    pub muted_all: bool,
+    pub relaying: Option<Relay>,
 }
 
 impl From<core::Snapshot> for Snapshot {
@@ -560,6 +786,11 @@ impl From<core::Snapshot> for Snapshot {
             files: s.files.into_iter().map(Into::into).collect(),
             transfers: s.transfers.into_iter().map(Into::into).collect(),
             recording_path: s.recording_path,
+            muted_all: s.muted_all,
+            relaying: s.relaying.map(|(user_id, stream)| Relay {
+                user_id,
+                stream: stream.into(),
+            }),
         }
     }
 }
@@ -846,6 +1077,85 @@ impl TtClient {
 
     pub fn stop_recording(&self) -> Result<()> {
         Ok(self.inner.stop_recording()?)
+    }
+
+    pub fn set_subscription(&self, user_id: i32, what: Subscription, on: bool) -> Result<()> {
+        Ok(self.inner.set_subscription(user_id, what.into(), on)?)
+    }
+
+    pub fn set_hear_myself(&self, on: bool) -> Result<()> {
+        Ok(self.inner.set_hear_myself(on)?)
+    }
+
+    pub fn set_user_media_volume(&self, user_id: i32, percent: i32) -> Result<()> {
+        Ok(self.inner.set_user_media_volume(user_id, percent)?)
+    }
+
+    pub fn set_user_media_muted(&self, user_id: i32, muted: bool) -> Result<()> {
+        Ok(self.inner.set_user_media_muted(user_id, muted)?)
+    }
+
+    pub fn set_user_stereo(&self, user_id: i32, stream: AudioStream, left: bool, right: bool) -> Result<()> {
+        Ok(self.inner.set_user_stereo(user_id, stream.into(), left, right)?)
+    }
+
+    pub fn set_mute_all(&self, on: bool) -> Result<()> {
+        Ok(self.inner.set_mute_all(on)?)
+    }
+
+    pub fn set_operator(&self, user_id: i32, channel_id: i32, password: String, on: bool) -> Result<()> {
+        Ok(self.inner.set_operator(user_id, channel_id, &password, on)?)
+    }
+
+    pub fn set_transmit_allowed(
+        &self,
+        channel_id: i32,
+        user_id: i32,
+        stream: TransmitStream,
+        allowed: bool,
+    ) -> Result<()> {
+        Ok(self
+            .inner
+            .set_transmit_allowed(channel_id, user_id, stream.into(), allowed)?)
+    }
+
+    pub fn ban_from_channel(&self, user_id: i32, kind: BanKind) -> Result<()> {
+        let kind = match kind {
+            BanKind::IpAddress => core::BanKind::IpAddress,
+            BanKind::Username => core::BanKind::Username,
+        };
+        Ok(self.inner.ban_from_channel(user_id, kind)?)
+    }
+
+    pub fn list_channel_bans(&self, channel_id: i32) -> Result<Vec<Ban>> {
+        Ok(self
+            .inner
+            .list_channel_bans(channel_id)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    pub fn set_gender(&self, gender: Gender) -> Result<()> {
+        Ok(self.inner.set_gender(gender.into())?)
+    }
+
+    pub fn user_statistics(&self, user_id: i32) -> Result<UserStatistics> {
+        let s = self.inner.user_statistics(user_id)?;
+        Ok(UserStatistics {
+            voice_packets_received: s.voice_packets_received,
+            voice_packets_lost: s.voice_packets_lost,
+            media_audio_packets_received: s.media_audio_packets_received,
+            media_audio_packets_lost: s.media_audio_packets_lost,
+            video_packets_received: s.video_packets_received,
+            video_frames_received: s.video_frames_received,
+            video_frames_lost: s.video_frames_lost,
+        })
+    }
+
+    /// Relays someone's audio into my channel; nil stops.
+    pub fn set_relay(&self, relay: Option<Relay>) -> Result<()> {
+        Ok(self.inner.set_relay(relay.map(|r| (r.user_id, r.stream.into())))?)
     }
 
     /// A channel's path ("/Lobby/Music/"), "/" for the root.

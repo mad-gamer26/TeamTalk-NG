@@ -15,6 +15,9 @@ use std::time::{Duration, Instant};
 
 use ttng_sys as sys;
 
+mod people;
+use people::PeopleRequest;
+
 use crate::error::{Error, Result};
 use crate::model::*;
 use crate::text::{arg, from_tt, split_message, to_tt};
@@ -172,6 +175,8 @@ enum Request {
         reply: Reply,
     },
     StopRecording(Reply),
+    /// People (see people.rs); `None` when the request answers itself.
+    People(PeopleRequest, Option<Reply>),
     Quit,
 }
 
@@ -189,6 +194,8 @@ struct Model {
     transfers: HashMap<i32, Transfer>,
     /// The channel being recorded, and the file.
     recording: Option<(i32, String)>,
+    muted_all: bool,
+    relaying: Option<(i32, AudioStream)>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -482,6 +489,110 @@ impl Client {
         self.ask(Request::StopRecording)
     }
 
+    fn people(&self, req: PeopleRequest) -> Result<()> {
+        self.ask(|r| Request::People(req, Some(r)))
+    }
+
+    /// Receive (or stop receiving) one kind of thing from someone. The
+    /// intercepts (admins) get theirs even outside my channel.
+    pub fn set_subscription(&self, user_id: i32, what: Subscription, on: bool) -> Result<()> {
+        self.people(PeopleRequest::Subscribe { user_id, what, on })
+    }
+
+    /// Hear my own voice (as the others do).
+    pub fn set_hear_myself(&self, on: bool) -> Result<()> {
+        let me = self.snapshot().my_user_id;
+        if me == 0 {
+            return Err(Error::NotConnected);
+        }
+        self.set_subscription(me, Subscription::Voice, on)
+    }
+
+    /// Someone's media file volume for me, in percent (up to 400).
+    pub fn set_user_media_volume(&self, user_id: i32, percent: i32) -> Result<()> {
+        self.people(PeopleRequest::MediaVolume { user_id, percent })
+    }
+
+    pub fn set_user_media_muted(&self, user_id: i32, muted: bool) -> Result<()> {
+        self.people(PeopleRequest::MediaMuted { user_id, muted })
+    }
+
+    /// Which of my speakers play someone's voice or media.
+    pub fn set_user_stereo(&self, user_id: i32, stream: AudioStream, left: bool, right: bool) -> Result<()> {
+        self.people(PeopleRequest::Stereo {
+            user_id,
+            stream,
+            left,
+            right,
+        })
+    }
+
+    /// Mutes everyone, for me.
+    pub fn set_mute_all(&self, on: bool) -> Result<()> {
+        self.people(PeopleRequest::MuteAll(on))
+    }
+
+    /// Makes someone a channel operator, or not. `password`: the channel's
+    /// operator password, for those who aren't allowed otherwise.
+    pub fn set_operator(&self, user_id: i32, channel_id: i32, password: &str, on: bool) -> Result<()> {
+        self.people(PeopleRequest::Operator {
+            user_id,
+            channel_id,
+            password: password.into(),
+            on,
+        })
+    }
+
+    /// In a classroom channel: whether someone (`user_id` 0: everyone) may
+    /// send a kind of stream.
+    pub fn set_transmit_allowed(
+        &self,
+        channel_id: i32,
+        user_id: i32,
+        stream: TransmitStream,
+        allowed: bool,
+    ) -> Result<()> {
+        self.people(PeopleRequest::Transmit {
+            channel_id,
+            user_id,
+            stream,
+            allowed,
+        })
+    }
+
+    /// Bans someone from their channel (kick them from it too).
+    pub fn ban_from_channel(&self, user_id: i32, kind: BanKind) -> Result<()> {
+        self.people(PeopleRequest::ChannelBan { user_id, kind })
+    }
+
+    /// A channel's bans.
+    pub fn list_channel_bans(&self, channel_id: i32) -> Result<Vec<Ban>> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx
+            .send(Request::People(PeopleRequest::ListChannelBans(channel_id, rtx), None))
+            .map_err(|_| Error::NotConnected)?;
+        rrx.recv_timeout(ANSWER_TIMEOUT).unwrap_or(Err(Error::Timeout))
+    }
+
+    pub fn set_gender(&self, gender: Gender) -> Result<()> {
+        self.people(PeopleRequest::Gender(gender))
+    }
+
+    /// How someone's audio and video arrive.
+    pub fn user_statistics(&self, user_id: i32) -> Result<UserStatistics> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx
+            .send(Request::People(PeopleRequest::Statistics(user_id, rtx), None))
+            .map_err(|_| Error::NotConnected)?;
+        rrx.recv_timeout(ANSWER_TIMEOUT).unwrap_or(Err(Error::Timeout))
+    }
+
+    /// Sends someone's voice or media (from any channel I hear them in)
+    /// into my channel; `None` stops.
+    pub fn set_relay(&self, who: Option<(i32, AudioStream)>) -> Result<()> {
+        self.people(PeopleRequest::Relay(who))
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -504,6 +615,8 @@ impl Client {
             files,
             transfers,
             recording_path: m.recording.as_ref().map(|(_, p)| p.clone()).unwrap_or_default(),
+            muted_all: m.muted_all,
+            relaying: m.relaying,
         }
     }
 }
@@ -529,6 +642,8 @@ enum Pending {
     Part,
     /// A ban list being collected.
     Bans(Vec<Ban>, Sender<Result<Vec<Ban>>>),
+    /// Someone waits, and the person changed (re-read them after).
+    Refresh(i32, Reply),
 }
 
 /// A connection being made: who asked (if anyone is waiting), and what for.
@@ -666,7 +781,7 @@ impl Worker {
     fn track(&mut self, id: i32, p: Pending, what: &str) {
         if id > 0 {
             self.pending.insert(id, (p, Instant::now()));
-        } else if let Pending::Reply(r) = p {
+        } else if let Pending::Reply(r) | Pending::Refresh(_, r) = p {
             let e = if self.logged_in() {
                 Error::Refused(format!("{what} isn't possible right now."))
             } else {
@@ -734,8 +849,10 @@ impl Worker {
             Request::SendMessage { target, text, reply } => self.send_message(target, &text, reply),
             Request::SetStatus { mode, message, reply } => {
                 let msg = arg(&message);
+                // The mode changes; the flags (gender, streaming…) stay.
+                let raw = (self.my_status().0 & !0xff) | mode.raw();
                 // SAFETY: inst is live; msg is NUL-terminated and outlives the call.
-                let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, mode.raw(), msg.as_ptr()) };
+                let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, raw, msg.as_ptr()) };
                 self.track(cmd, Pending::Reply(reply), "Changing the status");
             }
             Request::SetNickname(nick, reply) => {
@@ -1043,6 +1160,7 @@ impl Worker {
                     Err(Error::Refused("Nothing is being recorded.".into()))
                 });
             }
+            Request::People(req, reply) => self.handle_people(req, reply),
             Request::Quit => {}
         }
     }
@@ -1273,6 +1391,7 @@ impl Worker {
         m.my_user_id = 0;
         m.my_channel_id = 0;
         m.my_rights = MyRights::default();
+        m.relaying = None;
         m.server = ServerInfo::default();
         self.partial.clear();
     }
@@ -1375,11 +1494,13 @@ impl Worker {
                         .lock()
                         .map(|mut m| m.channels.insert(c.id, c.clone()).is_none())
                         .unwrap_or(true);
+                    let id = c.id;
                     self.emit(if new {
                         Event::ChannelAdded(c)
                     } else {
                         Event::ChannelUpdated(c)
                     });
+                    self.refresh_operators(id);
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_REMOVE => {
@@ -1391,7 +1512,7 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDIN => {
-                if let Some(u) = user() {
+                if let Some(u) = user().map(|u| self.with_operator(u)) {
                     if let Ok(mut m) = self.model.lock() {
                         m.users.insert(u.id, u.clone());
                     }
@@ -1399,7 +1520,7 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDOUT => {
-                if let Some(u) = user() {
+                if let Some(u) = user().map(|u| self.with_operator(u)) {
                     if let Ok(mut m) = self.model.lock() {
                         m.users.remove(&u.id);
                     }
@@ -1407,7 +1528,7 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE | sys::ClientEvent_CLIENTEVENT_USER_STATECHANGE => {
-                if let Some(u) = user() {
+                if let Some(u) = user().map(|u| self.with_operator(u)) {
                     let before = self.model.lock().ok().and_then(|mut m| m.users.insert(u.id, u.clone()));
                     if before.as_ref().map(|b| b.talking) != Some(u.talking) {
                         self.emit(Event::TalkingChanged {
@@ -1421,7 +1542,7 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_JOINED => {
-                if let Some(u) = user() {
+                if let Some(u) = user().map(|u| self.with_operator(u)) {
                     if let Ok(mut m) = self.model.lock() {
                         if u.id == m.my_user_id {
                             m.my_channel_id = u.channel_id;
@@ -1433,7 +1554,7 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_LEFT => {
-                if let Some(mut u) = user() {
+                if let Some(mut u) = user().map(|u| self.with_operator(u)) {
                     let channel_id = msg.nSource;
                     u.channel_id = 0;
                     let me = self
@@ -1458,6 +1579,11 @@ impl Worker {
                 // SAFETY: checked ttType.
                 let on = unsafe { union.bActive } != 0;
                 self.emit(Event::VoiceActivated(on));
+            }
+            sys::ClientEvent_CLIENTEVENT_USER_AUDIOBLOCK if msg.ttType == sys::TTType___STREAMTYPE => {
+                // SAFETY: checked ttType.
+                let stream = unsafe { union.nStreamType };
+                self.on_audio_block(msg.nSource, stream);
             }
             sys::ClientEvent_CLIENTEVENT_CMD_BANNEDUSER if msg.ttType == sys::TTType___BANNEDUSER => {
                 // SAFETY: checked ttType.
@@ -1546,6 +1672,10 @@ impl Worker {
             Pending::Part => {}
             Pending::Bans(bans, r) => {
                 let _ = r.send(result.map(|()| bans));
+            }
+            Pending::Refresh(user_id, r) => {
+                self.refresh_user(user_id);
+                let _ = r.send(result);
             }
             Pending::Login => match result {
                 Ok(()) => {
@@ -1666,6 +1796,11 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::UpdateServer { reply, .. }
         | Request::StartRecording { reply, .. } => reply,
         Request::StopRecording(r) => r,
+        Request::People(_, Some(r)) => r,
+        Request::People(req, None) => {
+            req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
+            return None;
+        }
         Request::CancelTransfer(_, r) | Request::Unban(_, r) | Request::RemoveChannel(_, r) => r,
         Request::ListBans(r) => {
             let _ = r.send(Err(Error::Refused("The TeamTalk SDK couldn't start.".into())));

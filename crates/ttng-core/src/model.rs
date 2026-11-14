@@ -63,6 +63,8 @@ pub struct Channel {
     pub no_voice_activation: bool,
     pub no_recording: bool,
     pub hidden: bool,
+    /// Classroom channels: who may send what (user 0: everyone).
+    pub transmit: Vec<TransmitPermission>,
 }
 
 impl From<&sys::Channel> for Channel {
@@ -83,6 +85,19 @@ impl From<&sys::Channel> for Channel {
             no_voice_activation: has(sys::ChannelType_CHANNEL_NO_VOICEACTIVATION),
             no_recording: has(sys::ChannelType_CHANNEL_NO_RECORDING),
             hidden: has(sys::ChannelType_CHANNEL_HIDDEN),
+            transmit: c
+                .transmitUsers
+                .iter()
+                .filter(|e| e[0] != 0)
+                .map(|e| TransmitPermission {
+                    user_id: if e[0] == sys::TT_TRANSMITUSERS_FREEFORALL as i32 {
+                        0
+                    } else {
+                        e[0]
+                    },
+                    streams: e[1] as u32,
+                })
+                .collect(),
         }
     }
 }
@@ -131,10 +146,199 @@ pub struct User {
     pub ip_address: String,
     /// Talking right now (voice).
     pub talking: bool,
+    /// The client's version ("5.23.0").
+    pub version: String,
+    pub gender: Gender,
+    /// Sending camera video, sharing a desktop, streaming a media file
+    /// (their status says so).
+    pub sending_video: bool,
+    pub sharing_desktop: bool,
+    pub streaming_media: bool,
+    /// What I receive from them, and what they receive from me.
+    pub my_subscriptions: Subscriptions,
+    pub their_subscriptions: Subscriptions,
+    /// Their voice and media files, for me only.
+    pub voice_muted: bool,
+    pub media_muted: bool,
+    /// In percent (100 as sent, up to 400).
+    pub voice_volume: i32,
+    pub media_volume: i32,
+    /// Which of my speakers play them (both normally).
+    pub voice_left: bool,
+    pub voice_right: bool,
+    pub media_left: bool,
+    pub media_right: bool,
+    /// An operator of the channel they're in.
+    pub operator: bool,
+    /// Their status number as the server has it (mode and flags).
+    pub status_raw: i32,
+}
+
+/// Gender, as TeamTalk keeps it in the status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gender {
+    Male,
+    Female,
+    Neutral,
+}
+
+impl Gender {
+    pub(crate) fn from_raw(mode: i32) -> Self {
+        if mode & 0x100 != 0 {
+            Gender::Female
+        } else if mode & 0x1000 != 0 {
+            Gender::Neutral
+        } else {
+            Gender::Male
+        }
+    }
+
+    pub(crate) fn bits(self) -> i32 {
+        match self {
+            Gender::Male => 0,
+            Gender::Female => 0x100,
+            Gender::Neutral => 0x1000,
+        }
+    }
+}
+
+/// One kind of thing to receive from someone (TeamTalk's subscriptions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Subscription {
+    UserMessages,
+    ChannelMessages,
+    BroadcastMessages,
+    Voice,
+    Video,
+    Desktop,
+    DesktopAccess,
+    MediaFile,
+    /// Theirs, even in other channels or to others (admins).
+    InterceptUserMessages,
+    InterceptChannelMessages,
+    InterceptVoice,
+    InterceptVideo,
+    InterceptDesktop,
+    InterceptMediaFile,
+}
+
+impl Subscription {
+    pub const ALL: [Subscription; 14] = [
+        Subscription::UserMessages,
+        Subscription::ChannelMessages,
+        Subscription::BroadcastMessages,
+        Subscription::Voice,
+        Subscription::Video,
+        Subscription::Desktop,
+        Subscription::DesktopAccess,
+        Subscription::MediaFile,
+        Subscription::InterceptUserMessages,
+        Subscription::InterceptChannelMessages,
+        Subscription::InterceptVoice,
+        Subscription::InterceptVideo,
+        Subscription::InterceptDesktop,
+        Subscription::InterceptMediaFile,
+    ];
+
+    pub(crate) fn bit(self) -> u32 {
+        match self {
+            Subscription::UserMessages => sys::Subscription_SUBSCRIBE_USER_MSG,
+            Subscription::ChannelMessages => sys::Subscription_SUBSCRIBE_CHANNEL_MSG,
+            Subscription::BroadcastMessages => sys::Subscription_SUBSCRIBE_BROADCAST_MSG,
+            Subscription::Voice => sys::Subscription_SUBSCRIBE_VOICE,
+            Subscription::Video => sys::Subscription_SUBSCRIBE_VIDEOCAPTURE,
+            Subscription::Desktop => sys::Subscription_SUBSCRIBE_DESKTOP,
+            Subscription::DesktopAccess => sys::Subscription_SUBSCRIBE_DESKTOPINPUT,
+            Subscription::MediaFile => sys::Subscription_SUBSCRIBE_MEDIAFILE,
+            Subscription::InterceptUserMessages => sys::Subscription_SUBSCRIBE_INTERCEPT_USER_MSG,
+            Subscription::InterceptChannelMessages => sys::Subscription_SUBSCRIBE_INTERCEPT_CHANNEL_MSG,
+            Subscription::InterceptVoice => sys::Subscription_SUBSCRIBE_INTERCEPT_VOICE,
+            Subscription::InterceptVideo => sys::Subscription_SUBSCRIBE_INTERCEPT_VIDEOCAPTURE,
+            Subscription::InterceptDesktop => sys::Subscription_SUBSCRIBE_INTERCEPT_DESKTOP,
+            Subscription::InterceptMediaFile => sys::Subscription_SUBSCRIBE_INTERCEPT_MEDIAFILE,
+        }
+    }
+}
+
+/// A set of subscriptions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Subscriptions(pub u32);
+
+impl Subscriptions {
+    pub fn has(self, s: Subscription) -> bool {
+        self.0 & s.bit() != 0
+    }
+}
+
+/// How someone's audio arrives (for "user information").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UserStatistics {
+    pub voice_packets_received: i64,
+    pub voice_packets_lost: i64,
+    pub media_audio_packets_received: i64,
+    pub media_audio_packets_lost: i64,
+    pub video_packets_received: i64,
+    pub video_frames_received: i64,
+    pub video_frames_lost: i64,
+}
+
+/// A stream someone may send in a classroom channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransmitStream {
+    Voice,
+    Video,
+    Desktop,
+    MediaFile,
+    ChannelMessages,
+}
+
+impl TransmitStream {
+    pub const ALL: [TransmitStream; 5] = [
+        TransmitStream::Voice,
+        TransmitStream::Video,
+        TransmitStream::Desktop,
+        TransmitStream::MediaFile,
+        TransmitStream::ChannelMessages,
+    ];
+
+    pub(crate) fn bits(self) -> u32 {
+        match self {
+            TransmitStream::Voice => sys::StreamType_STREAMTYPE_VOICE,
+            TransmitStream::Video => sys::StreamType_STREAMTYPE_VIDEOCAPTURE,
+            TransmitStream::Desktop => sys::StreamType_STREAMTYPE_DESKTOP,
+            TransmitStream::MediaFile => sys::StreamType_STREAMTYPE_MEDIAFILE,
+            TransmitStream::ChannelMessages => sys::StreamType_STREAMTYPE_CHANNELMSG,
+        }
+    }
+}
+
+/// Who may send what in a classroom channel. `user_id` 0 means everyone.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TransmitPermission {
+    pub user_id: i32,
+    pub streams: u32,
+}
+
+impl TransmitPermission {
+    pub fn allows(&self, s: TransmitStream) -> bool {
+        self.streams & s.bits() == s.bits()
+    }
+}
+
+/// Someone's audio stream, to relay into my channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AudioStream {
+    Voice,
+    MediaFile,
 }
 
 impl From<&sys::User> for User {
     fn from(u: &sys::User) -> Self {
+        let state = u.uUserState;
+        let mode = u.nStatusMode;
+        let percent = |v: i32| {
+            (v * 100 + sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32 / 2) / sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32
+        };
         User {
             id: u.nUserID,
             nickname: from_tt(&u.szNickname),
@@ -145,7 +349,29 @@ impl From<&sys::User> for User {
             admin: u.uUserType & sys::UserType_USERTYPE_ADMIN != 0,
             client_name: from_tt(&u.szClientName),
             ip_address: from_tt(&u.szIPAddress),
-            talking: u.uUserState & sys::UserState_USERSTATE_VOICE != 0,
+            talking: state & sys::UserState_USERSTATE_VOICE != 0,
+            version: format!(
+                "{}.{}.{}",
+                (u.uVersion >> 16) & 0xff,
+                (u.uVersion >> 8) & 0xff,
+                u.uVersion & 0xff
+            ),
+            gender: Gender::from_raw(mode),
+            sending_video: mode & 0x200 != 0,
+            sharing_desktop: mode & 0x400 != 0,
+            streaming_media: mode & 0x800 != 0,
+            my_subscriptions: Subscriptions(u.uLocalSubscriptions),
+            their_subscriptions: Subscriptions(u.uPeerSubscriptions),
+            voice_muted: state & sys::UserState_USERSTATE_MUTE_VOICE != 0,
+            media_muted: state & sys::UserState_USERSTATE_MUTE_MEDIAFILE != 0,
+            voice_volume: percent(u.nVolumeVoice),
+            media_volume: percent(u.nVolumeMediaFile),
+            voice_left: u.stereoPlaybackVoice[0] != 0,
+            voice_right: u.stereoPlaybackVoice[1] != 0,
+            media_left: u.stereoPlaybackMediaFile[0] != 0,
+            media_right: u.stereoPlaybackMediaFile[1] != 0,
+            operator: false,
+            status_raw: mode,
         }
     }
 }
@@ -383,6 +609,10 @@ pub struct Snapshot {
     pub transfers: Vec<Transfer>,
     /// The file being recorded to (my channel's voices); empty when not.
     pub recording_path: String,
+    /// Everything muted for me.
+    pub muted_all: bool,
+    /// Whose audio I relay into my channel, and which stream.
+    pub relaying: Option<(i32, AudioStream)>,
 }
 
 impl Snapshot {
