@@ -17,9 +17,11 @@ use ttng_sys as sys;
 
 mod channels;
 mod people;
+mod server;
 use channels::ChannelRequest;
 pub use channels::media_file_info;
 use people::PeopleRequest;
+use server::ServerRequest;
 
 use crate::error::{Error, Result};
 use crate::model::*;
@@ -180,6 +182,8 @@ enum Request {
     StopRecording(Reply),
     /// Channels (see channels.rs).
     Channels(ChannelRequest, Reply),
+    /// Server administration (see server.rs).
+    Server(ServerRequest),
     /// People (see people.rs); `None` when the request answers itself.
     People(PeopleRequest, Option<Reply>),
     Quit,
@@ -202,6 +206,7 @@ struct Model {
     muted_all: bool,
     relaying: Option<(i32, AudioStream)>,
     streaming: Option<MediaStream>,
+    my_account: Option<UserAccount>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -638,6 +643,56 @@ impl Client {
         self.ask(|r| Request::Channels(ChannelRequest::StopStream, r))
     }
 
+    fn server_call<T>(&self, make: impl FnOnce(Sender<Result<T>>) -> ServerRequest) -> Result<T> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx
+            .send(Request::Server(make(rtx)))
+            .map_err(|_| Error::NotConnected)?;
+        rrx.recv_timeout(ANSWER_TIMEOUT).unwrap_or(Err(Error::Timeout))
+    }
+
+    /// The server's accounts (administrators).
+    pub fn list_accounts(&self) -> Result<Vec<UserAccount>> {
+        self.server_call(ServerRequest::ListAccounts)
+    }
+
+    /// Adds an account, or replaces the one with its username.
+    pub fn save_account(&self, account: &UserAccount) -> Result<()> {
+        self.server_call(|r| ServerRequest::SaveAccount(Box::new(account.clone()), r))
+    }
+
+    pub fn delete_account(&self, username: &str) -> Result<()> {
+        self.server_call(|r| ServerRequest::DeleteAccount(username.into(), r))
+    }
+
+    /// Every server setting, as the server has them now.
+    pub fn server_settings(&self) -> Result<ServerSettings> {
+        self.server_call(ServerRequest::Settings)
+    }
+
+    pub fn update_server_settings(&self, s: &ServerSettings) -> Result<()> {
+        self.server_call(|r| ServerRequest::UpdateSettings(Box::new(s.clone()), r))
+    }
+
+    /// Writes the server's settings, accounts and channels to its file.
+    pub fn save_server_config(&self) -> Result<()> {
+        self.server_call(ServerRequest::SaveConfig)
+    }
+
+    pub fn server_statistics(&self) -> Result<ServerStatistics> {
+        self.server_call(ServerRequest::Statistics)
+    }
+
+    /// Bans an address (also with wildcards, like 10.0.*), from the server
+    /// or (`channel_path`) one channel.
+    pub fn ban_address(&self, address: &str, channel_path: &str) -> Result<()> {
+        self.server_call(|reply| ServerRequest::BanAddress {
+            address: address.into(),
+            channel_path: channel_path.into(),
+            reply,
+        })
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -662,6 +717,7 @@ impl Client {
             recording_path: m.recording.as_ref().map(|(_, p)| p.clone()).unwrap_or_default(),
             muted_all: m.muted_all,
             streaming: m.streaming.clone(),
+            my_account: m.my_account.clone(),
             relaying: m.relaying,
         }
     }
@@ -690,6 +746,10 @@ enum Pending {
     Bans(Vec<Ban>, Sender<Result<Vec<Ban>>>),
     /// Someone waits, and the person changed (re-read them after).
     Refresh(i32, Reply),
+    /// Accounts being collected.
+    Accounts(Vec<UserAccount>, Sender<Result<Vec<UserAccount>>>),
+    /// The server's statistics, when they arrive.
+    Stats(Option<ServerStatistics>, Sender<Result<ServerStatistics>>),
 }
 
 /// A connection being made: who asked (if anyone is waiting), and what for.
@@ -1210,6 +1270,7 @@ impl Worker {
             }
             Request::People(req, reply) => self.handle_people(req, reply),
             Request::Channels(req, reply) => self.handle_channels(req, reply),
+            Request::Server(req) => self.handle_server(req),
             Request::Quit => {}
         }
     }
@@ -1442,6 +1503,7 @@ impl Worker {
         m.my_rights = MyRights::default();
         m.relaying = None;
         m.streaming = None;
+        m.my_account = None;
         m.server = ServerInfo::default();
         self.partial.clear();
     }
@@ -1641,6 +1703,26 @@ impl Worker {
                 let stream = unsafe { union.nStreamType };
                 self.on_audio_block(msg.nSource, stream);
             }
+            sys::ClientEvent_CLIENTEVENT_CMD_USERACCOUNT if msg.ttType == sys::TTType___USERACCOUNT => {
+                // SAFETY: checked ttType.
+                let a = UserAccount::from(unsafe { &union.useraccount });
+                if let Some((Pending::Accounts(list, _), _)) = self
+                    .pending
+                    .values_mut()
+                    .find(|(p, _)| matches!(p, Pending::Accounts(..)))
+                {
+                    list.push(a);
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_SERVERSTATISTICS if msg.ttType == sys::TTType___SERVERSTATISTICS => {
+                // SAFETY: checked ttType.
+                let st = ServerStatistics::from(unsafe { &union.serverstatistics });
+                if let Some((Pending::Stats(slot, _), _)) =
+                    self.pending.values_mut().find(|(p, _)| matches!(p, Pending::Stats(..)))
+                {
+                    *slot = Some(st);
+                }
+            }
             sys::ClientEvent_CLIENTEVENT_CMD_BANNEDUSER if msg.ttType == sys::TTType___BANNEDUSER => {
                 // SAFETY: checked ttType.
                 let ban = Ban::from(unsafe { &union.banneduser });
@@ -1729,6 +1811,13 @@ impl Worker {
             Pending::Bans(bans, r) => {
                 let _ = r.send(result.map(|()| bans));
             }
+            Pending::Accounts(list, r) => {
+                let _ = r.send(result.map(|()| list));
+            }
+            Pending::Stats(stats, r) => {
+                let _ =
+                    r.send(result.and_then(|()| stats.ok_or(Error::Refused("The server sent no statistics.".into()))));
+            }
             Pending::Refresh(user_id, r) => {
                 self.refresh_user(user_id);
                 let _ = r.send(result);
@@ -1745,8 +1834,22 @@ impl Worker {
                     if let Ok(mut m) = self.model.lock() {
                         m.my_rights = rights;
                     }
+                    let mut account = sys::UserAccount::default();
+                    // SAFETY: inst is live; account is valid for the SDK to fill.
+                    let mine = (unsafe { sys::TT_GetMyUserAccount(self.inst, &mut account) } != 0)
+                        .then(|| UserAccount::from(&account));
+                    if let Ok(mut m) = self.model.lock() {
+                        m.my_account = mine.clone();
+                    }
                     self.set_state(ConnectionState::LoggedIn);
-                    match self.rejoin.clone() {
+                    // The server's entry says which channel; else the
+                    // account's initial channel (the client joins it, as
+                    // the desktop does: the server doesn't).
+                    let initial = mine
+                        .map(|a| a.initial_channel)
+                        .filter(|c| !c.is_empty())
+                        .map(|c| (c, String::new()));
+                    match self.rejoin.clone().or(initial) {
                         Some((path, password)) => self.join_after_login(&path, &password),
                         None => self.finish_attempt(Ok(())),
                     }
@@ -1854,6 +1957,10 @@ fn reply_of(req: Request) -> Option<Reply> {
         Request::StopRecording(r) => r,
         Request::People(_, Some(r)) => r,
         Request::Channels(_, r) => r,
+        Request::Server(req) => {
+            req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
+            return None;
+        }
         Request::People(req, None) => {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;

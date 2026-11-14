@@ -23,6 +23,9 @@ struct ServerView: View {
     @State private var classroomOf: Channel?
     @State private var showServerSettings = false
     @State private var showBans = false
+    @State private var showAccounts = false
+    @State private var showStats = false
+    @State private var showOnline = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
     @State private var renaming = false
@@ -91,11 +94,17 @@ struct ServerView: View {
                         if connection.rights.broadcast {
                             Button("Broadcast message") { broadcasting = true }
                         }
+                        Button("Online users") { showOnline = true }
                         if connection.rights.updateServer {
                             Button("Server settings") { showServerSettings = true }
                         }
                         if connection.rights.ban {
                             Button("Bans") { showBans = true }
+                        }
+                        if connection.rights.admin {
+                            Button("User accounts") { showAccounts = true }
+                            Button("Server statistics") { showStats = true }
+                            Button("Save server configuration") { connection.saveServerConfig() }
                         }
                         Button("Clear chat history") { connection.clearHistory() }
                         Button("Disconnect", role: .destructive) { connection.disconnect() }
@@ -164,6 +173,9 @@ struct ServerView: View {
         .sheet(isPresented: $showBans) {
             BansView(connection: connection)
         }
+        .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
+        .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
+        .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }
         .alert("Change nickname", isPresented: $renaming) {
             TextField("Nickname", text: $newNickname)
             Button("Change") { connection.setNickname(newNickname) }

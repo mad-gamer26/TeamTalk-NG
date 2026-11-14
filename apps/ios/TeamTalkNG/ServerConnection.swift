@@ -28,6 +28,10 @@ final class ServerConnection {
     private weak var app: AppModel?
     private let bridge = EventBridge()
     private let client: TtClient
+    /// For screens that call the core themselves (off the main thread).
+    var coreClient: TtClient { client }
+    /// People who logged out while I was connected (Online users).
+    private(set) var departed: [(user: User, at: Date)] = []
 
     private(set) var state: ConnectionState = .disconnected
     private(set) var snapshot: Snapshot?
@@ -394,8 +398,15 @@ final class ServerConnection {
         run("Couldn't delete the channel") { try $0.removeChannel(channelId: channel.id) }
     }
 
-    func updateServer(name: String, motd: String) {
-        run("Couldn't change the server") { try $0.updateServer(name: name, motd: motd) }
+    func saveServerConfig() {
+        run("Couldn't save the configuration") { try $0.saveServerConfig() }
+        announce("Server configuration saved")
+    }
+
+    func banAddress(_ address: String, channelPath: String = "") {
+        let a = address.trimmingCharacters(in: .whitespaces)
+        guard !a.isEmpty else { return }
+        run("Couldn't ban it") { try $0.banAddress(address: a, channelPath: channelPath) }
     }
 
     func broadcast(_ text: String) {
@@ -569,7 +580,11 @@ final class ServerConnection {
             // Not for those already there when I log in (the server lists them).
             if state == .loggedIn, u.id != snapshot?.myUserId { sound(.loggedIn) }
         case .userLoggedOut(let u):
-            if state == .loggedIn, u.id != snapshot?.myUserId { sound(.loggedOut) }
+            if state == .loggedIn, u.id != snapshot?.myUserId {
+                sound(.loggedOut)
+                departed.append((u, .now))
+                if departed.count > 200 { departed.removeFirst() }
+            }
         case .fileRemoved(let f):
             if f.channelId == myChannel { sound(.fileUpdate) }
         case .transferChanged(let t):

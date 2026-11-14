@@ -76,13 +76,13 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| User accounts: list, add, edit, delete (type, rights, initial channel, auto-operator channels, bitrate limit, flood protection, note) | todo (4) |
-| Banned users | partial: list and remove; todo (4): search, ban an address by hand |
-| Online users (with those who left) | todo (4) |
+| User accounts: list, add, edit, delete (type, rights, initial channel, auto-operator channels, bitrate limit, flood protection, note) | done (and the initial channel is joined after login, as the desktop does) |
+| Banned users | done: list, remove, ban an address (wildcards) by hand; todo: search |
+| Online users (with those who left) | done |
 | Broadcast message | done |
-| Server properties | partial: name, MOTD; todo (4): max users, ports, user timeout, auto save, bandwidth limits, abuse limits, version |
-| Save configuration | todo (4) |
-| Server statistics | todo (4) |
+| Server properties | done: every setting, and the version |
+| Save configuration | done |
+| Server statistics | done |
 
 ## Help menu
 

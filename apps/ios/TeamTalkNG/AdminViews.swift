@@ -44,43 +44,12 @@ struct MoveView: View {
     }
 }
 
-/// The server's name and message of the day.
-struct ServerSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    let connection: ServerConnection
-    @State private var name = ""
-    @State private var motd = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Server name", text: $name)
-                Section("Message of the day") {
-                    TextField("Shown to people when they log in", text: $motd, axis: .vertical)
-                        .lineLimit(3...8)
-                }
-            }
-            .navigationTitle("Server settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { connection.updateServer(name: name, motd: motd); dismiss() }
-                }
-            }
-            .onAppear {
-                name = connection.snapshot?.server.name ?? ""
-                motd = connection.snapshot?.server.motd ?? ""
-            }
-        }
-    }
-}
-
 /// The server's bans, each removable.
 struct BansView: View {
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     @State private var bans: [Ban]?
+    @State private var address = ""
 
     var body: some View {
         NavigationStack {
@@ -99,6 +68,20 @@ struct BansView: View {
                 } else {
                     ProgressView("Loading the bans")
                 }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    TextField("Ban an address, like 10.0.0.*", text: $address)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numbersAndPunctuation)
+                    Button("Ban") {
+                        connection.banAddress(address)
+                        address = ""
+                        Task { try? await Task.sleep(for: .milliseconds(500)); bans = await connection.bans() ?? bans }
+                    }
+                    .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding()
             }
             .navigationTitle("Bans")
             .navigationBarTitleDisplayMode(.inline)

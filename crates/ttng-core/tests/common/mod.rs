@@ -183,6 +183,19 @@ impl TestClient {
         while self.events.try_recv().is_ok() {}
     }
 
+    /// Waits (up to 10 s) until the snapshot is as `ok` wants it.
+    pub fn wait_until(&self, ok: impl Fn(&Snapshot) -> bool) -> Snapshot {
+        let end = Instant::now() + Duration::from_secs(10);
+        loop {
+            let s = self.client.snapshot();
+            if ok(&s) {
+                return s;
+            }
+            assert!(Instant::now() < end, "the snapshot never got there: {s:#?}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn user_named(&self, nickname: &str) -> User {
         self.client
             .snapshot()

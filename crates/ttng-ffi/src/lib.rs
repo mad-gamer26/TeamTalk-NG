@@ -12,8 +12,10 @@ use ttng_core as core;
 
 uniffi::setup_scaffolding!();
 
+mod admin;
 mod monitor;
 mod services;
+pub use admin::*;
 pub use monitor::*;
 pub use services::*;
 
@@ -68,7 +70,7 @@ impl From<core::Error> for TtError {
     }
 }
 
-type Result<T> = std::result::Result<T, TtError>;
+pub(crate) type Result<T> = std::result::Result<T, TtError>;
 
 /// Where to connect, and as whom.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -1089,7 +1091,7 @@ pub trait TtListener: Send + Sync {
 /// [`AudioDevices::Shared`] for each).
 #[derive(uniffi::Object)]
 pub struct TtClient {
-    inner: core::Client,
+    pub(crate) inner: core::Client,
 }
 
 impl std::fmt::Debug for TtClient {

@@ -687,6 +687,281 @@ impl MyRights {
     }
 }
 
+/// A right an account can have (what its owner may do on the server).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum UserRight {
+    MultiLogin,
+    ViewAllUsers,
+    ViewHiddenChannels,
+    CreateTemporaryChannels,
+    ModifyChannels,
+    Broadcast,
+    KickUsers,
+    BanUsers,
+    MoveUsers,
+    OperatorEnable,
+    UploadFiles,
+    DownloadFiles,
+    UpdateServer,
+    TransmitVoice,
+    TransmitVideo,
+    TransmitDesktop,
+    TransmitDesktopInput,
+    TransmitMediaFileAudio,
+    TransmitMediaFileVideo,
+    RecordVoice,
+    TextMessageUser,
+    TextMessageChannel,
+    LockedNickname,
+    LockedStatus,
+}
+
+impl UserRight {
+    pub const ALL: [UserRight; 24] = [
+        UserRight::MultiLogin,
+        UserRight::ViewAllUsers,
+        UserRight::ViewHiddenChannels,
+        UserRight::CreateTemporaryChannels,
+        UserRight::ModifyChannels,
+        UserRight::Broadcast,
+        UserRight::KickUsers,
+        UserRight::BanUsers,
+        UserRight::MoveUsers,
+        UserRight::OperatorEnable,
+        UserRight::UploadFiles,
+        UserRight::DownloadFiles,
+        UserRight::UpdateServer,
+        UserRight::TransmitVoice,
+        UserRight::TransmitVideo,
+        UserRight::TransmitDesktop,
+        UserRight::TransmitDesktopInput,
+        UserRight::TransmitMediaFileAudio,
+        UserRight::TransmitMediaFileVideo,
+        UserRight::RecordVoice,
+        UserRight::TextMessageUser,
+        UserRight::TextMessageChannel,
+        UserRight::LockedNickname,
+        UserRight::LockedStatus,
+    ];
+
+    pub fn bit(self) -> u32 {
+        match self {
+            UserRight::MultiLogin => sys::UserRight_USERRIGHT_MULTI_LOGIN,
+            UserRight::ViewAllUsers => sys::UserRight_USERRIGHT_VIEW_ALL_USERS,
+            UserRight::ViewHiddenChannels => sys::UserRight_USERRIGHT_VIEW_HIDDEN_CHANNELS,
+            UserRight::CreateTemporaryChannels => sys::UserRight_USERRIGHT_CREATE_TEMPORARY_CHANNEL,
+            UserRight::ModifyChannels => sys::UserRight_USERRIGHT_MODIFY_CHANNELS,
+            UserRight::Broadcast => sys::UserRight_USERRIGHT_TEXTMESSAGE_BROADCAST,
+            UserRight::KickUsers => sys::UserRight_USERRIGHT_KICK_USERS,
+            UserRight::BanUsers => sys::UserRight_USERRIGHT_BAN_USERS,
+            UserRight::MoveUsers => sys::UserRight_USERRIGHT_MOVE_USERS,
+            UserRight::OperatorEnable => sys::UserRight_USERRIGHT_OPERATOR_ENABLE,
+            UserRight::UploadFiles => sys::UserRight_USERRIGHT_UPLOAD_FILES,
+            UserRight::DownloadFiles => sys::UserRight_USERRIGHT_DOWNLOAD_FILES,
+            UserRight::UpdateServer => sys::UserRight_USERRIGHT_UPDATE_SERVERPROPERTIES,
+            UserRight::TransmitVoice => sys::UserRight_USERRIGHT_TRANSMIT_VOICE,
+            UserRight::TransmitVideo => sys::UserRight_USERRIGHT_TRANSMIT_VIDEOCAPTURE,
+            UserRight::TransmitDesktop => sys::UserRight_USERRIGHT_TRANSMIT_DESKTOP,
+            UserRight::TransmitDesktopInput => sys::UserRight_USERRIGHT_TRANSMIT_DESKTOPINPUT,
+            UserRight::TransmitMediaFileAudio => sys::UserRight_USERRIGHT_TRANSMIT_MEDIAFILE_AUDIO,
+            UserRight::TransmitMediaFileVideo => sys::UserRight_USERRIGHT_TRANSMIT_MEDIAFILE_VIDEO,
+            UserRight::RecordVoice => sys::UserRight_USERRIGHT_RECORD_VOICE,
+            UserRight::TextMessageUser => sys::UserRight_USERRIGHT_TEXTMESSAGE_USER,
+            UserRight::TextMessageChannel => sys::UserRight_USERRIGHT_TEXTMESSAGE_CHANNEL,
+            UserRight::LockedNickname => sys::UserRight_USERRIGHT_LOCKED_NICKNAME,
+            UserRight::LockedStatus => sys::UserRight_USERRIGHT_LOCKED_STATUS,
+        }
+    }
+
+    /// The rights a new account gets on the desktop client.
+    pub fn defaults() -> Vec<UserRight> {
+        vec![
+            UserRight::MultiLogin,
+            UserRight::ViewAllUsers,
+            UserRight::CreateTemporaryChannels,
+            UserRight::UploadFiles,
+            UserRight::DownloadFiles,
+            UserRight::TransmitVoice,
+            UserRight::TransmitVideo,
+            UserRight::TransmitDesktop,
+            UserRight::TransmitDesktopInput,
+            UserRight::TransmitMediaFileAudio,
+            UserRight::TransmitMediaFileVideo,
+            UserRight::TextMessageUser,
+            UserRight::TextMessageChannel,
+        ]
+    }
+}
+
+/// An account on the server (administrators manage these).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UserAccount {
+    pub username: String,
+    pub password: String,
+    pub admin: bool,
+    pub rights: Vec<UserRight>,
+    pub note: String,
+    /// A channel to put them in when they log in ("/Lobby/"); empty: none.
+    pub initial_channel: String,
+    /// Channels they're an operator of whenever they join.
+    pub auto_operator_channels: Vec<i32>,
+    /// The highest audio bitrate they may send (bits/s; 0: no limit).
+    pub bitrate_limit: i32,
+    /// Flood protection: at most `commands_limit` commands each
+    /// `commands_interval_ms` (0: no limit).
+    pub commands_limit: i32,
+    pub commands_interval_ms: i32,
+    pub last_modified: String,
+    pub last_login: String,
+}
+
+impl From<&sys::UserAccount> for UserAccount {
+    fn from(a: &sys::UserAccount) -> Self {
+        UserAccount {
+            username: from_tt(&a.szUsername),
+            password: from_tt(&a.szPassword),
+            admin: a.uUserType & sys::UserType_USERTYPE_ADMIN != 0,
+            rights: UserRight::ALL
+                .into_iter()
+                .filter(|r| a.uUserRights & r.bit() != 0)
+                .collect(),
+            note: from_tt(&a.szNote),
+            initial_channel: from_tt(&a.szInitChannel),
+            auto_operator_channels: a.autoOperatorChannels.iter().copied().filter(|c| *c > 0).collect(),
+            bitrate_limit: a.nAudioCodecBpsLimit,
+            commands_limit: a.abusePrevent.nCommandsLimit,
+            commands_interval_ms: a.abusePrevent.nCommandsIntervalMSec,
+            last_modified: from_tt(&a.szLastModified),
+            last_login: from_tt(&a.szLastLoginTime),
+        }
+    }
+}
+
+impl UserAccount {
+    pub(crate) fn to_sys(&self) -> sys::UserAccount {
+        let mut ops = [0i32; 16];
+        for (slot, c) in ops.iter_mut().zip(&self.auto_operator_channels) {
+            *slot = *c;
+        }
+        sys::UserAccount {
+            szUsername: crate::text::to_tt(&self.username),
+            szPassword: crate::text::to_tt(&self.password),
+            uUserType: if self.admin {
+                sys::UserType_USERTYPE_ADMIN
+            } else {
+                sys::UserType_USERTYPE_DEFAULT
+            },
+            uUserRights: self.rights.iter().fold(0, |b, r| b | r.bit()),
+            szNote: crate::text::to_tt(&self.note),
+            szInitChannel: crate::text::to_tt(&self.initial_channel),
+            autoOperatorChannels: ops,
+            nAudioCodecBpsLimit: self.bitrate_limit.max(0),
+            abusePrevent: sys::AbusePrevention {
+                nCommandsLimit: self.commands_limit.max(0),
+                nCommandsIntervalMSec: self.commands_interval_ms.max(0),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+/// The server's settings, all of them (administrators change them).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServerSettings {
+    pub name: String,
+    /// As written, with its %variables% (the shown MOTD fills them in).
+    pub motd: String,
+    pub max_users: i32,
+    /// Wrong passwords before an address is banned (0: never).
+    pub max_login_attempts: i32,
+    pub max_logins_per_address: i32,
+    /// Time between logins from one address, in ms (0: none).
+    pub login_delay_ms: i32,
+    /// Bytes per second the server sends of each kind (0: no limit).
+    pub voice_limit: i32,
+    pub video_limit: i32,
+    pub media_file_limit: i32,
+    pub desktop_limit: i32,
+    pub total_limit: i32,
+    /// Changes are saved to the server's file straight away.
+    pub auto_save: bool,
+    pub tcp_port: i32,
+    pub udp_port: i32,
+    /// Seconds of silence from a client before it's dropped.
+    pub user_timeout: i32,
+    /// What the server logs (TeamTalk's ServerLogEvent bits).
+    pub log_events: u32,
+    pub version: String,
+    pub protocol_version: String,
+}
+
+impl From<&sys::ServerProperties> for ServerSettings {
+    fn from(p: &sys::ServerProperties) -> Self {
+        ServerSettings {
+            name: from_tt(&p.szServerName),
+            motd: from_tt(&p.szMOTDRaw),
+            max_users: p.nMaxUsers,
+            max_login_attempts: p.nMaxLoginAttempts,
+            max_logins_per_address: p.nMaxLoginsPerIPAddress,
+            login_delay_ms: p.nLoginDelayMSec,
+            voice_limit: p.nMaxVoiceTxPerSecond,
+            video_limit: p.nMaxVideoCaptureTxPerSecond,
+            media_file_limit: p.nMaxMediaFileTxPerSecond,
+            desktop_limit: p.nMaxDesktopTxPerSecond,
+            total_limit: p.nMaxTotalTxPerSecond,
+            auto_save: p.bAutoSave != 0,
+            tcp_port: p.nTcpPort,
+            udp_port: p.nUdpPort,
+            user_timeout: p.nUserTimeout,
+            log_events: p.uServerLogEvents,
+            version: from_tt(&p.szServerVersion),
+            protocol_version: from_tt(&p.szServerProtocolVersion),
+        }
+    }
+}
+
+/// What the server has done since it started.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ServerStatistics {
+    pub total_bytes_sent: i64,
+    pub total_bytes_received: i64,
+    pub voice_bytes_sent: i64,
+    pub voice_bytes_received: i64,
+    pub video_bytes_sent: i64,
+    pub video_bytes_received: i64,
+    pub media_file_bytes_sent: i64,
+    pub media_file_bytes_received: i64,
+    pub desktop_bytes_sent: i64,
+    pub desktop_bytes_received: i64,
+    pub users_served: i32,
+    pub users_peak: i32,
+    pub files_sent: i64,
+    pub files_received: i64,
+    pub uptime_ms: i64,
+}
+
+impl From<&sys::ServerStatistics> for ServerStatistics {
+    fn from(s: &sys::ServerStatistics) -> Self {
+        ServerStatistics {
+            total_bytes_sent: s.nTotalBytesTX,
+            total_bytes_received: s.nTotalBytesRX,
+            voice_bytes_sent: s.nVoiceBytesTX,
+            voice_bytes_received: s.nVoiceBytesRX,
+            video_bytes_sent: s.nVideoCaptureBytesTX,
+            video_bytes_received: s.nVideoCaptureBytesRX,
+            media_file_bytes_sent: s.nMediaFileBytesTX,
+            media_file_bytes_received: s.nMediaFileBytesRX,
+            desktop_bytes_sent: s.nDesktopBytesTX,
+            desktop_bytes_received: s.nDesktopBytesRX,
+            users_served: s.nUsersServed,
+            users_peak: s.nUsersPeak,
+            files_sent: s.nFilesTx,
+            files_received: s.nFilesRx,
+            uptime_ms: s.nUptimeMSec,
+        }
+    }
+}
+
 /// A channel to make, or a channel's new settings.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChannelSpec {
@@ -820,6 +1095,9 @@ pub struct Snapshot {
     pub relaying: Option<(i32, AudioStream)>,
     /// The file I'm streaming to my channel.
     pub streaming: Option<MediaStream>,
+    /// My own account, as the server gave it at login (rights, note,
+    /// initial channel).
+    pub my_account: Option<UserAccount>,
 }
 
 impl Snapshot {
