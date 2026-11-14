@@ -1,0 +1,578 @@
+//! TeamTalk NG's core for the apps (Swift on iPhone and Mac, Kotlin on
+//! Android), through [UniFFI](https://mozilla.github.io/uniffi-rs/).
+//!
+//! The types here mirror `ttng-core`'s (which doesn't depend on UniFFI).
+//! Every [`TtClient`] method blocks until the SDK or the server answers (up
+//! to 20 s): call them off the main thread. Events arrive on the client's
+//! event thread, one at a time, in order.
+
+use std::sync::Arc;
+
+use ttng_core as core;
+
+uniffi::setup_scaffolding!();
+
+/// What went wrong, in words the apps can show as they are (`message`).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Error)]
+pub enum TtError {
+    NotConnected {
+        message: String,
+    },
+    Timeout {
+        message: String,
+    },
+    /// The connection couldn't be made, or broke.
+    Connection {
+        message: String,
+    },
+    /// The server refused: its error number, and what it means.
+    Server {
+        code: i32,
+        message: String,
+    },
+    /// Not possible now (or not allowed).
+    Refused {
+        message: String,
+    },
+}
+
+impl std::fmt::Display for TtError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotConnected { message }
+            | Self::Timeout { message }
+            | Self::Connection { message }
+            | Self::Server { message, .. }
+            | Self::Refused { message } => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for TtError {}
+
+impl From<core::Error> for TtError {
+    fn from(e: core::Error) -> Self {
+        let message = e.to_string();
+        match e {
+            core::Error::NotConnected => Self::NotConnected { message },
+            core::Error::Timeout => Self::Timeout { message },
+            core::Error::Connection(_) => Self::Connection { message },
+            core::Error::Server { code, .. } => Self::Server { code, message },
+            core::Error::Refused(_) => Self::Refused { message },
+        }
+    }
+}
+
+type Result<T> = std::result::Result<T, TtError>;
+
+/// Where to connect, and as whom.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ConnectOptions {
+    pub host: String,
+    pub tcp_port: u16,
+    pub udp_port: u16,
+    pub encrypted: bool,
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+    /// What other clients see as this client's name.
+    pub client_name: String,
+    /// A channel to join after logging in ("/Lobby/"); empty for none.
+    pub join_channel_path: String,
+    pub join_channel_password: String,
+    /// Reconnect (and rejoin the channel) when the connection drops.
+    pub reconnect: bool,
+}
+
+impl From<ConnectOptions> for core::ConnectOptions {
+    fn from(o: ConnectOptions) -> Self {
+        core::ConnectOptions {
+            host: o.host,
+            tcp_port: o.tcp_port,
+            udp_port: o.udp_port,
+            encrypted: o.encrypted,
+            nickname: o.nickname,
+            username: o.username,
+            password: o.password,
+            client_name: o.client_name,
+            join_channel: (!o.join_channel_path.is_empty()).then_some((o.join_channel_path, o.join_channel_password)),
+            reconnect: o.reconnect,
+        }
+    }
+}
+
+/// Which sound devices to use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AudioDevices {
+    /// The system's default input and output.
+    Default,
+    /// The defaults, shared with other connections (several servers at once).
+    Shared,
+    /// No hardware.
+    Virtual,
+}
+
+impl From<AudioDevices> for core::AudioDevices {
+    fn from(d: AudioDevices) -> Self {
+        match d {
+            AudioDevices::Default => Self::Default,
+            AudioDevices::Shared => Self::Shared,
+            AudioDevices::Virtual => Self::Virtual,
+        }
+    }
+}
+
+/// Where a connection stands.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ConnectionState {
+    Disconnected,
+    Connecting,
+    LoggingIn,
+    LoggedIn,
+    /// The connection dropped; trying again (attempt number, from 1).
+    Reconnecting {
+        attempt: u32,
+    },
+}
+
+impl From<core::ConnectionState> for ConnectionState {
+    fn from(s: core::ConnectionState) -> Self {
+        match s {
+            core::ConnectionState::Disconnected => Self::Disconnected,
+            core::ConnectionState::Connecting => Self::Connecting,
+            core::ConnectionState::LoggingIn => Self::LoggingIn,
+            core::ConnectionState::LoggedIn => Self::LoggedIn,
+            core::ConnectionState::Reconnecting { attempt } => Self::Reconnecting { attempt },
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct ServerInfo {
+    pub name: String,
+    pub motd: String,
+    pub version: String,
+    pub max_users: i32,
+}
+
+impl From<core::ServerInfo> for ServerInfo {
+    fn from(s: core::ServerInfo) -> Self {
+        ServerInfo {
+            name: s.name,
+            motd: s.motd,
+            version: s.version,
+            max_users: s.max_users,
+        }
+    }
+}
+
+/// A channel. The root channel has parent 0 and an empty name.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Channel {
+    pub id: i32,
+    pub parent_id: i32,
+    pub name: String,
+    pub topic: String,
+    pub has_password: bool,
+    pub max_users: i32,
+    pub permanent: bool,
+    pub solo_transmit: bool,
+    pub classroom: bool,
+    pub operator_receive_only: bool,
+    pub no_voice_activation: bool,
+    pub no_recording: bool,
+    pub hidden: bool,
+}
+
+impl From<core::Channel> for Channel {
+    fn from(c: core::Channel) -> Self {
+        Channel {
+            id: c.id,
+            parent_id: c.parent_id,
+            name: c.name,
+            topic: c.topic,
+            has_password: c.has_password,
+            max_users: c.max_users,
+            permanent: c.permanent,
+            solo_transmit: c.solo_transmit,
+            classroom: c.classroom,
+            operator_receive_only: c.operator_receive_only,
+            no_voice_activation: c.no_voice_activation,
+            no_recording: c.no_recording,
+            hidden: c.hidden,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum StatusMode {
+    Available,
+    Away,
+    Question,
+}
+
+impl From<core::StatusMode> for StatusMode {
+    fn from(s: core::StatusMode) -> Self {
+        match s {
+            core::StatusMode::Available => Self::Available,
+            core::StatusMode::Away => Self::Away,
+            core::StatusMode::Question => Self::Question,
+        }
+    }
+}
+
+impl From<StatusMode> for core::StatusMode {
+    fn from(s: StatusMode) -> Self {
+        match s {
+            StatusMode::Available => Self::Available,
+            StatusMode::Away => Self::Away,
+            StatusMode::Question => Self::Question,
+        }
+    }
+}
+
+/// A person on the server.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct User {
+    pub id: i32,
+    /// The nickname, or the username without one.
+    pub display_name: String,
+    pub nickname: String,
+    pub username: String,
+    /// 0 when not in a channel.
+    pub channel_id: i32,
+    pub status: StatusMode,
+    pub status_message: String,
+    pub admin: bool,
+    pub client_name: String,
+    /// Shown to admins only; empty otherwise.
+    pub ip_address: String,
+    pub talking: bool,
+}
+
+impl From<core::User> for User {
+    fn from(u: core::User) -> Self {
+        User {
+            id: u.id,
+            display_name: u.display_name().to_owned(),
+            nickname: u.nickname,
+            username: u.username,
+            channel_id: u.channel_id,
+            status: u.status.into(),
+            status_message: u.status_message,
+            admin: u.admin,
+            client_name: u.client_name,
+            ip_address: u.ip_address,
+            talking: u.talking,
+        }
+    }
+}
+
+/// Who a message goes to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum MessageTarget {
+    Channel {
+        channel_id: i32,
+    },
+    User {
+        user_id: i32,
+    },
+    /// Everyone on the server (admins only).
+    Broadcast,
+}
+
+impl From<core::MessageTarget> for MessageTarget {
+    fn from(t: core::MessageTarget) -> Self {
+        match t {
+            core::MessageTarget::Channel(channel_id) => Self::Channel { channel_id },
+            core::MessageTarget::User(user_id) => Self::User { user_id },
+            core::MessageTarget::Broadcast => Self::Broadcast,
+        }
+    }
+}
+
+impl From<MessageTarget> for core::MessageTarget {
+    fn from(t: MessageTarget) -> Self {
+        match t {
+            MessageTarget::Channel { channel_id } => Self::Channel(channel_id),
+            MessageTarget::User { user_id } => Self::User(user_id),
+            MessageTarget::Broadcast => Self::Broadcast,
+        }
+    }
+}
+
+/// A text message, whole.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TextMessage {
+    pub target: MessageTarget,
+    pub from_user_id: i32,
+    pub from_username: String,
+    pub text: String,
+    /// Milliseconds since the Unix epoch.
+    pub received_at: u64,
+}
+
+impl From<core::TextMessage> for TextMessage {
+    fn from(m: core::TextMessage) -> Self {
+        TextMessage {
+            target: m.target.into(),
+            from_user_id: m.from_user_id,
+            from_username: m.from_username,
+            text: m.text,
+            received_at: m.received_at,
+        }
+    }
+}
+
+/// Everything known about a connection, at one moment.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Snapshot {
+    pub state: ConnectionState,
+    pub server: ServerInfo,
+    pub my_user_id: i32,
+    pub my_channel_id: i32,
+    pub channels: Vec<Channel>,
+    pub users: Vec<User>,
+}
+
+impl From<core::Snapshot> for Snapshot {
+    fn from(s: core::Snapshot) -> Self {
+        Snapshot {
+            state: s.state.map(Into::into).unwrap_or(ConnectionState::Disconnected),
+            server: s.server.into(),
+            my_user_id: s.my_user_id,
+            my_channel_id: s.my_channel_id,
+            channels: s.channels.into_iter().map(Into::into).collect(),
+            users: s.users.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// What happened. A UI can rebuild everything from a snapshot plus the
+/// events after it.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Event {
+    ConnectionChanged {
+        state: ConnectionState,
+    },
+    /// Gone, and not retried (why, in words).
+    ConnectionFailed {
+        message: String,
+    },
+    ServerUpdated {
+        server: ServerInfo,
+    },
+    ChannelAdded {
+        channel: Channel,
+    },
+    ChannelUpdated {
+        channel: Channel,
+    },
+    ChannelRemoved {
+        channel: Channel,
+    },
+    UserLoggedIn {
+        user: User,
+    },
+    UserLoggedOut {
+        user: User,
+    },
+    UserUpdated {
+        user: User,
+    },
+    UserJoined {
+        user: User,
+        channel_id: i32,
+    },
+    UserLeft {
+        user: User,
+        channel_id: i32,
+    },
+    TalkingChanged {
+        user_id: i32,
+        talking: bool,
+    },
+    MessageReceived {
+        message: TextMessage,
+    },
+    /// Voice activation started (true) or stopped sending my voice.
+    VoiceActivated {
+        sending: bool,
+    },
+    /// Kicked: from a channel (`channel_id` > 0) or the server.
+    Kicked {
+        by_user_id: i32,
+        channel_id: i32,
+    },
+}
+
+impl From<core::Event> for Event {
+    fn from(e: core::Event) -> Self {
+        use core::Event as E;
+        match e {
+            E::ConnectionChanged(s) => Self::ConnectionChanged { state: s.into() },
+            E::ConnectionFailed(message) => Self::ConnectionFailed { message },
+            E::ServerUpdated(s) => Self::ServerUpdated { server: s.into() },
+            E::ChannelAdded(c) => Self::ChannelAdded { channel: c.into() },
+            E::ChannelUpdated(c) => Self::ChannelUpdated { channel: c.into() },
+            E::ChannelRemoved(c) => Self::ChannelRemoved { channel: c.into() },
+            E::UserLoggedIn(u) => Self::UserLoggedIn { user: u.into() },
+            E::UserLoggedOut(u) => Self::UserLoggedOut { user: u.into() },
+            E::UserUpdated(u) => Self::UserUpdated { user: u.into() },
+            E::UserJoined { user, channel_id } => Self::UserJoined {
+                user: user.into(),
+                channel_id,
+            },
+            E::UserLeft { user, channel_id } => Self::UserLeft {
+                user: user.into(),
+                channel_id,
+            },
+            E::TalkingChanged { user_id, talking } => Self::TalkingChanged { user_id, talking },
+            E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
+            E::VoiceActivated(sending) => Self::VoiceActivated { sending },
+            E::Kicked { by_user_id, channel_id } => Self::Kicked { by_user_id, channel_id },
+        }
+    }
+}
+
+/// Implemented by the app to receive events. Called on the client's event
+/// thread: hand each to the main thread before touching the UI.
+#[uniffi::export(with_foreign)]
+pub trait TtListener: Send + Sync {
+    fn on_event(&self, event: Event);
+}
+
+/// One server connection. Several can run at once (use
+/// [`AudioDevices::Shared`] for each).
+#[derive(uniffi::Object)]
+pub struct TtClient {
+    inner: core::Client,
+}
+
+impl std::fmt::Debug for TtClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TtClient").finish_non_exhaustive()
+    }
+}
+
+#[uniffi::export]
+impl TtClient {
+    #[uniffi::constructor]
+    pub fn new(listener: Arc<dyn TtListener>) -> Arc<Self> {
+        Arc::new(TtClient {
+            inner: core::Client::new(move |e: core::Event| listener.on_event(e.into())),
+        })
+    }
+
+    /// Connects and logs in; returns once logged in (or why not).
+    pub fn connect(&self, options: ConnectOptions) -> Result<()> {
+        Ok(self.inner.connect(options.into())?)
+    }
+
+    pub fn disconnect(&self) -> Result<()> {
+        Ok(self.inner.disconnect()?)
+    }
+
+    pub fn join_channel(&self, channel_id: i32, password: String) -> Result<()> {
+        Ok(self.inner.join_channel(channel_id, &password)?)
+    }
+
+    pub fn join_channel_path(&self, path: String, password: String) -> Result<()> {
+        Ok(self.inner.join_channel_path(&path, &password)?)
+    }
+
+    pub fn leave_channel(&self) -> Result<()> {
+        Ok(self.inner.leave_channel()?)
+    }
+
+    /// Sends a message of any length (long ones go in parts).
+    pub fn send_message(&self, target: MessageTarget, text: String) -> Result<()> {
+        Ok(self.inner.send_message(target.into(), &text)?)
+    }
+
+    pub fn set_status(&self, mode: StatusMode, message: String) -> Result<()> {
+        Ok(self.inner.set_status(mode.into(), &message)?)
+    }
+
+    pub fn set_nickname(&self, nickname: String) -> Result<()> {
+        Ok(self.inner.set_nickname(&nickname)?)
+    }
+
+    pub fn init_audio(&self, devices: AudioDevices) -> Result<()> {
+        Ok(self.inner.init_audio(devices.into())?)
+    }
+
+    /// Push to talk: sending my voice (true) or not.
+    pub fn set_transmitting(&self, on: bool) -> Result<()> {
+        Ok(self.inner.set_transmitting(on)?)
+    }
+
+    /// Voice activation: on or off, the level that starts it (0–100) and
+    /// how long it keeps sending after the sound stops.
+    pub fn set_voice_activation(&self, on: bool, level: i32, stop_delay_ms: i32) -> Result<()> {
+        Ok(self.inner.set_voice_activation(on, level, stop_delay_ms)?)
+    }
+
+    /// Someone's volume in percent (100 normal, up to 400).
+    pub fn set_user_volume(&self, user_id: i32, percent: i32) -> Result<()> {
+        Ok(self.inner.set_user_volume(user_id, percent)?)
+    }
+
+    pub fn set_user_muted(&self, user_id: i32, muted: bool) -> Result<()> {
+        Ok(self.inner.set_user_muted(user_id, muted)?)
+    }
+
+    /// The microphone's level now, 0–100.
+    pub fn input_level(&self) -> i32 {
+        self.inner.input_level()
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        self.inner.snapshot().into()
+    }
+
+    /// A channel's path ("/Lobby/Music/"), "/" for the root.
+    pub fn channel_path(&self, channel_id: i32) -> String {
+        self.inner.snapshot().channel_path(channel_id)
+    }
+}
+
+/// The SDK's version ("5.23.0.5209").
+#[uniffi::export]
+pub fn sdk_version() -> String {
+    core::sdk_version()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_keep_their_words() {
+        let e: TtError = core::Error::Server {
+            code: 2001,
+            message: "The username or password is wrong.".into(),
+        }
+        .into();
+        assert_eq!(e.to_string(), "The username or password is wrong.");
+        assert!(matches!(e, TtError::Server { code: 2001, .. }));
+    }
+
+    #[test]
+    fn no_join_channel_when_the_path_is_empty() {
+        let o = ConnectOptions {
+            host: "h".into(),
+            tcp_port: 10333,
+            udp_port: 10333,
+            encrypted: false,
+            nickname: String::new(),
+            username: String::new(),
+            password: String::new(),
+            client_name: "TeamTalk NG".into(),
+            join_channel_path: String::new(),
+            join_channel_password: String::new(),
+            reconnect: true,
+        };
+        assert_eq!(core::ConnectOptions::from(o).join_channel, None);
+    }
+}

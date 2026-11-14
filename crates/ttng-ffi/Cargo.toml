@@ -1,0 +1,29 @@
+[package]
+name = "ttng-ffi"
+description = "TeamTalk NG's core for Swift and Kotlin, through UniFFI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "ttng_ffi"
+# staticlib for Xcode, cdylib for Android and for uniffi-bindgen to read.
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+ttng-core = { path = "../ttng-core" }
+uniffi = "0.32"
+
+[build-dependencies]
+uniffi = { version = "0.32", features = ["build"] }
+
+[lints]
+workspace = true
