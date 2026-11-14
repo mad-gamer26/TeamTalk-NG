@@ -144,6 +144,93 @@ final class ServerConnection {
         run("Couldn't change the status") { try $0.setStatus(mode: mode, message: message) }
     }
 
+    // MARK: People (the desktop's Users menu)
+
+    var me: User? { snapshot.flatMap { s in s.users.first { $0.id == s.myUserId } } }
+
+    /// May I moderate this channel: an admin, or its operator.
+    /// A channel's path in words ("Lobby, Music"; the root by the server's name).
+    func channelPathText(_ c: Channel) -> String {
+        if c.parentId == 0 { return "Root channel" }
+        return client.channelPath(channelId: c.id)
+    }
+
+    func canModerate(channel id: Int32) -> Bool {
+        rights.admin || (me?.operator == true && me?.channelId == id)
+    }
+
+    func setSubscription(_ user: User, _ what: Subscription, _ on: Bool) {
+        run("Couldn't change that") { try $0.setSubscription(userId: user.id, what: what, on: on) }
+    }
+
+    func setHearMyself(_ on: Bool) {
+        run("Couldn't change that") { try $0.setHearMyself(on: on) }
+    }
+
+    var hearingMyself: Bool { me?.mySubscriptions.on.contains(.voice) ?? false }
+
+    func setMediaVolume(_ user: User, percent: Int) {
+        run("Couldn't change the volume") { try $0.setUserMediaVolume(userId: user.id, percent: Int32(percent)) }
+    }
+
+    func setMediaMuted(_ user: User, _ muted: Bool) {
+        run("Couldn't mute") { try $0.setUserMediaMuted(userId: user.id, muted: muted) }
+    }
+
+    func setStereo(_ user: User, _ stream: AudioStream, left: Bool, right: Bool) {
+        run("Couldn't change that") { try $0.setUserStereo(userId: user.id, stream: stream, left: left, right: right) }
+    }
+
+    func setMuteAll(_ on: Bool) {
+        sound(on ? .off : .on)
+        run("Couldn't mute everyone") { try $0.setMuteAll(on: on) }
+    }
+
+    func setOperator(_ user: User, _ on: Bool, password: String = "") {
+        run("Couldn't change operators") { try $0.setOperator(userId: user.id, channelId: user.channelId, password: password, on: on) }
+    }
+
+    func setTransmit(channel: Int32, user: Int32, _ stream: TransmitStream, _ allowed: Bool) {
+        run("Couldn't change who may send") {
+            try $0.setTransmitAllowed(channelId: channel, userId: user, stream: stream, allowed: allowed)
+        }
+    }
+
+    /// Bans from their channel, then kicks them from it.
+    func banFromChannel(_ user: User, by kind: BanKind) {
+        run("Couldn't ban") { c in
+            try c.banFromChannel(userId: user.id, kind: kind)
+            try c.kickUser(userId: user.id, fromChannel: true)
+        }
+    }
+
+    func setGender(_ g: Gender) {
+        run("Couldn't change the gender") { try $0.setGender(gender: g) }
+    }
+
+    func setNickname(_ n: String) {
+        run("Couldn't change the nickname") { try $0.setNickname(nickname: n) }
+    }
+
+    func setRelay(_ user: User?, _ stream: AudioStream = .voice) {
+        let relay = user.map { Relay(userId: $0.id, stream: stream) }
+        run("Couldn't relay") { try $0.setRelay(relay: relay) }
+    }
+
+    func statistics(_ user: User) async -> UserStatistics? {
+        let client = self.client, id = user.id
+        return await Task.detached { try? client.userStatistics(userId: id) }.value
+    }
+
+    func channelBans(_ channel: Int32) async -> [Ban]? {
+        let client = self.client
+        let r: Result<[Ban], Error> = await Task.detached { Result { try client.listChannelBans(channelId: channel) } }.value
+        switch r {
+        case .success(let b): return b
+        case .failure(let e): announce("Couldn't list the bans: \(words(e))"); return nil
+        }
+    }
+
     func setVolume(_ user: User, percent: Int) {
         run("Couldn't change the volume") { try $0.setUserVolume(userId: user.id, percent: Int32(percent)) }
     }
@@ -378,7 +465,6 @@ final class ServerConnection {
 
     private var myChannel: Int32 { snapshot?.myChannelId ?? 0 }
     private func sound(_ e: SoundEvent) { app?.sounds.play(e) }
-    private var me: User? { snapshot.flatMap { s in s.users.first { $0.id == s.myUserId } } }
 
     fileprivate func handle(_ event: Event) {
         switch event {

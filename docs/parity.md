@@ -29,11 +29,11 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | Text-to-speech events on/off, sound events on/off | partial: sounds per event done; todo (6): spoken events chosen per event with templates |
-| Change nickname | partial: per server in its settings; todo (2): change it while connected |
+| Change nickname | done (per server, and while connected) |
 | Change status | done |
-| Toggle question mode | todo (2) |
-| Gender (status flags) | todo (2) |
-| Hear myself | todo (1): subscribe to my own voice |
+| Toggle question mode | done |
+| Gender (status flags) | done (kept apart from the status mode) |
+| Hear myself | done |
 | Push to talk, voice activation | done (with always on, Magic Tap) |
 | Video transmission | todo (9): camera |
 | Desktop sharing | n/a: iOS can't share the screen to TeamTalk this way |
@@ -42,22 +42,22 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Subscriptions: user, channel, broadcast messages, voice, video, desktop, desktop access, media file | todo (1) |
-| Intercept: user messages, channel messages, voice, video, desktop, media file | todo (1) |
-| Voice volume up/down, media file volume up/down | partial: voice volume; todo (1): media file volume, steps |
-| Stereo: mute left/right | todo (1) |
+| Subscriptions: user, channel, broadcast messages, voice, video, desktop, desktop access, media file | done |
+| Intercept: user messages, channel messages, voice, video, desktop, media file | done (admins). The SDK gives intercepted private messages as addressed to me, so their real recipient isn't shown |
+| Voice volume up/down, media file volume up/down | done (sliders in 10% steps, up to 400%) |
+| Stereo: mute left/right | done, for voice and media files |
 | Store for move, move users, move dialog | partial: move one person; todo (1): several at once |
-| Relay voice/media stream | todo (1) |
-| Mute voice, mute media file | partial: voice; todo (1): media file |
-| Mute all | todo (1) |
+| Relay voice/media stream | done |
+| Mute voice, mute media file | done |
+| Mute all | done |
 | Kick from channel/server | done |
-| Kick and ban from channel/server | partial: server ban done; todo (1): channel bans |
-| View/speak user information | todo (1): everything the server tells (client, version, IP, type, status, channel, stats) |
-| Transmit control (classroom): allow chat, voice, video, desktop, media per person and for all | todo (1) |
+| Kick and ban from channel/server | done (by account or IP address) |
+| View/speak user information | done (a Person screen: everything, with statistics) |
+| Transmit control (classroom): allow chat, voice, video, desktop, media per person and for all | done |
 | Messages | done (private messages) |
 | Allow desktop access | n/a with desktop sharing |
-| Op (channel operator) | todo (1) |
-| Position users (Classic) | todo (1): stereo placement per person |
+| Op (channel operator) | done (also with the channel's operator password) |
+| Position users (Classic) | partial: left/right per person; todo: 3D positions |
 
 ## Channels menu
 
@@ -68,7 +68,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Join, leave | done |
 | tt:// URL | todo (7): make one, open one |
 | Create, update, delete | partial: name, topic, password, user limit, type flags; todo (3): operator password, disk quota, audio codec, fixed volume, stream timeouts, join hidden channels by path |
-| Channel bans | todo (3) |
+| Channel bans | done (list and remove) |
 | Upload, download, delete file | done |
 | View channel messages (Classic) | done (Chat) |
 

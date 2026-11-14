@@ -9,15 +9,19 @@ struct ServerView: View {
     @State private var passwordFor: Channel?
     @State private var channelPassword = ""
     @State private var privateWith: User?
-    @State private var volumeFor: User?
+    @State private var personFor: User?
     @State private var showStatus = false
     @State private var channelSheet: ChannelSheet?
     @State private var movingUser: User?
     @State private var deletingChannel: Channel?
+    @State private var bansOf: Channel?
+    @State private var classroomOf: Channel?
     @State private var showServerSettings = false
     @State private var showBans = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
+    @State private var renaming = false
+    @State private var newNickname = ""
 
     enum Tab: String, CaseIterable, Identifiable {
         case channels = "Channels", chat = "Chat", files = "Files"
@@ -52,6 +56,15 @@ struct ServerView: View {
                             Button("Leave channel") { connection.leaveChannel() }
                         }
                         Button("Status") { showStatus = true }
+                        Button("Change nickname") { renaming = true }
+                        Toggle("Question mode", isOn: Binding(
+                            get: { connection.me?.status == .question },
+                            set: { on in connection.setStatus(on ? .question : .available, connection.me?.statusMessage ?? "") }))
+                        Toggle("Hear myself", isOn: Binding(get: { connection.hearingMyself }, set: { connection.setHearMyself($0) }))
+                        Toggle("Mute everyone", isOn: Binding(get: { connection.snapshot?.mutedAll ?? false }, set: { connection.setMuteAll($0) }))
+                        if connection.snapshot?.relaying != nil {
+                            Button("Stop relaying") { connection.setRelay(nil) }
+                        }
                         if (connection.snapshot?.myChannelId ?? 0) > 0 {
                             if connection.recording {
                                 Button("Stop recording") { connection.stopRecording() }
@@ -100,14 +113,20 @@ struct ServerView: View {
                     }
             }
         }
-        .sheet(item: $volumeFor) { user in
-            VolumeView(connection: connection, user: user)
+        .sheet(item: $personFor) { user in
+            PersonView(connection: connection, userId: user.id) { privateWith = $0 } move: { movingUser = $0 }
         }
         .sheet(isPresented: $showStatus) {
             StatusView(connection: connection)
         }
         .sheet(item: $channelSheet) { sheet in
             ChannelEditView(connection: connection, sheet: sheet)
+        }
+        .sheet(item: $bansOf) { c in
+            ChannelBansView(connection: connection, channel: c)
+        }
+        .sheet(item: $classroomOf) { c in
+            ClassroomView(connection: connection, channelId: c.id)
         }
         .sheet(item: $movingUser) { user in
             MoveView(connection: connection, user: user)
@@ -118,6 +137,12 @@ struct ServerView: View {
         .sheet(isPresented: $showBans) {
             BansView(connection: connection)
         }
+        .alert("Change nickname", isPresented: $renaming) {
+            TextField("Nickname", text: $newNickname)
+            Button("Change") { connection.setNickname(newNickname) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .onChange(of: renaming) { if renaming { newNickname = connection.me?.nickname ?? "" } }
         .alert("Broadcast message", isPresented: $broadcasting) {
             TextField("Message to everyone", text: $broadcastText)
             Button("Send") { connection.broadcast(broadcastText); broadcastText = "" }
@@ -162,7 +187,9 @@ struct ServerView: View {
                 ChannelRow(channel: c, depth: depth, snapshot: snap!, rights: connection.rights,
                            newSub: { channelSheet = .new(parent: c.id, temporary: !connection.rights.modifyChannels) },
                            edit: { channelSheet = .edit(c) },
-                           delete: { deletingChannel = c }) {
+                           delete: { deletingChannel = c },
+                           moderate: connection.canModerate(channel: c.id),
+                           bans: { bansOf = c }, classroom: { classroomOf = c }) {
                     if c.hasPassword && c.id != snap?.myChannelId {
                         passwordFor = c
                     } else if c.id != snap?.myChannelId {
@@ -171,7 +198,7 @@ struct ServerView: View {
                 }
             case .user(let u, let depth):
                 UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, rights: connection.rights,
-                        message: { privateWith = u }, volume: { volumeFor = u },
+                        message: { privateWith = u }, details: { personFor = u },
                         move: { movingUser = u },
                         kick: { connection.kick(u, fromChannel: $0) },
                         ban: { connection.ban(u, by: $0) })
@@ -223,6 +250,9 @@ private struct ChannelRow: View {
     let newSub: () -> Void
     let edit: () -> Void
     let delete: () -> Void
+    let moderate: Bool
+    let bans: () -> Void
+    let classroom: () -> Void
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
@@ -267,6 +297,10 @@ private struct ChannelRow: View {
             Button("Edit channel", action: edit)
             if channel.parentId != 0 { Button("Delete channel", role: .destructive, action: delete) }
         }
+        if moderate {
+            Button("Channel bans", action: bans)
+            if channel.classroom { Button("Classroom: who may send", action: classroom) }
+        }
     }
 }
 
@@ -276,7 +310,7 @@ private struct UserRow: View {
     let isMe: Bool
     let rights: MyRights
     let message: () -> Void
-    let volume: () -> Void
+    let details: () -> Void
     let move: () -> Void
     let kick: (_ fromChannel: Bool) -> Void
     let ban: (BanKind) -> Void
@@ -285,6 +319,11 @@ private struct UserRow: View {
     private var label: String {
         var parts = [isMe ? "\(user.displayName) (you)" : user.displayName]
         if user.talking { parts.append("talking") }
+        if user.voiceMuted { parts.append("muted") }
+        if user.operator { parts.append("operator") }
+        if user.streamingMedia { parts.append("streaming a file") }
+        if user.sendingVideo { parts.append("sending video") }
+        if user.sharingDesktop { parts.append("sharing a desktop") }
         switch user.status {
         case .away: parts.append("away")
         case .question: parts.append("has a question")
@@ -296,22 +335,27 @@ private struct UserRow: View {
     }
 
     var body: some View {
-        HStack {
-            Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
-                .foregroundStyle(user.talking ? .green : .secondary)
-                .accessibilityHidden(true)
-            Text(label)
+        Button(action: details) {
+            HStack {
+                Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
+                    .foregroundStyle(user.talking ? .green : .secondary)
+                    .accessibilityHidden(true)
+                Text(label)
+            }
+            .padding(.leading, CGFloat(depth) * 16)
         }
-        .padding(.leading, CGFloat(depth) * 16)
+        .foregroundStyle(.primary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
-        .contextMenu { if !isMe { actions } }
+        .accessibilityHint("Double-tap for everything about \(isMe ? "you" : user.displayName).")
+        .accessibilityAddTraits(.isButton)
+        .contextMenu { if isMe { Button("Details and controls", action: details) } else { actions } }
         .accessibilityActions { if !isMe { actions } }
     }
 
     @ViewBuilder private var actions: some View {
         Button("Message privately", action: message)
-        Button("Volume", action: volume)
+        Button("Details and controls", action: details)
         if rights.moveUsers { Button("Move to a channel", action: move) }
         if rights.kick {
             if user.channelId > 0 { Button("Kick from the channel") { kick(true) } }
@@ -431,37 +475,14 @@ struct ChatView: View {
     }
 }
 
-/// Someone's volume, in percent.
-private struct VolumeView: View {
-    @Environment(\.dismiss) private var dismiss
-    let connection: ServerConnection
-    let user: User
-    @State private var percent = 100.0
-    @State private var muted = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Slider(value: $percent, in: 0...400, step: 10) { Text("Volume") }
-                    .accessibilityValue("\(Int(percent)) percent")
-                    .onChange(of: percent) { _, v in connection.setVolume(user, percent: Int(v)) }
-                Toggle("Mute", isOn: $muted)
-                    .onChange(of: muted) { _, v in connection.setMuted(user, v) }
-            }
-            .navigationTitle(user.displayName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
 /// My status on this server.
 private struct StatusView: View {
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     @State private var mode = StatusMode.available
     @State private var message = ""
+    @State private var gender = Gender.neutral
+    @State private var startGender = Gender.neutral
 
     var body: some View {
         NavigationStack {
@@ -472,19 +493,30 @@ private struct StatusView: View {
                     Text("Question").tag(StatusMode.question)
                 }
                 TextField("Status message", text: $message)
+                Picker("Gender", selection: $gender) {
+                    Text("Male").tag(Gender.male)
+                    Text("Female").tag(Gender.female)
+                    Text("Neutral").tag(Gender.neutral)
+                }
             }
             .navigationTitle("Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Set") { connection.setStatus(mode, message); dismiss() }
+                    Button("Set") {
+                        connection.setStatus(mode, message)
+                        if gender != startGender { connection.setGender(gender) }
+                        dismiss()
+                    }
                 }
             }
             .onAppear {
                 if let s = connection.snapshot, let me = s.users.first(where: { $0.id == s.myUserId }) {
                     mode = me.status
                     message = me.statusMessage
+                    gender = me.gender
+                    startGender = me.gender
                 }
             }
         }
