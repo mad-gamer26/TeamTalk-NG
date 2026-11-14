@@ -102,6 +102,7 @@ final class ServerConnection {
                 announce("Couldn't connect: \(result)")
             } else {
                 applyTalkMode()
+                app?.monitor.appConnected(server, true)
             }
         }
     }
@@ -109,6 +110,7 @@ final class ServerConnection {
     func disconnect() {
         let client = self.client
         transmitting = false
+        app?.monitor.appConnected(server, false)
         Task.detached { try? client.disconnect() }
     }
 

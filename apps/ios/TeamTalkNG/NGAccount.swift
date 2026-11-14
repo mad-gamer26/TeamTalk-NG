@@ -16,6 +16,13 @@ final class NGAccountStore {
 
     var signedIn: Bool { email != nil }
 
+    /// The session's token (the Monitor accepts it too).
+    var sessionToken: String? {
+        guard signedIn else { return nil }
+        let t = Passwords.secret(Self.keychainService, "token")
+        return t.isEmpty ? nil : t
+    }
+
     /// What sync knows, kept between launches (no secrets: the core keeps
     /// content hashes only).
     private var state = ""
@@ -121,6 +128,7 @@ final class NGAccountStore {
         // to it, and everything there is new here.
         state = ""
         saveState()
+        app.monitor.accountChanged()
         await sync()
     }
 
@@ -137,6 +145,7 @@ final class NGAccountStore {
         state = ""
         saveState()
         client = Self.makeClient(token: nil)
+        app.monitor.accountChanged()
     }
 
     // MARK: Syncing

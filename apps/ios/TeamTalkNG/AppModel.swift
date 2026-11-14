@@ -17,6 +17,7 @@ final class AppModel {
     var nickname = "" { didSet { save() } }
     let sounds = SoundStore()
     @ObservationIgnored private(set) lazy var account = NGAccountStore(app: self)
+    @ObservationIgnored private(set) lazy var monitor = MonitorStore(app: self)
 
     private let defaults = UserDefaults.standard
 

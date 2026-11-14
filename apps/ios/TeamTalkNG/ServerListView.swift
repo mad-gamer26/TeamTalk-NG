@@ -9,6 +9,13 @@ struct ServerListView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink {
+                        MonitorListView()
+                    } label: {
+                        LabeledContent("Monitor", value: model.monitor.unread > 0 ? "\(model.monitor.unread) unread" : "")
+                    }
+                }
                 if model.servers.isEmpty {
                     Text("No servers yet. Add one with the Add server button.")
                         .foregroundStyle(.secondary)
