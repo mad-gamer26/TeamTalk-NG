@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = ["crates/ttng-sys", "crates/ttng-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"

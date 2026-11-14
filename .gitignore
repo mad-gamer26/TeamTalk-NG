@@ -1,0 +1,4 @@
+/target/
+# BearWare's TeamTalk SDK: downloaded by scripts/fetch-sdk.sh, never committed
+# (its license doesn't allow redistributing it in this repository).
+/sdk/

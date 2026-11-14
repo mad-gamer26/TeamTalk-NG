@@ -1,0 +1,12 @@
+[package]
+name = "ttng-core"
+description = "TeamTalk NG's core: a safe client for BearWare's TeamTalk 5 SDK"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ttng-sys = { path = "../ttng-sys" }
+
+[lints]
+workspace = true

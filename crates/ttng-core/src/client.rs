@@ -1,0 +1,1034 @@
+//! A connection to one TeamTalk server.
+//!
+//! One thread owns the SDK instance and makes every SDK call: it pumps the
+//! SDK's messages, keeps the model up to date and reconnects. `Client`'s
+//! methods send it requests and wait for the answer (a server command waits
+//! for the server's reply to that command). Events reach the listener on a
+//! separate thread, in order, so a listener may call the client.
+
+use std::collections::HashMap;
+use std::ptr;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+use ttng_sys as sys;
+
+use crate::error::{Error, Result};
+use crate::model::*;
+use crate::text::{arg, from_tt, split_message, to_tt};
+
+/// How long a call waits for the server's answer.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long the SDK thread waits for a message before checking for requests.
+const PUMP_MS: i32 = 20;
+/// The longest wait between reconnection attempts.
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Where to connect, and as whom.
+#[derive(Clone, Debug)]
+pub struct ConnectOptions {
+    pub host: String,
+    pub tcp_port: u16,
+    pub udp_port: u16,
+    pub encrypted: bool,
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+    /// What other clients see as this client's name.
+    pub client_name: String,
+    /// A channel to join after logging in: its path ("/Lobby/") and password.
+    pub join_channel: Option<(String, String)>,
+    /// Reconnect (and rejoin the channel) when the connection drops.
+    pub reconnect: bool,
+}
+
+/// Which sound devices to use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AudioDevices {
+    /// The system's default input and output.
+    Default,
+    /// The SDK's virtual device: no hardware (tests, and listening without
+    /// a microphone).
+    Virtual,
+}
+
+/// Receives events (on the client's event thread, one at a time, in order).
+pub trait EventListener: Send + Sync + 'static {
+    fn on_event(&self, event: Event);
+}
+
+impl<F: Fn(Event) + Send + Sync + 'static> EventListener for F {
+    fn on_event(&self, event: Event) {
+        self(event)
+    }
+}
+
+type Reply = Sender<Result<()>>;
+
+enum Request {
+    Connect(Box<ConnectOptions>, Reply),
+    Disconnect(Reply),
+    JoinChannel {
+        id: i32,
+        password: String,
+        reply: Reply,
+    },
+    JoinPath {
+        path: String,
+        password: String,
+        reply: Reply,
+    },
+    LeaveChannel(Reply),
+    SendMessage {
+        target: MessageTarget,
+        text: String,
+        reply: Reply,
+    },
+    SetStatus {
+        mode: StatusMode,
+        message: String,
+        reply: Reply,
+    },
+    SetNickname(String, Reply),
+    InitAudio(AudioDevices, Reply),
+    SetTransmitting(bool, Reply),
+    SetUserVolume {
+        user_id: i32,
+        volume: i32,
+        reply: Reply,
+    },
+    SetUserMuted {
+        user_id: i32,
+        muted: bool,
+        reply: Reply,
+    },
+    TestTone(i32, Reply),
+    Quit,
+}
+
+/// The model, shared with `Client::snapshot` (the SDK thread writes it).
+#[derive(Default)]
+struct Model {
+    state: Option<ConnectionState>,
+    server: ServerInfo,
+    my_user_id: i32,
+    my_channel_id: i32,
+    channels: HashMap<i32, Channel>,
+    users: HashMap<i32, User>,
+}
+
+/// A connection to one TeamTalk server. Dropping it disconnects.
+pub struct Client {
+    tx: Sender<Request>,
+    model: Arc<Mutex<Model>>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client").finish_non_exhaustive()
+    }
+}
+
+impl Client {
+    /// A client, not connected yet. `listener` gets every event.
+    pub fn new(listener: impl EventListener) -> Client {
+        let (tx, rx) = mpsc::channel();
+        let (etx, erx) = mpsc::channel::<Event>();
+        let model = Arc::new(Mutex::new(Model {
+            state: Some(ConnectionState::Disconnected),
+            ..Default::default()
+        }));
+        let listener = Arc::new(listener);
+        thread::Builder::new()
+            .name("ttng-events".into())
+            .spawn(move || {
+                for e in erx {
+                    listener.on_event(e);
+                }
+            })
+            .expect("can't start the event thread");
+        let m = Arc::clone(&model);
+        let worker = thread::Builder::new()
+            .name("ttng-sdk".into())
+            .spawn(move || Worker::new(rx, etx, m).run())
+            .expect("can't start the SDK thread");
+        Client {
+            tx,
+            model,
+            worker: Some(worker),
+        }
+    }
+
+    fn ask(&self, make: impl FnOnce(Reply) -> Request) -> Result<()> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx.send(make(rtx)).map_err(|_| Error::NotConnected)?;
+        match rrx.recv_timeout(ANSWER_TIMEOUT) {
+            Ok(r) => r,
+            Err(RecvTimeoutError::Timeout) => Err(Error::Timeout),
+            Err(RecvTimeoutError::Disconnected) => Err(Error::NotConnected),
+        }
+    }
+
+    /// Connects and logs in; returns once logged in (and in the channel to
+    /// join, if any), or with why not.
+    pub fn connect(&self, options: ConnectOptions) -> Result<()> {
+        self.ask(|r| Request::Connect(Box::new(options), r))
+    }
+
+    pub fn disconnect(&self) -> Result<()> {
+        self.ask(Request::Disconnect)
+    }
+
+    pub fn join_channel(&self, id: i32, password: &str) -> Result<()> {
+        self.ask(|reply| Request::JoinChannel {
+            id,
+            password: password.into(),
+            reply,
+        })
+    }
+
+    /// Joins a channel by its path ("/Lobby/Music/").
+    pub fn join_channel_path(&self, path: &str, password: &str) -> Result<()> {
+        self.ask(|reply| Request::JoinPath {
+            path: path.into(),
+            password: password.into(),
+            reply,
+        })
+    }
+
+    pub fn leave_channel(&self) -> Result<()> {
+        self.ask(Request::LeaveChannel)
+    }
+
+    /// Sends a text message (long ones as several parts, joined again by
+    /// TeamTalk clients).
+    pub fn send_message(&self, target: MessageTarget, text: &str) -> Result<()> {
+        self.ask(|reply| Request::SendMessage {
+            target,
+            text: text.into(),
+            reply,
+        })
+    }
+
+    pub fn set_status(&self, mode: StatusMode, message: &str) -> Result<()> {
+        self.ask(|reply| Request::SetStatus {
+            mode,
+            message: message.into(),
+            reply,
+        })
+    }
+
+    pub fn set_nickname(&self, nickname: &str) -> Result<()> {
+        self.ask(|r| Request::SetNickname(nickname.into(), r))
+    }
+
+    /// Opens the sound devices (needed to hear and talk).
+    pub fn init_audio(&self, devices: AudioDevices) -> Result<()> {
+        self.ask(|r| Request::InitAudio(devices, r))
+    }
+
+    /// Starts or stops sending my voice (push to talk).
+    pub fn set_transmitting(&self, on: bool) -> Result<()> {
+        self.ask(|r| Request::SetTransmitting(on, r))
+    }
+
+    /// Someone's volume for me only (0 to 100, 50 is normal... see the SDK's
+    /// `SOUND_VOLUME_*`; the apps map their own scale onto it).
+    pub fn set_user_volume(&self, user_id: i32, volume: i32) -> Result<()> {
+        self.ask(|reply| Request::SetUserVolume { user_id, volume, reply })
+    }
+
+    /// Mutes someone for me only.
+    pub fn set_user_muted(&self, user_id: i32, muted: bool) -> Result<()> {
+        self.ask(|reply| Request::SetUserMuted { user_id, muted, reply })
+    }
+
+    /// Replaces the microphone with a tone (`hz`; 0 turns it off). For tests
+    /// and checking a connection without speaking.
+    pub fn set_test_tone(&self, hz: i32) -> Result<()> {
+        self.ask(|r| Request::TestTone(hz, r))
+    }
+
+    /// Everything known right now.
+    pub fn snapshot(&self) -> Snapshot {
+        let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        let mut channels: Vec<Channel> = m.channels.values().cloned().collect();
+        channels.sort_by_key(|c| c.id);
+        let mut users: Vec<User> = m.users.values().cloned().collect();
+        users.sort_by_key(|u| u.id);
+        Snapshot {
+            state: m.state.clone(),
+            server: m.server.clone(),
+            my_user_id: m.my_user_id,
+            my_channel_id: m.my_channel_id,
+            channels,
+            users,
+        }
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        let _ = self.tx.send(Request::Quit);
+        if let Some(w) = self.worker.take() {
+            let _ = w.join();
+        }
+    }
+}
+
+/// What a pending server command is for.
+enum Pending {
+    /// Someone waits for the answer.
+    Reply(Reply),
+    /// The login of a connection attempt.
+    Login,
+    /// The rejoin after reconnecting.
+    Rejoin,
+    /// An earlier part of a long message (only the last part answers).
+    Part,
+}
+
+/// A connection being made: who asked (if anyone is waiting), and what for.
+struct Attempt {
+    reply: Option<Reply>,
+}
+
+struct Worker {
+    inst: *mut sys::TTInstance,
+    rx: Receiver<Request>,
+    events: Sender<Event>,
+    model: Arc<Mutex<Model>>,
+    pending: HashMap<i32, (Pending, Instant)>,
+    options: Option<ConnectOptions>,
+    attempt: Option<Attempt>,
+    /// The channel to rejoin after reconnecting (path, password).
+    rejoin: Option<(String, String)>,
+    retry: Option<(Instant, u32)>,
+    /// Long incoming messages being joined, by (type, from, channel).
+    partial: HashMap<(u32, i32, i32), String>,
+    /// Set when the server kicked or logged us out (don't reconnect).
+    no_reconnect: bool,
+}
+
+impl Worker {
+    fn new(rx: Receiver<Request>, events: Sender<Event>, model: Arc<Mutex<Model>>) -> Worker {
+        // SAFETY: creates an SDK instance; it's used and closed on this thread only.
+        let inst = unsafe { sys::TT_InitTeamTalkPoll() };
+        Worker {
+            inst,
+            rx,
+            events,
+            model,
+            pending: HashMap::new(),
+            options: None,
+            attempt: None,
+            rejoin: None,
+            retry: None,
+            partial: HashMap::new(),
+            no_reconnect: false,
+        }
+    }
+
+    fn run(mut self) {
+        if self.inst.is_null() {
+            // Every request is answered with the reason.
+            for req in self.rx.iter() {
+                if let Some(reply) = reply_of(req) {
+                    let _ = reply.send(Err(Error::Refused("The TeamTalk SDK couldn't start.".into())));
+                }
+            }
+            return;
+        }
+        loop {
+            loop {
+                match self.rx.try_recv() {
+                    Ok(Request::Quit) => return self.close(),
+                    Ok(req) => self.handle(req),
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => return self.close(),
+                }
+            }
+            if let Some((at, n)) = self.retry
+                && Instant::now() >= at
+            {
+                self.retry = None;
+                self.start_connect(n);
+            }
+            self.expire_pending();
+            let mut msg = sys::TTMessage::default();
+            // SAFETY: inst is live; msg is a valid TTMessage for the SDK to fill.
+            let got = unsafe { sys::TT_GetMessage(self.inst, &mut msg, &PUMP_MS) } != 0;
+            if got {
+                self.on_message(&msg);
+            }
+        }
+    }
+
+    fn close(&mut self) {
+        // SAFETY: inst is live and not used after this.
+        unsafe {
+            sys::TT_Disconnect(self.inst);
+            sys::TT_CloseTeamTalk(self.inst);
+        }
+        self.inst = ptr::null_mut();
+    }
+
+    fn emit(&self, e: Event) {
+        let _ = self.events.send(e);
+    }
+
+    fn set_state(&self, s: ConnectionState) {
+        let mut m = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        if m.state.as_ref() == Some(&s) {
+            return;
+        }
+        m.state = Some(s.clone());
+        drop(m);
+        self.emit(Event::ConnectionChanged(s));
+    }
+
+    fn logged_in(&self) -> bool {
+        self.model
+            .lock()
+            .map(|m| m.state == Some(ConnectionState::LoggedIn))
+            .unwrap_or(false)
+    }
+
+    /// Records a command the server will answer (`id` > 0), or answers at
+    /// once that the SDK refused it.
+    fn track(&mut self, id: i32, p: Pending, what: &str) {
+        if id > 0 {
+            self.pending.insert(id, (p, Instant::now()));
+        } else if let Pending::Reply(r) = p {
+            let e = if self.logged_in() {
+                Error::Refused(format!("{what} isn't possible right now."))
+            } else {
+                Error::NotConnected
+            };
+            let _ = r.send(Err(e));
+        }
+    }
+
+    fn expire_pending(&mut self) {
+        let old: Vec<i32> = self
+            .pending
+            .iter()
+            .filter(|(_, (_, at))| at.elapsed() > ANSWER_TIMEOUT + Duration::from_secs(10))
+            .map(|(id, _)| *id)
+            .collect();
+        for id in old {
+            if let Some((Pending::Reply(r), _)) = self.pending.remove(&id) {
+                let _ = r.send(Err(Error::Timeout));
+            }
+        }
+    }
+
+    fn handle(&mut self, req: Request) {
+        match req {
+            Request::Connect(opts, reply) => {
+                // SAFETY: inst is live.
+                unsafe { sys::TT_Disconnect(self.inst) };
+                self.clear_model();
+                self.no_reconnect = false;
+                self.retry = None;
+                self.rejoin = opts.join_channel.clone();
+                self.options = Some(*opts);
+                self.attempt = Some(Attempt { reply: Some(reply) });
+                self.start_connect(0);
+            }
+            Request::Disconnect(reply) => {
+                self.options = None;
+                self.retry = None;
+                self.rejoin = None;
+                // SAFETY: inst is live.
+                unsafe { sys::TT_Disconnect(self.inst) };
+                self.fail_attempt(Error::Connection("Disconnected.".into()));
+                self.clear_model();
+                self.set_state(ConnectionState::Disconnected);
+                let _ = reply.send(Ok(()));
+            }
+            Request::JoinChannel { id, password, reply } => {
+                let pw = arg(&password);
+                // SAFETY: inst is live; pw is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoJoinChannelByID(self.inst, id, pw.as_ptr()) };
+                self.track(cmd, Pending::Reply(reply), "Joining that channel");
+            }
+            Request::JoinPath { path, password, reply } => match self.channel_id(&path) {
+                Some(id) => self.handle(Request::JoinChannel { id, password, reply }),
+                None => {
+                    let _ = reply.send(Err(Error::Refused(format!("There's no channel {path}."))));
+                }
+            },
+            Request::LeaveChannel(reply) => {
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoLeaveChannel(self.inst) };
+                self.track(cmd, Pending::Reply(reply), "Leaving the channel");
+            }
+            Request::SendMessage { target, text, reply } => self.send_message(target, &text, reply),
+            Request::SetStatus { mode, message, reply } => {
+                let msg = arg(&message);
+                // SAFETY: inst is live; msg is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, mode.raw(), msg.as_ptr()) };
+                self.track(cmd, Pending::Reply(reply), "Changing the status");
+            }
+            Request::SetNickname(nick, reply) => {
+                let n = arg(&nick);
+                // SAFETY: inst is live; n is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoChangeNickname(self.inst, n.as_ptr()) };
+                self.track(cmd, Pending::Reply(reply), "Changing the nickname");
+            }
+            Request::InitAudio(devices, reply) => {
+                let _ = reply.send(self.init_audio(devices));
+            }
+            Request::SetTransmitting(on, reply) => {
+                // SAFETY: inst is live.
+                let ok = unsafe { sys::TT_EnableVoiceTransmission(self.inst, on as sys::TTBOOL) } != 0;
+                let _ = reply.send(if ok {
+                    Ok(())
+                } else {
+                    Err(Error::Refused(
+                        "Talking isn't possible: the microphone isn't open.".into(),
+                    ))
+                });
+            }
+            Request::SetUserVolume { user_id, volume, reply } => {
+                // SAFETY: inst is live.
+                let ok =
+                    unsafe { sys::TT_SetUserVolume(self.inst, user_id, sys::StreamType_STREAMTYPE_VOICE, volume) } != 0;
+                let _ = reply.send(if ok {
+                    Ok(())
+                } else {
+                    Err(Error::Refused("That person's volume can't be set.".into()))
+                });
+            }
+            Request::SetUserMuted { user_id, muted, reply } => {
+                // SAFETY: inst is live.
+                let ok = unsafe {
+                    sys::TT_SetUserMute(
+                        self.inst,
+                        user_id,
+                        sys::StreamType_STREAMTYPE_VOICE,
+                        muted as sys::TTBOOL,
+                    )
+                } != 0;
+                let _ = reply.send(if ok {
+                    Ok(())
+                } else {
+                    Err(Error::Refused("That person can't be muted.".into()))
+                });
+            }
+            Request::TestTone(hz, reply) => {
+                // SAFETY: inst is live.
+                let ok = unsafe { sys::TT_DBG_SetSoundInputTone(self.inst, sys::StreamType_STREAMTYPE_VOICE, hz) } != 0;
+                let _ = reply.send(if ok {
+                    Ok(())
+                } else {
+                    Err(Error::Refused("The test tone couldn't be set.".into()))
+                });
+            }
+            Request::Quit => {}
+        }
+    }
+
+    fn init_audio(&mut self, devices: AudioDevices) -> Result<()> {
+        let (mut input, mut output) = (0, 0);
+        match devices {
+            AudioDevices::Virtual => {
+                input = sys::TT_SOUNDDEVICE_ID_TEAMTALK_VIRTUAL as i32;
+                output = input;
+            }
+            AudioDevices::Default => {
+                // SAFETY: both pointers are valid for the SDK to write.
+                if unsafe { sys::TT_GetDefaultSoundDevices(&mut input, &mut output) } == 0 {
+                    return Err(Error::Refused("No sound devices were found.".into()));
+                }
+            }
+        }
+        // SAFETY: inst is live.
+        unsafe {
+            sys::TT_CloseSoundInputDevice(self.inst);
+            sys::TT_CloseSoundOutputDevice(self.inst);
+            if sys::TT_InitSoundInputDevice(self.inst, input) == 0 {
+                return Err(Error::Refused("The microphone couldn't be opened.".into()));
+            }
+            if sys::TT_InitSoundOutputDevice(self.inst, output) == 0 {
+                return Err(Error::Refused("The speakers couldn't be opened.".into()));
+            }
+        }
+        Ok(())
+    }
+
+    fn send_message(&mut self, target: MessageTarget, text: &str, reply: Reply) {
+        let my_id = self.model.lock().map(|m| m.my_user_id).unwrap_or(0);
+        let parts = split_message(text);
+        let last = parts.len() - 1;
+        let mut reply = Some(reply);
+        for (i, part) in parts.iter().enumerate() {
+            let mut m = sys::TextMessage::default();
+            let (kind, channel, to) = match target {
+                MessageTarget::Channel(c) => (sys::TextMsgType_MSGTYPE_CHANNEL, c, 0),
+                MessageTarget::User(u) => (sys::TextMsgType_MSGTYPE_USER, 0, u),
+                MessageTarget::Broadcast => (sys::TextMsgType_MSGTYPE_BROADCAST, 0, 0),
+            };
+            m.nMsgType = kind;
+            m.nFromUserID = my_id;
+            m.nChannelID = channel;
+            m.nToUserID = to;
+            m.szMessage = to_tt(part);
+            m.bMore = (i < last) as sys::TTBOOL;
+            // SAFETY: inst is live; m is a complete TextMessage.
+            let cmd = unsafe { sys::TT_DoTextMessage(self.inst, &m) };
+            let p = if i == last {
+                Pending::Reply(reply.take().unwrap())
+            } else {
+                Pending::Part
+            };
+            if cmd <= 0 {
+                if let Some(r) = reply.take() {
+                    let _ = r.send(Err(if self.logged_in() {
+                        Error::Refused("The message couldn't be sent.".into())
+                    } else {
+                        Error::NotConnected
+                    }));
+                }
+                return;
+            }
+            self.track(cmd, p, "Sending the message");
+        }
+    }
+
+    fn channel_id(&self, path: &str) -> Option<i32> {
+        let p = arg(path);
+        // SAFETY: inst is live; p is NUL-terminated.
+        let id = unsafe { sys::TT_GetChannelIDFromPath(self.inst, p.as_ptr()) };
+        (id > 0).then_some(id)
+    }
+
+    fn start_connect(&mut self, attempt: u32) {
+        let Some(o) = self.options.clone() else { return };
+        self.set_state(if attempt == 0 {
+            ConnectionState::Connecting
+        } else {
+            ConnectionState::Reconnecting { attempt }
+        });
+        let host = arg(&o.host);
+        // SAFETY: inst is live; host is NUL-terminated and outlives the call.
+        let ok = unsafe {
+            sys::TT_Connect(
+                self.inst,
+                host.as_ptr(),
+                o.tcp_port as i32,
+                o.udp_port as i32,
+                0,
+                0,
+                o.encrypted as sys::TTBOOL,
+            )
+        } != 0;
+        if !ok {
+            self.connect_failed(format!("Couldn't start connecting to {}.", o.host));
+        }
+        if self.attempt.is_none() {
+            self.attempt = Some(Attempt { reply: None });
+        }
+    }
+
+    /// A connection attempt failed: answer whoever waits, and retry if this
+    /// was a reconnection.
+    fn connect_failed(&mut self, why: String) {
+        // SAFETY: inst is live.
+        unsafe { sys::TT_Disconnect(self.inst) };
+        let reconnecting = matches!(
+            self.model.lock().map(|m| m.state.clone()).ok().flatten(),
+            Some(ConnectionState::Reconnecting { .. })
+        );
+        if let Some(a) = self.attempt.take()
+            && let Some(r) = a.reply
+        {
+            let _ = r.send(Err(Error::Connection(why.clone())));
+        }
+        if reconnecting && self.options.as_ref().is_some_and(|o| o.reconnect) && !self.no_reconnect {
+            let n = match self.model.lock().map(|m| m.state.clone()).ok().flatten() {
+                Some(ConnectionState::Reconnecting { attempt }) => attempt + 1,
+                _ => 1,
+            };
+            self.schedule_retry(n);
+        } else {
+            self.options = None;
+            self.clear_model();
+            self.set_state(ConnectionState::Disconnected);
+            self.emit(Event::ConnectionFailed(why));
+        }
+    }
+
+    fn schedule_retry(&mut self, attempt: u32) {
+        let wait = Duration::from_secs(1u64 << attempt.min(5).saturating_sub(1)).min(MAX_BACKOFF);
+        self.retry = Some((Instant::now() + wait, attempt));
+        self.set_state(ConnectionState::Reconnecting { attempt });
+    }
+
+    fn fail_attempt(&mut self, e: Error) {
+        if let Some(a) = self.attempt.take()
+            && let Some(r) = a.reply
+        {
+            let _ = r.send(Err(e));
+        }
+        for (_, (p, _)) in self.pending.drain() {
+            if let Pending::Reply(r) = p {
+                let _ = r.send(Err(Error::NotConnected));
+            }
+        }
+    }
+
+    fn clear_model(&mut self) {
+        let mut m = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        m.channels.clear();
+        m.users.clear();
+        m.my_user_id = 0;
+        m.my_channel_id = 0;
+        m.server = ServerInfo::default();
+        self.partial.clear();
+    }
+
+    fn on_message(&mut self, msg: &sys::TTMessage) {
+        // SAFETY (for every union read below): the SDK sets ttType to say
+        // which member is valid, and each read checks it first.
+        let union = &msg.__bindgen_anon_1;
+        let user = || {
+            (msg.ttType == sys::TTType___USER).then(|| {
+                // SAFETY: ttType says the union holds a User.
+                unsafe { User::from(&union.user) }
+            })
+        };
+        let channel = || {
+            (msg.ttType == sys::TTType___CHANNEL).then(|| {
+                // SAFETY: ttType says the union holds a Channel.
+                unsafe { Channel::from(&union.channel) }
+            })
+        };
+        match msg.nClientEvent {
+            sys::ClientEvent_CLIENTEVENT_CON_SUCCESS => {
+                self.set_state(ConnectionState::LoggingIn);
+                let Some(o) = self.options.clone() else { return };
+                let (n, u, p, c) = (
+                    arg(&o.nickname),
+                    arg(&o.username),
+                    arg(&o.password),
+                    arg(&o.client_name),
+                );
+                // SAFETY: inst is live; the strings are NUL-terminated and outlive the call.
+                let cmd = unsafe { sys::TT_DoLoginEx(self.inst, n.as_ptr(), u.as_ptr(), p.as_ptr(), c.as_ptr()) };
+                if cmd > 0 {
+                    self.pending.insert(cmd, (Pending::Login, Instant::now()));
+                } else {
+                    self.connect_failed("Couldn't log in.".into());
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CON_FAILED => {
+                let host = self
+                    .options
+                    .as_ref()
+                    .map(|o| format!("{}:{}", o.host, o.tcp_port))
+                    .unwrap_or_default();
+                self.connect_failed(format!("Couldn't connect to {host}."));
+            }
+            sys::ClientEvent_CLIENTEVENT_CON_CRYPT_ERROR => {
+                self.connect_failed(
+                    "The encrypted connection failed (the server's encryption settings don't match).".into(),
+                );
+            }
+            sys::ClientEvent_CLIENTEVENT_CON_LOST => self.connection_lost(),
+            sys::ClientEvent_CLIENTEVENT_CMD_SUCCESS => self.command_done(msg.nSource, Ok(())),
+            sys::ClientEvent_CLIENTEVENT_CMD_ERROR => {
+                let e = if msg.ttType == sys::TTType___CLIENTERRORMSG {
+                    // SAFETY: checked ttType.
+                    let em = unsafe { &union.clienterrormsg };
+                    let text = from_tt(&em.szErrorMsg);
+                    Error::Server {
+                        code: em.nErrorNo,
+                        message: server_error_text(em.nErrorNo, &text),
+                    }
+                } else {
+                    Error::Refused("The server refused that.".into())
+                };
+                self.command_done(msg.nSource, Err(e));
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_MYSELF_LOGGEDIN => {
+                if let Ok(mut m) = self.model.lock() {
+                    m.my_user_id = msg.nSource;
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_MYSELF_LOGGEDOUT => {
+                self.no_reconnect = true;
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_MYSELF_KICKED => {
+                let by = user().map(|u| u.id).unwrap_or(0);
+                if msg.nSource == 0 {
+                    self.no_reconnect = true;
+                }
+                self.emit(Event::Kicked {
+                    by_user_id: by,
+                    channel_id: msg.nSource,
+                });
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_SERVER_UPDATE => {
+                if msg.ttType == sys::TTType___SERVERPROPERTIES {
+                    // SAFETY: checked ttType.
+                    let s = ServerInfo::from(unsafe { &union.serverproperties });
+                    if let Ok(mut m) = self.model.lock() {
+                        m.server = s.clone();
+                    }
+                    self.emit(Event::ServerUpdated(s));
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_NEW | sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_UPDATE => {
+                if let Some(c) = channel() {
+                    let new = self
+                        .model
+                        .lock()
+                        .map(|mut m| m.channels.insert(c.id, c.clone()).is_none())
+                        .unwrap_or(true);
+                    self.emit(if new {
+                        Event::ChannelAdded(c)
+                    } else {
+                        Event::ChannelUpdated(c)
+                    });
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_REMOVE => {
+                if let Some(c) = channel() {
+                    if let Ok(mut m) = self.model.lock() {
+                        m.channels.remove(&c.id);
+                    }
+                    self.emit(Event::ChannelRemoved(c));
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDIN => {
+                if let Some(u) = user() {
+                    if let Ok(mut m) = self.model.lock() {
+                        m.users.insert(u.id, u.clone());
+                    }
+                    self.emit(Event::UserLoggedIn(u));
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDOUT => {
+                if let Some(u) = user() {
+                    if let Ok(mut m) = self.model.lock() {
+                        m.users.remove(&u.id);
+                    }
+                    self.emit(Event::UserLoggedOut(u));
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE | sys::ClientEvent_CLIENTEVENT_USER_STATECHANGE => {
+                if let Some(u) = user() {
+                    let before = self.model.lock().ok().and_then(|mut m| m.users.insert(u.id, u.clone()));
+                    if before.as_ref().map(|b| b.talking) != Some(u.talking) {
+                        self.emit(Event::TalkingChanged {
+                            user_id: u.id,
+                            talking: u.talking,
+                        });
+                    }
+                    if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE {
+                        self.emit(Event::UserUpdated(u));
+                    }
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_JOINED => {
+                if let Some(u) = user() {
+                    if let Ok(mut m) = self.model.lock() {
+                        if u.id == m.my_user_id {
+                            m.my_channel_id = u.channel_id;
+                        }
+                        m.users.insert(u.id, u.clone());
+                    }
+                    let channel_id = u.channel_id;
+                    self.emit(Event::UserJoined { user: u, channel_id });
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_LEFT => {
+                if let Some(mut u) = user() {
+                    let channel_id = msg.nSource;
+                    u.channel_id = 0;
+                    if let Ok(mut m) = self.model.lock() {
+                        if u.id == m.my_user_id {
+                            m.my_channel_id = 0;
+                        }
+                        m.users.insert(u.id, u.clone());
+                    }
+                    self.emit(Event::UserLeft { user: u, channel_id });
+                }
+            }
+            sys::ClientEvent_CLIENTEVENT_CMD_USER_TEXTMSG if msg.ttType == sys::TTType___TEXTMESSAGE => {
+                // SAFETY: checked ttType.
+                let t = unsafe { &union.textmessage };
+                self.on_text(t);
+            }
+            _ => {}
+        }
+    }
+
+    fn on_text(&mut self, t: &sys::TextMessage) {
+        let target = match t.nMsgType {
+            sys::TextMsgType_MSGTYPE_CHANNEL => MessageTarget::Channel(t.nChannelID),
+            // Incoming private messages carry no recipient: it's me.
+            sys::TextMsgType_MSGTYPE_USER => {
+                let me = self.model.lock().map(|m| m.my_user_id).unwrap_or(0);
+                MessageTarget::User(if t.nToUserID > 0 { t.nToUserID } else { me })
+            }
+            sys::TextMsgType_MSGTYPE_BROADCAST => MessageTarget::Broadcast,
+            _ => return, // custom messages: not for people
+        };
+        let key = (t.nMsgType, t.nFromUserID, t.nChannelID);
+        let part = from_tt(&t.szMessage);
+        let whole = self.partial.entry(key).or_default();
+        whole.push_str(&part);
+        if t.bMore != 0 {
+            return;
+        }
+        let text = self.partial.remove(&key).unwrap_or_default();
+        self.emit(Event::MessageReceived(TextMessage {
+            target,
+            from_user_id: t.nFromUserID,
+            from_username: from_tt(&t.szFromUsername),
+            text,
+            received_at: now_ms(),
+        }));
+    }
+
+    fn command_done(&mut self, id: i32, result: Result<()>) {
+        let Some((p, _)) = self.pending.remove(&id) else { return };
+        match p {
+            Pending::Reply(r) => {
+                let _ = r.send(result);
+            }
+            Pending::Part => {}
+            Pending::Login => match result {
+                Ok(()) => {
+                    self.set_state(ConnectionState::LoggedIn);
+                    match self.rejoin.clone() {
+                        Some((path, password)) => self.join_after_login(&path, &password),
+                        None => self.finish_attempt(Ok(())),
+                    }
+                }
+                Err(e) => {
+                    // A refused login isn't retried (wrong password, banned…).
+                    self.no_reconnect = true;
+                    self.options = None;
+                    // SAFETY: inst is live.
+                    unsafe { sys::TT_Disconnect(self.inst) };
+                    self.finish_attempt(Err(e.clone()));
+                    self.clear_model();
+                    self.set_state(ConnectionState::Disconnected);
+                    self.emit(Event::ConnectionFailed(e.to_string()));
+                }
+            },
+            Pending::Rejoin => self.finish_attempt(result),
+        }
+    }
+
+    fn join_after_login(&mut self, path: &str, password: &str) {
+        match self.channel_id(path) {
+            Some(id) => {
+                let pw = arg(password);
+                // SAFETY: inst is live; pw is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoJoinChannelByID(self.inst, id, pw.as_ptr()) };
+                if cmd > 0 {
+                    self.pending.insert(cmd, (Pending::Rejoin, Instant::now()));
+                } else {
+                    self.finish_attempt(Err(Error::Refused(format!("Couldn't join {path}."))));
+                }
+            }
+            None => self.finish_attempt(Err(Error::Refused(format!(
+                "Logged in, but there's no channel {path}."
+            )))),
+        }
+    }
+
+    fn finish_attempt(&mut self, result: Result<()>) {
+        if let Some(a) = self.attempt.take()
+            && let Some(r) = a.reply
+        {
+            let _ = r.send(result);
+        }
+    }
+
+    fn connection_lost(&mut self) {
+        // Remember the channel to rejoin.
+        let rejoin = {
+            let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
+            (m.my_channel_id > 0).then(|| m.my_channel_id)
+        };
+        if let Some(id) = rejoin {
+            let mut path = vec![0 as sys::TTCHAR; sys::TT_STRLEN as usize];
+            // SAFETY: inst is live; path has TT_STRLEN units for the SDK to fill.
+            if unsafe { sys::TT_GetChannelPath(self.inst, id, path.as_mut_ptr()) } != 0 {
+                let password = self.rejoin.as_ref().map(|(_, p)| p.clone()).unwrap_or_default();
+                self.rejoin = Some((from_tt(&path), password));
+            }
+        }
+        // SAFETY: inst is live.
+        unsafe { sys::TT_Disconnect(self.inst) };
+        for (_, (p, _)) in self.pending.drain() {
+            if let Pending::Reply(r) = p {
+                let _ = r.send(Err(Error::Connection("The connection was lost.".into())));
+            }
+        }
+        self.clear_model();
+        if self.options.as_ref().is_some_and(|o| o.reconnect) && !self.no_reconnect {
+            self.schedule_retry(1);
+        } else {
+            self.options = None;
+            self.set_state(ConnectionState::Disconnected);
+            self.emit(Event::ConnectionFailed("The connection was lost.".into()));
+        }
+    }
+}
+
+fn reply_of(req: Request) -> Option<Reply> {
+    Some(match req {
+        Request::Connect(_, r)
+        | Request::Disconnect(r)
+        | Request::LeaveChannel(r)
+        | Request::SetNickname(_, r)
+        | Request::InitAudio(_, r)
+        | Request::SetTransmitting(_, r)
+        | Request::TestTone(_, r) => r,
+        Request::JoinChannel { reply, .. }
+        | Request::JoinPath { reply, .. }
+        | Request::SendMessage { reply, .. }
+        | Request::SetStatus { reply, .. }
+        | Request::SetUserVolume { reply, .. }
+        | Request::SetUserMuted { reply, .. } => reply,
+        Request::Quit => return None,
+    })
+}
+
+/// The server's error, in plain words where TeamTalk's own text is terse.
+fn server_error_text(code: i32, server_text: &str) -> String {
+    let plain = match code as sys::ClientError {
+        sys::ClientError_CMDERR_INVALID_ACCOUNT => "The username or password is wrong.",
+        sys::ClientError_CMDERR_INCORRECT_CHANNEL_PASSWORD => "The channel's password is wrong.",
+        sys::ClientError_CMDERR_SERVER_BANNED => "You're banned from this server.",
+        sys::ClientError_CMDERR_CHANNEL_BANNED => "You're banned from that channel.",
+        sys::ClientError_CMDERR_NOT_AUTHORIZED => "You're not allowed to do that on this server.",
+        sys::ClientError_CMDERR_MAX_SERVER_USERS_EXCEEDED => "The server is full.",
+        sys::ClientError_CMDERR_MAX_CHANNEL_USERS_EXCEEDED => "The channel is full.",
+        sys::ClientError_CMDERR_MAX_LOGINS_PER_IPADDRESS_EXCEEDED => "Too many people are logged in from your address.",
+        sys::ClientError_CMDERR_COMMAND_FLOOD => "Too many commands too quickly; wait a moment.",
+        sys::ClientError_CMDERR_CHANNEL_NOT_FOUND => "That channel doesn't exist any more.",
+        sys::ClientError_CMDERR_USER_NOT_FOUND => "That person isn't on the server any more.",
+        sys::ClientError_CMDERR_ALREADY_IN_CHANNEL => "You're already in that channel.",
+        sys::ClientError_CMDERR_NOT_IN_CHANNEL => "You're not in a channel.",
+        sys::ClientError_CMDERR_INCOMPATIBLE_PROTOCOLS => "The server's TeamTalk version is incompatible.",
+        _ => "",
+    };
+    if !plain.is_empty() {
+        plain.to_owned()
+    } else if server_text.is_empty() {
+        format!("The server refused that (error {code}).")
+    } else {
+        server_text.to_owned()
+    }
+}
