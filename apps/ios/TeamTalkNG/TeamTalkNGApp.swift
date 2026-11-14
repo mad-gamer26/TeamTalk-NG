@@ -4,11 +4,17 @@ import SwiftUI
 @main
 struct TeamTalkNGApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
             ServerListView()
                 .environment(model)
+        }
+        .onChange(of: phase) { _, p in
+            // Away after a while in the background, as the desktop is after
+            // a while without input.
+            if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
         }
     }
 }

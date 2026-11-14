@@ -97,7 +97,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop tab | NG |
 |---|---|
-| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | partial: nickname, talk modes; todo (2, 7): gender, away after locking or inactivity, web login; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
+| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; todo (7): web login; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
 | Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | partial: chat list with times; todo (6): timestamps, what the tree shows and how it sorts, MOTD on connect, events in chat; n/a: tray, always on top |
 | Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | partial: reconnect; todo (6): the rest |
 | Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
@@ -135,15 +135,15 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 ## Batches (in order)
 
-1. **People**: subscriptions and intercepts, media volume, stereo, mute media,
+1. **People** (done): subscriptions and intercepts, media volume, stereo, mute media,
    mute all, hear myself, user information, operator, classroom permissions,
    channel bans, moving several people, relaying, positioning.
-2. **Me**: nickname while connected, question mode, gender, away.
-3. **Channels**: channel information, every channel setting, channel bans
+2. **Me** (done): nickname while connected, question mode, gender, away.
+3. **Channels** (done): channel information, every channel setting, channel bans
    list, streaming files to the channel.
-4. **Server administration**: user accounts, online users, all server
+4. **Server administration** (done): user accounts, online users, all server
    properties, save configuration, statistics, bans by address.
-5. **Sound and recording**: audio routes, echo cancellation, gain, denoising,
+5. **Sound and recording** (done): audio routes, echo cancellation, gain, denoising,
    media vs voice volume, client statistics, recording options, text logs.
 6. **Preferences**: every desktop sound event, spoken events with templates,
    display and connection options, reset.

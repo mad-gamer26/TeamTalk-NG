@@ -31,6 +31,16 @@ final class AppModel {
     var recordMediaFiles = false { didSet { save() } }
     /// Each server's chat written to text files too.
     var saveChatLogs = false { didSet { save() } }
+
+    /// The desktop's General settings for me: a status message to log in
+    /// with, and going away when TeamTalk NG is in the background (or the
+    /// iPhone is locked) this long, with its own message, maybe without
+    /// voice activation.
+    var statusMessage = "" { didSet { save() } }
+    var awayAfterMinutes = 0 { didSet { save() } }
+    var awayMessage = "" { didSet { save() } }
+    var awayStopsVoiceActivation = false { didSet { save() } }
+    @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
     @ObservationIgnored private(set) lazy var account = NGAccountStore(app: self)
     @ObservationIgnored private(set) lazy var monitor = MonitorStore(app: self)
@@ -54,6 +64,27 @@ final class AppModel {
         recordEachPerson = defaults.bool(forKey: "recordEachPerson")
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
+        statusMessage = defaults.string(forKey: "statusMessage") ?? ""
+        awayAfterMinutes = defaults.integer(forKey: "awayAfterMinutes")
+        awayMessage = defaults.string(forKey: "awayMessage") ?? ""
+        awayStopsVoiceActivation = defaults.bool(forKey: "awayStopsVoiceActivation")
+    }
+
+    /// The app went to the background (or was locked), or came back.
+    func activeChanged(_ active: Bool) {
+        awayTimer?.cancel()
+        awayTimer = nil
+        if active {
+            for c in connections.values { c.setAutoAway(false) }
+            return
+        }
+        guard awayAfterMinutes > 0 else { return }
+        let minutes = awayAfterMinutes
+        awayTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard !Task.isCancelled, let self else { return }
+            for c in self.connections.values { c.setAutoAway(true) }
+        }
     }
 
     private func saveAudio() {
@@ -72,6 +103,10 @@ final class AppModel {
         defaults.set(recordEachPerson, forKey: "recordEachPerson")
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
+        defaults.set(statusMessage, forKey: "statusMessage")
+        defaults.set(awayAfterMinutes, forKey: "awayAfterMinutes")
+        defaults.set(awayMessage, forKey: "awayMessage")
+        defaults.set(awayStopsVoiceActivation, forKey: "awayStopsVoiceActivation")
     }
 
     func upsert(_ server: SavedServer, password: String) {

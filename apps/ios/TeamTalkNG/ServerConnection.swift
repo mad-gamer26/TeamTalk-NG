@@ -112,6 +112,10 @@ final class ServerConnection {
             } else {
                 applyTalkMode()
                 app?.monitor.appConnected(server, true)
+                // The server's own status message, else the one in Settings.
+                let own = (try? JSONSerialization.jsonObject(with: Data((server.syncOther ?? "{}").utf8)) as? [String: Any])?["statusmsg"] as? String
+                let msg = (own?.isEmpty == false ? own : nil) ?? app?.statusMessage ?? ""
+                if !msg.isEmpty { setStatus(.available, msg) }
             }
         }
     }
@@ -150,7 +154,38 @@ final class ServerConnection {
     }
 
     func setStatus(_ mode: StatusMode, _ message: String) {
+        autoAway = nil
         run("Couldn't change the status") { try $0.setStatus(mode: mode, message: message) }
+    }
+
+    /// The status before going away by itself (to come back to), when away.
+    private var autoAway: (mode: StatusMode, message: String)?
+    /// Voice activation paused while away (Settings).
+    private(set) var awayPausedVoice = false
+
+    /// Goes away by itself (or comes back), as the desktop does after a
+    /// while without input. A status the person chose meanwhile stays.
+    func setAutoAway(_ on: Bool) {
+        guard isConnected, let app, let me else { return }
+        if on {
+            guard autoAway == nil, me.status == .available else { return }
+            autoAway = (me.status, me.statusMessage)
+            let msg = app.awayMessage.isEmpty ? me.statusMessage : app.awayMessage
+            run("Couldn't go away") { try $0.setStatus(mode: .away, message: msg) }
+            if app.awayStopsVoiceActivation && app.talkMode == .voiceActivation {
+                awayPausedVoice = true
+                applyTalkMode()
+            }
+        } else if let back = autoAway {
+            autoAway = nil
+            if me.status == .away {
+                run("Couldn't come back") { try $0.setStatus(mode: back.mode, message: back.message) }
+            }
+            if awayPausedVoice {
+                awayPausedVoice = false
+                applyTalkMode()
+            }
+        }
     }
 
     // MARK: People (the desktop's Users menu)
@@ -534,7 +569,7 @@ final class ServerConnection {
     /// Sets the core to the app's talk mode.
     func applyTalkMode() {
         guard isConnected, let app else { return }
-        let mode = app.talkMode, level = Int32(app.voiceLevel), muted = self.muted
+        let mode = app.talkMode, level = Int32(app.voiceLevel), muted = self.muted, pausedForAway = awayPausedVoice
         if mode != .pushToTalk { transmitting = false }
         let ptt = transmitting
         run("Couldn't set up talking") { c in
@@ -544,7 +579,7 @@ final class ServerConnection {
                 try c.setTransmitting(on: ptt)
             case .voiceActivation:
                 try c.setTransmitting(on: false)
-                try c.setVoiceActivation(on: !muted, level: level, stopDelayMs: 500)
+                try c.setVoiceActivation(on: !muted && !pausedForAway, level: level, stopDelayMs: 500)
             case .alwaysOn:
                 try c.setVoiceActivation(on: false, level: level, stopDelayMs: 500)
                 try c.setTransmitting(on: !muted)
