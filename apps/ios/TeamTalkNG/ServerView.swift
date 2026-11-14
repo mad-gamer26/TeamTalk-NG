@@ -15,6 +15,11 @@ struct ServerView: View {
     @State private var movingUser: User?
     @State private var deletingChannel: Channel?
     @State private var bansOf: Channel?
+    @State private var infoOf: Channel?
+    @State private var joiningByPath = false
+    @State private var joinPath = ""
+    @State private var joinPassword = ""
+    @State private var pickingStream = false
     @State private var classroomOf: Channel?
     @State private var showServerSettings = false
     @State private var showBans = false
@@ -43,6 +48,9 @@ struct ServerView: View {
                 case .chat: ChatView(connection: connection, privateWith: nil)
                 case .files: FilesView(connection: connection)
                 }
+                if let st = connection.snapshot?.streaming {
+                    StreamBar(connection: connection, stream: st)
+                }
                 TalkBar(connection: connection)
             }
         }
@@ -57,6 +65,10 @@ struct ServerView: View {
                         }
                         Button("Status") { showStatus = true }
                         Button("Change nickname") { renaming = true }
+                        Button("Join a channel by its path") { joiningByPath = true }
+                        if (connection.snapshot?.myChannelId ?? 0) > 0 && connection.snapshot?.streaming == nil {
+                            Button("Stream a media file to the channel") { pickingStream = true }
+                        }
                         Toggle("Question mode", isOn: Binding(
                             get: { connection.me?.status == .question },
                             set: { on in connection.setStatus(on ? .question : .available, connection.me?.statusMessage ?? "") }))
@@ -121,6 +133,21 @@ struct ServerView: View {
         }
         .sheet(item: $channelSheet) { sheet in
             ChannelEditView(connection: connection, sheet: sheet)
+        }
+        .sheet(item: $infoOf) { c in
+            ChannelInfoView(connection: connection, channelId: c.id)
+        }
+        .alert("Join a channel by its path", isPresented: $joiningByPath) {
+            TextField("Path, like /Lobby/Secret/", text: $joinPath)
+                .textInputAutocapitalization(.never)
+            SecureField("Password (if any)", text: $joinPassword)
+            Button("Join") { connection.joinByPath(joinPath, password: joinPassword); joinPassword = "" }
+            Button("Cancel", role: .cancel) { joinPassword = "" }
+        } message: {
+            Text("For hidden channels, which aren't listed.")
+        }
+        .fileImporter(isPresented: $pickingStream, allowedContentTypes: [.audio, .movie]) { result in
+            if case .success(let url) = result { connection.streamFile(url) }
         }
         .sheet(item: $bansOf) { c in
             ChannelBansView(connection: connection, channel: c)
@@ -189,7 +216,7 @@ struct ServerView: View {
                            edit: { channelSheet = .edit(c) },
                            delete: { deletingChannel = c },
                            moderate: connection.canModerate(channel: c.id),
-                           bans: { bansOf = c }, classroom: { classroomOf = c }) {
+                           bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c }) {
                     if c.hasPassword && c.id != snap?.myChannelId {
                         passwordFor = c
                     } else if c.id != snap?.myChannelId {
@@ -253,6 +280,7 @@ private struct ChannelRow: View {
     let moderate: Bool
     let bans: () -> Void
     let classroom: () -> Void
+    let info: () -> Void
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
@@ -290,6 +318,7 @@ private struct ChannelRow: View {
     }
 
     @ViewBuilder private var actions: some View {
+        Button("Channel information", action: info)
         if rights.modifyChannels || rights.createTemporaryChannels {
             Button("New channel inside", action: newSub)
         }
@@ -638,5 +667,36 @@ private struct TransferRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Cancel \(transfer.remoteName)")
         }
+    }
+}
+
+/// The file I'm streaming to the channel, and its controls.
+private struct StreamBar: View {
+    let connection: ServerConnection
+    let stream: MediaStream
+
+    private func time(_ ms: UInt32) -> String {
+        let s = Int(ms / 1000)
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    var body: some View {
+        let name = ((stream.path as NSString).lastPathComponent as NSString).deletingPathExtension
+        let paused = stream.status == .paused
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(paused ? "Paused" : "Streaming") \(name), \(time(stream.elapsedMs)) of \(time(stream.durationMs))")
+                .font(.subheadline)
+            HStack {
+                Button("Back 10 seconds", systemImage: "gobackward.10") { connection.seekStream(by: -10_000) }
+                Button(paused ? "Resume" : "Pause", systemImage: paused ? "play.fill" : "pause.fill") { connection.pauseStream(!paused) }
+                Button("Forward 10 seconds", systemImage: "goforward.10") { connection.seekStream(by: 10_000) }
+                Spacer()
+                Button("Stop streaming", systemImage: "stop.fill", role: .destructive) { connection.stopStream() }
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 }

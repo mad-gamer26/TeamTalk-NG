@@ -171,6 +171,142 @@ impl From<core::ServerInfo> for ServerInfo {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum CodecKind {
+    #[default]
+    NoAudio,
+    Speex,
+    SpeexVbr,
+    Opus,
+}
+
+/// A channel's audio codec and its settings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct AudioCodec {
+    pub kind: CodecKind,
+    pub sample_rate: i32,
+    pub channels: i32,
+    pub bitrate: i32,
+    pub vbr: bool,
+    pub dtx: bool,
+    /// Opus tuned for music rather than voice.
+    pub music: bool,
+    pub frame_size_ms: i32,
+    pub transmit_interval_ms: i32,
+    /// Speex quality (0–10).
+    pub quality: i32,
+}
+
+impl From<core::AudioCodec> for AudioCodec {
+    fn from(c: core::AudioCodec) -> Self {
+        AudioCodec {
+            kind: match c.kind {
+                core::CodecKind::NoAudio => CodecKind::NoAudio,
+                core::CodecKind::Speex => CodecKind::Speex,
+                core::CodecKind::SpeexVbr => CodecKind::SpeexVbr,
+                core::CodecKind::Opus => CodecKind::Opus,
+            },
+            sample_rate: c.sample_rate,
+            channels: c.channels,
+            bitrate: c.bitrate,
+            vbr: c.vbr,
+            dtx: c.dtx,
+            music: c.music,
+            frame_size_ms: c.frame_size_ms,
+            transmit_interval_ms: c.transmit_interval_ms,
+            quality: c.quality,
+        }
+    }
+}
+
+impl From<AudioCodec> for core::AudioCodec {
+    fn from(c: AudioCodec) -> Self {
+        core::AudioCodec {
+            kind: match c.kind {
+                CodecKind::NoAudio => core::CodecKind::NoAudio,
+                CodecKind::Speex => core::CodecKind::Speex,
+                CodecKind::SpeexVbr => core::CodecKind::SpeexVbr,
+                CodecKind::Opus => core::CodecKind::Opus,
+            },
+            sample_rate: c.sample_rate,
+            channels: c.channels,
+            bitrate: c.bitrate,
+            vbr: c.vbr,
+            dtx: c.dtx,
+            music: c.music,
+            frame_size_ms: c.frame_size_ms,
+            transmit_interval_ms: c.transmit_interval_ms,
+            quality: c.quality,
+        }
+    }
+}
+
+/// Opus as the desktop makes new channels.
+#[uniffi::export]
+pub fn opus_default() -> AudioCodec {
+    core::AudioCodec::opus_default().into()
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct MediaFileInfo {
+    pub duration_ms: u32,
+    pub sample_rate: i32,
+    pub channels: i32,
+    pub video_width: i32,
+    pub video_height: i32,
+}
+
+/// A media file's properties (nil when it can't be played).
+#[uniffi::export]
+pub fn media_file_info(path: String) -> Option<MediaFileInfo> {
+    core::media_file_info(&path).map(|i| MediaFileInfo {
+        duration_ms: i.duration_ms,
+        sample_rate: i.sample_rate,
+        channels: i.channels,
+        video_width: i.video_width,
+        video_height: i.video_height,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum StreamStatus {
+    Started,
+    Playing,
+    Paused,
+    Finished,
+    Failed,
+    Stopped,
+}
+
+/// The file I'm streaming to my channel.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct MediaStream {
+    pub path: String,
+    pub status: StreamStatus,
+    pub elapsed_ms: u32,
+    pub duration_ms: u32,
+    pub looping: bool,
+}
+
+impl From<core::MediaStream> for MediaStream {
+    fn from(m: core::MediaStream) -> Self {
+        MediaStream {
+            path: m.path,
+            status: match m.status {
+                core::StreamStatus::Started => StreamStatus::Started,
+                core::StreamStatus::Playing => StreamStatus::Playing,
+                core::StreamStatus::Paused => StreamStatus::Paused,
+                core::StreamStatus::Finished => StreamStatus::Finished,
+                core::StreamStatus::Failed => StreamStatus::Failed,
+                core::StreamStatus::Stopped => StreamStatus::Stopped,
+            },
+            elapsed_ms: m.elapsed_ms,
+            duration_ms: m.duration_ms,
+            looping: m.looping,
+        }
+    }
+}
+
 /// A channel. The root channel has parent 0 and an empty name.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct Channel {
@@ -189,6 +325,14 @@ pub struct Channel {
     pub hidden: bool,
     /// Classroom channels: who may send what.
     pub transmit: Vec<TransmitPermission>,
+    /// Admins only; empty otherwise.
+    pub operator_password: String,
+    pub disk_quota: i64,
+    pub codec: AudioCodec,
+    pub fixed_volume: bool,
+    pub fixed_volume_level: i32,
+    pub voice_timeout_ms: i32,
+    pub media_timeout_ms: i32,
 }
 
 impl From<core::Channel> for Channel {
@@ -207,6 +351,13 @@ impl From<core::Channel> for Channel {
             no_voice_activation: c.no_voice_activation,
             no_recording: c.no_recording,
             hidden: c.hidden,
+            operator_password: c.operator_password.clone(),
+            disk_quota: c.disk_quota,
+            codec: c.codec.into(),
+            fixed_volume: c.fixed_volume,
+            fixed_volume_level: c.fixed_volume_level,
+            voice_timeout_ms: c.voice_timeout_ms,
+            media_timeout_ms: c.media_timeout_ms,
             transmit: c
                 .transmit
                 .iter()
@@ -277,6 +428,7 @@ pub struct User {
     pub sending_video: bool,
     pub sharing_desktop: bool,
     pub streaming_media: bool,
+    pub playing_media: bool,
     /// What I receive from them, and they from me.
     pub my_subscriptions: Subscriptions,
     pub their_subscriptions: Subscriptions,
@@ -482,6 +634,7 @@ impl From<core::User> for User {
             sending_video: u.sending_video,
             sharing_desktop: u.sharing_desktop,
             streaming_media: u.streaming_media,
+            playing_media: u.playing_media,
             my_subscriptions: u.my_subscriptions.into(),
             their_subscriptions: u.their_subscriptions.into(),
             voice_muted: u.voice_muted,
@@ -675,9 +828,18 @@ pub struct ChannelSpec {
     pub permanent: bool,
     pub solo_transmit: bool,
     pub classroom: bool,
+    pub operator_receive_only: bool,
     pub no_voice_activation: bool,
     pub no_recording: bool,
     pub hidden: bool,
+    /// nil keeps each of these as it is.
+    pub operator_password: Option<String>,
+    pub disk_quota: Option<i64>,
+    pub codec: Option<AudioCodec>,
+    pub fixed_volume: Option<bool>,
+    pub fixed_volume_level: i32,
+    pub voice_timeout_ms: Option<i32>,
+    pub media_timeout_ms: Option<i32>,
 }
 
 impl From<ChannelSpec> for core::ChannelSpec {
@@ -691,9 +853,16 @@ impl From<ChannelSpec> for core::ChannelSpec {
             permanent: s.permanent,
             solo_transmit: s.solo_transmit,
             classroom: s.classroom,
+            operator_receive_only: s.operator_receive_only,
             no_voice_activation: s.no_voice_activation,
             no_recording: s.no_recording,
             hidden: s.hidden,
+            operator_password: s.operator_password,
+            disk_quota: s.disk_quota,
+            codec: s.codec.map(Into::into),
+            fixed_volume: s.fixed_volume.map(|on| (on, s.fixed_volume_level)),
+            voice_timeout_ms: s.voice_timeout_ms,
+            media_timeout_ms: s.media_timeout_ms,
         }
     }
 }
@@ -771,6 +940,7 @@ pub struct Snapshot {
     pub recording_path: String,
     pub muted_all: bool,
     pub relaying: Option<Relay>,
+    pub streaming: Option<MediaStream>,
 }
 
 impl From<core::Snapshot> for Snapshot {
@@ -787,6 +957,7 @@ impl From<core::Snapshot> for Snapshot {
             transfers: s.transfers.into_iter().map(Into::into).collect(),
             recording_path: s.recording_path,
             muted_all: s.muted_all,
+            streaming: s.streaming.map(Into::into),
             relaying: s.relaying.map(|(user_id, stream)| Relay {
                 user_id,
                 stream: stream.into(),
@@ -846,6 +1017,10 @@ pub enum Event {
     VoiceActivated {
         sending: bool,
     },
+    /// My stream started, moved on (about once a second), paused or ended.
+    StreamChanged {
+        stream: MediaStream,
+    },
     /// A recording started or ended (`error`: why it broke off).
     RecordingChanged {
         path: String,
@@ -893,6 +1068,7 @@ impl From<core::Event> for Event {
             E::TalkingChanged { user_id, talking } => Self::TalkingChanged { user_id, talking },
             E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             E::VoiceActivated(sending) => Self::VoiceActivated { sending },
+            E::StreamChanged(m) => Self::StreamChanged { stream: m.into() },
             E::RecordingChanged { path, active, error } => Self::RecordingChanged { path, active, error },
             E::FileAdded(f) => Self::FileAdded { file: f.into() },
             E::FileRemoved(f) => Self::FileRemoved { file: f.into() },
@@ -1156,6 +1332,24 @@ impl TtClient {
     /// Relays someone's audio into my channel; nil stops.
     pub fn set_relay(&self, relay: Option<Relay>) -> Result<()> {
         Ok(self.inner.set_relay(relay.map(|r| (r.user_id, r.stream.into())))?)
+    }
+
+    /// Joins by path, hidden channels included.
+    pub fn join_hidden_channel(&self, path: String, password: String) -> Result<()> {
+        Ok(self.inner.join_hidden_channel(&path, &password)?)
+    }
+
+    pub fn stream_media_file(&self, path: String, offset_ms: u32, paused: bool, looping: bool) -> Result<()> {
+        Ok(self.inner.stream_media_file(&path, offset_ms, paused, looping)?)
+    }
+
+    /// Pauses, resumes, moves (`offset_ms`) the stream.
+    pub fn update_stream(&self, offset_ms: Option<u32>, paused: bool) -> Result<()> {
+        Ok(self.inner.update_stream(offset_ms, paused)?)
+    }
+
+    pub fn stop_stream(&self) -> Result<()> {
+        Ok(self.inner.stop_stream()?)
     }
 
     /// A channel's path ("/Lobby/Music/"), "/" for the root.

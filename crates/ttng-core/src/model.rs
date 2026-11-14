@@ -65,13 +65,166 @@ pub struct Channel {
     pub hidden: bool,
     /// Classroom channels: who may send what (user 0: everyone).
     pub transmit: Vec<TransmitPermission>,
+    /// Shown to admins only; empty otherwise.
+    pub operator_password: String,
+    /// Bytes its files may take (0: none allowed, unless the server's own).
+    pub disk_quota: i64,
+    pub codec: AudioCodec,
+    /// Everyone heard at one volume (the channel's gain), not their own.
+    pub fixed_volume: bool,
+    /// The fixed volume, in percent (100 normal).
+    pub fixed_volume_level: i32,
+    /// The longest one may talk, or stream a file, without stopping (ms; 0: no limit).
+    pub voice_timeout_ms: i32,
+    pub media_timeout_ms: i32,
+}
+
+/// Which audio codec a channel uses.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CodecKind {
+    /// No audio (text only).
+    #[default]
+    NoAudio,
+    Speex,
+    SpeexVbr,
+    Opus,
+}
+
+/// A channel's audio codec and its settings (the ones the codec has).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AudioCodec {
+    pub kind: CodecKind,
+    /// Opus: 8000–48000 Hz. Speex: from the band (8, 16 or 32 kHz).
+    pub sample_rate: i32,
+    /// 1 or 2.
+    pub channels: i32,
+    /// Bits per second (Opus, Speex VBR).
+    pub bitrate: i32,
+    /// Opus: variable bitrate.
+    pub vbr: bool,
+    /// Don't send silence.
+    pub dtx: bool,
+    /// Opus: tuned for music rather than voice.
+    pub music: bool,
+    /// Opus frame size in ms (2 to 120).
+    pub frame_size_ms: i32,
+    /// How often packets are sent, in ms.
+    pub transmit_interval_ms: i32,
+    /// Speex: 0–10.
+    pub quality: i32,
+}
+
+impl AudioCodec {
+    /// Opus as the desktop client makes new channels: 48 kHz mono voice,
+    /// 64 kbit/s, 40 ms.
+    pub fn opus_default() -> AudioCodec {
+        AudioCodec {
+            kind: CodecKind::Opus,
+            sample_rate: 48000,
+            channels: 1,
+            bitrate: 64000,
+            vbr: true,
+            dtx: false,
+            music: false,
+            frame_size_ms: 20,
+            transmit_interval_ms: 40,
+            quality: 0,
+        }
+    }
+
+    pub(crate) fn from_sys(c: &sys::AudioCodec) -> AudioCodec {
+        match c.nCodec {
+            sys::Codec_OPUS_CODEC => {
+                // SAFETY: nCodec says the union holds this member.
+                let o = unsafe { c.__bindgen_anon_1.opus };
+                AudioCodec {
+                    kind: CodecKind::Opus,
+                    sample_rate: o.nSampleRate,
+                    channels: o.nChannels,
+                    bitrate: o.nBitRate,
+                    vbr: o.bVBR != 0,
+                    dtx: o.bDTX != 0,
+                    music: o.nApplication == sys::OPUS_APPLICATION_AUDIO as i32,
+                    frame_size_ms: o.nFrameSizeMSec,
+                    transmit_interval_ms: o.nTxIntervalMSec,
+                    quality: o.nComplexity,
+                }
+            }
+            sys::Codec_SPEEX_CODEC => {
+                // SAFETY: nCodec says the union holds this member.
+                let o = unsafe { c.__bindgen_anon_1.speex };
+                AudioCodec {
+                    kind: CodecKind::Speex,
+                    sample_rate: [8000, 16000, 32000][o.nBandmode.clamp(0, 2) as usize],
+                    channels: if o.bStereoPlayback != 0 { 2 } else { 1 },
+                    quality: o.nQuality,
+                    transmit_interval_ms: o.nTxIntervalMSec,
+                    ..Default::default()
+                }
+            }
+            sys::Codec_SPEEX_VBR_CODEC => {
+                // SAFETY: nCodec says the union holds this member.
+                let o = unsafe { c.__bindgen_anon_1.speex_vbr };
+                AudioCodec {
+                    kind: CodecKind::SpeexVbr,
+                    sample_rate: [8000, 16000, 32000][o.nBandmode.clamp(0, 2) as usize],
+                    channels: if o.bStereoPlayback != 0 { 2 } else { 1 },
+                    quality: o.nQuality,
+                    bitrate: o.nBitRate,
+                    dtx: o.bDTX != 0,
+                    transmit_interval_ms: o.nTxIntervalMSec,
+                    ..Default::default()
+                }
+            }
+            _ => AudioCodec::default(),
+        }
+    }
+
+    /// Writes it into the SDK's struct (Opus, or no audio; other kinds stay
+    /// as they are).
+    pub(crate) fn write(&self, c: &mut sys::AudioCodec) {
+        match self.kind {
+            CodecKind::Opus => {
+                c.nCodec = sys::Codec_OPUS_CODEC;
+                c.__bindgen_anon_1.opus = sys::OpusCodec {
+                    nSampleRate: self.sample_rate,
+                    nChannels: self.channels.clamp(1, 2),
+                    nApplication: if self.music {
+                        sys::OPUS_APPLICATION_AUDIO as i32
+                    } else {
+                        sys::OPUS_APPLICATION_VOIP as i32
+                    },
+                    nComplexity: if self.quality > 0 { self.quality.min(10) } else { 10 },
+                    bFEC: 1,
+                    bDTX: self.dtx as sys::TTBOOL,
+                    nBitRate: self
+                        .bitrate
+                        .clamp(sys::OPUS_MIN_BITRATE as i32, sys::OPUS_MAX_BITRATE as i32),
+                    bVBR: self.vbr as sys::TTBOOL,
+                    bVBRConstraint: 0,
+                    nTxIntervalMSec: self.transmit_interval_ms,
+                    nFrameSizeMSec: self.frame_size_ms,
+                };
+            }
+            CodecKind::NoAudio => c.nCodec = sys::Codec_NO_CODEC,
+            CodecKind::Speex | CodecKind::SpeexVbr => {}
+        }
+    }
 }
 
 impl From<&sys::Channel> for Channel {
     fn from(c: &sys::Channel) -> Self {
         let t = c.uChannelType;
         let has = |flag: sys::ChannelType| t & flag != 0;
+        let gain = c.audiocfg.nGainLevel;
         Channel {
+            operator_password: from_tt(&c.szOpPassword),
+            disk_quota: c.nDiskQuota,
+            codec: AudioCodec::from_sys(&c.audiocodec),
+            fixed_volume: c.audiocfg.bEnableAGC != 0,
+            fixed_volume_level: gain * 100 / sys::SoundLevel_SOUND_GAIN_DEFAULT as i32,
+            voice_timeout_ms: c.nTimeOutTimerVoiceMSec,
+            media_timeout_ms: c.nTimeOutTimerMediaFileMSec,
             id: c.nChannelID,
             parent_id: c.nParentID,
             name: from_tt(&c.szName),
@@ -154,6 +307,8 @@ pub struct User {
     pub sending_video: bool,
     pub sharing_desktop: bool,
     pub streaming_media: bool,
+    /// Their media file audio is playing for me right now.
+    pub playing_media: bool,
     /// What I receive from them, and what they receive from me.
     pub my_subscriptions: Subscriptions,
     pub their_subscriptions: Subscriptions,
@@ -360,6 +515,7 @@ impl From<&sys::User> for User {
             sending_video: mode & 0x200 != 0,
             sharing_desktop: mode & 0x400 != 0,
             streaming_media: mode & 0x800 != 0,
+            playing_media: state & sys::UserState_USERSTATE_MEDIAFILE_AUDIO != 0,
             my_subscriptions: Subscriptions(u.uLocalSubscriptions),
             their_subscriptions: Subscriptions(u.uPeerSubscriptions),
             voice_muted: state & sys::UserState_USERSTATE_MUTE_VOICE != 0,
@@ -545,9 +701,58 @@ pub struct ChannelSpec {
     pub permanent: bool,
     pub solo_transmit: bool,
     pub classroom: bool,
+    /// Only operators see and hear the others.
+    pub operator_receive_only: bool,
     pub no_voice_activation: bool,
     pub no_recording: bool,
     pub hidden: bool,
+    /// A new operator password ("" for none); `None` keeps it.
+    pub operator_password: Option<String>,
+    /// Bytes its files may take; `None` keeps it.
+    pub disk_quota: Option<i64>,
+    /// A new codec (Opus or no audio); `None` keeps it (a new channel: the
+    /// parent's).
+    pub codec: Option<AudioCodec>,
+    /// Fixed volume on or off and its level in percent; `None` keeps it.
+    pub fixed_volume: Option<(bool, i32)>,
+    /// The longest one may talk, or stream, without stopping (ms, 0: no
+    /// limit); `None` keeps it.
+    pub voice_timeout_ms: Option<i32>,
+    pub media_timeout_ms: Option<i32>,
+}
+
+/// A media file's properties.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MediaFileInfo {
+    pub duration_ms: u32,
+    /// 0 when it has no audio.
+    pub sample_rate: i32,
+    pub channels: i32,
+    /// Its video's size, when it has some.
+    pub video_width: i32,
+    pub video_height: i32,
+}
+
+/// Where streaming a file to the channel stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamStatus {
+    Started,
+    Playing,
+    Paused,
+    Finished,
+    Failed,
+    Stopped,
+}
+
+/// The file I'm streaming to my channel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaStream {
+    pub path: String,
+    pub status: StreamStatus,
+    pub elapsed_ms: u32,
+    pub duration_ms: u32,
+    /// Starts again when it ends.
+    pub looping: bool,
 }
 
 /// How a ban recognises someone.
@@ -613,6 +818,8 @@ pub struct Snapshot {
     pub muted_all: bool,
     /// Whose audio I relay into my channel, and which stream.
     pub relaying: Option<(i32, AudioStream)>,
+    /// The file I'm streaming to my channel.
+    pub streaming: Option<MediaStream>,
 }
 
 impl Snapshot {
@@ -685,6 +892,9 @@ pub enum Event {
     MessageReceived(TextMessage),
     /// Voice activation started (true) or stopped (false) sending my voice.
     VoiceActivated(bool),
+    /// Streaming a file to my channel started, moved on (about once a
+    /// second), paused or ended.
+    StreamChanged(MediaStream),
     /// A recording started (`path` set) or ended (with why, if it broke).
     RecordingChanged {
         path: String,

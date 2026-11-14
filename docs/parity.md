@@ -63,11 +63,11 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| View/speak channel info and state | todo (3) |
-| Stream media file to channel, pause/resume | todo (3): a file from Files or the music library |
+| View/speak channel info and state | done (Channel information: everything, in words) |
+| Stream media file to channel, pause/resume | done (from Files: pause, resume, 10 s back and forward, stop; looping in the core) |
 | Join, leave | done |
 | tt:// URL | todo (7): make one, open one |
-| Create, update, delete | partial: name, topic, password, user limit, type flags; todo (3): operator password, disk quota, audio codec, fixed volume, stream timeouts, join hidden channels by path |
+| Create, update, delete | done: every setting (operator password, disk quota, Opus codec settings, fixed volume, time limits, every type), and joining hidden channels by path |
 | Channel bans | done (list and remove) |
 | Upload, download, delete file | done |
 | View channel messages (Classic) | done (Chat) |

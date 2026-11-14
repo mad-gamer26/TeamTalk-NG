@@ -15,7 +15,10 @@ use std::time::{Duration, Instant};
 
 use ttng_sys as sys;
 
+mod channels;
 mod people;
+use channels::ChannelRequest;
+pub use channels::media_file_info;
 use people::PeopleRequest;
 
 use crate::error::{Error, Result};
@@ -175,6 +178,8 @@ enum Request {
         reply: Reply,
     },
     StopRecording(Reply),
+    /// Channels (see channels.rs).
+    Channels(ChannelRequest, Reply),
     /// People (see people.rs); `None` when the request answers itself.
     People(PeopleRequest, Option<Reply>),
     Quit,
@@ -196,6 +201,7 @@ struct Model {
     recording: Option<(i32, String)>,
     muted_all: bool,
     relaying: Option<(i32, AudioStream)>,
+    streaming: Option<MediaStream>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -593,6 +599,45 @@ impl Client {
         self.people(PeopleRequest::Relay(who))
     }
 
+    /// Joins a channel by its path, hidden ones included (they're known
+    /// by name only).
+    pub fn join_hidden_channel(&self, path: &str, password: &str) -> Result<()> {
+        self.ask(|r| {
+            Request::Channels(
+                ChannelRequest::JoinHidden {
+                    path: path.into(),
+                    password: password.into(),
+                },
+                r,
+            )
+        })
+    }
+
+    /// Streams a media file (audio or video) to my channel, from
+    /// `offset_ms`; `looping` starts it again when it ends.
+    pub fn stream_media_file(&self, path: &str, offset_ms: u32, paused: bool, looping: bool) -> Result<()> {
+        self.ask(|r| {
+            Request::Channels(
+                ChannelRequest::Stream {
+                    path: path.into(),
+                    offset_ms,
+                    paused,
+                    looping,
+                },
+                r,
+            )
+        })
+    }
+
+    /// Pauses or resumes the stream, and moves it (`offset_ms`).
+    pub fn update_stream(&self, offset_ms: Option<u32>, paused: bool) -> Result<()> {
+        self.ask(|r| Request::Channels(ChannelRequest::UpdateStream { offset_ms, paused }, r))
+    }
+
+    pub fn stop_stream(&self) -> Result<()> {
+        self.ask(|r| Request::Channels(ChannelRequest::StopStream, r))
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -616,6 +661,7 @@ impl Client {
             transfers,
             recording_path: m.recording.as_ref().map(|(_, p)| p.clone()).unwrap_or_default(),
             muted_all: m.muted_all,
+            streaming: m.streaming.clone(),
             relaying: m.relaying,
         }
     }
@@ -671,6 +717,7 @@ struct Worker {
     audio_open: bool,
     last_level: Instant,
     last_progress: Instant,
+    last_stream_note: Instant,
 }
 
 impl Worker {
@@ -698,6 +745,7 @@ impl Worker {
             audio_open: false,
             last_level: Instant::now(),
             last_progress: Instant::now(),
+            last_stream_note: Instant::now(),
         }
     }
 
@@ -1161,6 +1209,7 @@ impl Worker {
                 });
             }
             Request::People(req, reply) => self.handle_people(req, reply),
+            Request::Channels(req, reply) => self.handle_channels(req, reply),
             Request::Quit => {}
         }
     }
@@ -1392,6 +1441,7 @@ impl Worker {
         m.my_channel_id = 0;
         m.my_rights = MyRights::default();
         m.relaying = None;
+        m.streaming = None;
         m.server = ServerInfo::default();
         self.partial.clear();
     }
@@ -1536,7 +1586,8 @@ impl Worker {
                             talking: u.talking,
                         });
                     }
-                    if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE {
+                    let media_changed = before.as_ref().map(|b| b.playing_media) != Some(u.playing_media);
+                    if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE || media_changed {
                         self.emit(Event::UserUpdated(u));
                     }
                 }
@@ -1579,6 +1630,11 @@ impl Worker {
                 // SAFETY: checked ttType.
                 let on = unsafe { union.bActive } != 0;
                 self.emit(Event::VoiceActivated(on));
+            }
+            sys::ClientEvent_CLIENTEVENT_STREAM_MEDIAFILE if msg.ttType == sys::TTType___MEDIAFILEINFO => {
+                // SAFETY: checked ttType.
+                let info = unsafe { union.mediafileinfo };
+                self.on_stream(&info);
             }
             sys::ClientEvent_CLIENTEVENT_USER_AUDIOBLOCK if msg.ttType == sys::TTType___STREAMTYPE => {
                 // SAFETY: checked ttType.
@@ -1797,6 +1853,7 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::StartRecording { reply, .. } => reply,
         Request::StopRecording(r) => r,
         Request::People(_, Some(r)) => r,
+        Request::Channels(_, r) => r,
         Request::People(req, None) => {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;
@@ -1864,6 +1921,7 @@ fn apply_spec(c: &mut sys::Channel, spec: &ChannelSpec, making: bool) {
         (spec.permanent, sys::ChannelType_CHANNEL_PERMANENT),
         (spec.solo_transmit, sys::ChannelType_CHANNEL_SOLO_TRANSMIT),
         (spec.classroom, sys::ChannelType_CHANNEL_CLASSROOM),
+        (spec.operator_receive_only, sys::ChannelType_CHANNEL_OPERATOR_RECVONLY),
         (spec.no_voice_activation, sys::ChannelType_CHANNEL_NO_VOICEACTIVATION),
         (spec.no_recording, sys::ChannelType_CHANNEL_NO_RECORDING),
         (spec.hidden, sys::ChannelType_CHANNEL_HIDDEN),
@@ -1874,5 +1932,24 @@ fn apply_spec(c: &mut sys::Channel, spec: &ChannelSpec, making: bool) {
         } else {
             c.uChannelType &= !flag;
         }
+    }
+    if let Some(p) = &spec.operator_password {
+        c.szOpPassword = to_tt(p);
+    }
+    if let Some(q) = spec.disk_quota {
+        c.nDiskQuota = q.max(0);
+    }
+    if let Some(codec) = &spec.codec {
+        codec.write(&mut c.audiocodec);
+    }
+    if let Some((on, level)) = spec.fixed_volume {
+        c.audiocfg.bEnableAGC = on as sys::TTBOOL;
+        c.audiocfg.nGainLevel = level.clamp(0, 400) * sys::SoundLevel_SOUND_GAIN_DEFAULT as i32 / 100;
+    }
+    if let Some(t) = spec.voice_timeout_ms {
+        c.nTimeOutTimerVoiceMSec = t.max(0);
+    }
+    if let Some(t) = spec.media_timeout_ms {
+        c.nTimeOutTimerMediaFileMSec = t.max(0);
     }
 }

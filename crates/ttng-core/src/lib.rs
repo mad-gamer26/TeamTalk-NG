@@ -6,7 +6,7 @@ mod error;
 mod model;
 pub mod text;
 
-pub use client::{AudioDevices, Client, ConnectOptions, EventListener};
+pub use client::{AudioDevices, Client, ConnectOptions, EventListener, media_file_info};
 pub use error::{Error, Result};
 pub use model::*;
 

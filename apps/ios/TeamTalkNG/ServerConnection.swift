@@ -231,6 +231,52 @@ final class ServerConnection {
         }
     }
 
+    // MARK: Channels: by path, and streaming files
+
+    func joinByPath(_ path: String, password: String) {
+        var p = path.trimmingCharacters(in: .whitespaces)
+        if !p.hasPrefix("/") { p = "/" + p }
+        if !p.hasSuffix("/") { p += "/" }
+        let path = p
+        run("Couldn't join") { try $0.joinHiddenChannel(path: path, password: password) }
+    }
+
+    /// Streams a picked file (copied first: the picker's URL is short-lived).
+    func streamFile(_ url: URL) {
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("streams", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let copy = dir.appendingPathComponent(url.lastPathComponent)
+        do { try FileManager.default.copyItem(at: url, to: copy) } catch {
+            announce("Couldn't read that file: \(error.localizedDescription)")
+            return
+        }
+        let path = copy.path
+        guard mediaFileInfo(path: path) != nil else {
+            announce("That file can't be played.")
+            return
+        }
+        run("Couldn't stream") { try $0.streamMediaFile(path: path, offsetMs: 0, paused: false, looping: false) }
+    }
+
+    func pauseStream(_ paused: Bool) {
+        run("Couldn't change the stream") { try $0.updateStream(offsetMs: nil, paused: paused) }
+        announce(paused ? "Paused" : "Playing")
+    }
+
+    func seekStream(by ms: Int64) {
+        guard let st = snapshot?.streaming else { return }
+        let to = UInt32(max(0, min(Int64(st.durationMs), Int64(st.elapsedMs) + ms)))
+        let paused = st.status == .paused
+        run("Couldn't move the stream") { try $0.updateStream(offsetMs: to, paused: paused) }
+    }
+
+    func stopStream() {
+        run("Couldn't stop the stream") { try $0.stopStream() }
+    }
+
     func setVolume(_ user: User, percent: Int) {
         run("Couldn't change the volume") { try $0.setUserVolume(userId: user.id, percent: Int32(percent)) }
     }
@@ -544,6 +590,15 @@ final class ServerConnection {
             case .cancelled:
                 transfers[t.id] = nil
                 announce("Cancelled \(t.remoteName)")
+            }
+        case .streamChanged(let st):
+            let name = ((st.path as NSString).lastPathComponent as NSString).deletingPathExtension
+            switch st.status {
+            case .started: announce("Streaming \(name)")
+            case .finished: if !st.looping { announce("\(name) finished") }
+            case .failed: announce("Streaming \(name) failed")
+            case .stopped: announce("Stopped streaming")
+            default: break
             }
         case .recordingChanged(let path, let active, let error):
             let name = (path as NSString).lastPathComponent
