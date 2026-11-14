@@ -49,6 +49,7 @@ final class AppModel {
         connections[server.id] = nil
         servers.removeAll { $0.id == server.id }
         Passwords.set("", for: server.id)
+        History.delete(for: server.id)
         save()
     }
 

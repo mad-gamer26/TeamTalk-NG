@@ -13,7 +13,7 @@ struct ServerView: View {
     @State private var showStatus = false
 
     enum Tab: String, CaseIterable, Identifiable {
-        case channels = "Channels", chat = "Chat"
+        case channels = "Channels", chat = "Chat", files = "Files"
         var id: Self { self }
     }
 
@@ -30,6 +30,7 @@ struct ServerView: View {
                 switch tab {
                 case .channels: channels
                 case .chat: ChatView(connection: connection, privateWith: nil)
+                case .files: FilesView(connection: connection)
                 }
                 TalkBar(connection: connection)
             }
@@ -44,6 +45,7 @@ struct ServerView: View {
                             Button("Leave channel") { connection.leaveChannel() }
                         }
                         Button("Status") { showStatus = true }
+                        Button("Clear chat history") { connection.clearHistory() }
                         Button("Disconnect", role: .destructive) { connection.disconnect() }
                     }
                 }
@@ -293,8 +295,15 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 List(lines) { line in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
-                            .font(.caption.weight(.semibold))
+                        HStack {
+                            Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Text(line.time, format: Calendar.current.isDateInToday(line.time)
+                                 ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(line.text)
                     }
                     .accessibilityElement(children: .combine)
@@ -392,3 +401,118 @@ private struct StatusView: View {
 }
 
 extension User: Identifiable {}
+
+/// My channel's files, transfers under way, and uploading.
+struct FilesView: View {
+    let connection: ServerConnection
+    @State private var picking = false
+    @State private var confirmDelete: RemoteFile?
+
+    private var channelId: Int32 { connection.snapshot?.myChannelId ?? 0 }
+
+    private var files: [RemoteFile] {
+        (connection.snapshot?.files ?? [])
+            .filter { $0.channelId == channelId }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var transfers: [Transfer] {
+        connection.transfers.values.sorted { $0.id < $1.id }
+    }
+
+    var body: some View {
+        List {
+            if !transfers.isEmpty {
+                Section("Under way") {
+                    ForEach(transfers, id: \.id) { t in TransferRow(transfer: t) { connection.cancel(t) } }
+                }
+            }
+            Section {
+                if channelId == 0 {
+                    Text("Join a channel to see its files.").foregroundStyle(.secondary)
+                } else if files.isEmpty {
+                    Text("This channel has no files.").foregroundStyle(.secondary)
+                }
+                ForEach(files, id: \.id) { f in
+                    let deletable = connection.canDelete(f)
+                    Button { connection.download(f) } label: {
+                        VStack(alignment: .leading) {
+                            Text(f.name)
+                            Text(details(f)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(f.name)
+                    .accessibilityValue(details(f))
+                    .accessibilityHint("Double-tap to download.")
+                    .accessibilityAddTraits(.isButton)
+                    .swipeActions { if deletable { Button("Delete", role: .destructive) { confirmDelete = f } } }
+                    .contextMenu {
+                        Button("Download") { connection.download(f) }
+                        if deletable { Button("Delete", role: .destructive) { confirmDelete = f } }
+                    }
+                    .accessibilityActions {
+                        if deletable { Button("Delete") { confirmDelete = f } }
+                    }
+                }
+            } header: {
+                if channelId > 0 { Text("Files in this channel") }
+            } footer: {
+                if channelId > 0 { Text("Downloads go to TeamTalk NG's folder in the Files app.") }
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            if channelId > 0 {
+                Button("Upload a file", systemImage: "square.and.arrow.up") { picking = true }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 8)
+            }
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result { connection.upload(url) }
+        }
+        .confirmationDialog(
+            "Delete \(confirmDelete?.name ?? "this file")?",
+            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let f = confirmDelete { connection.delete(f) }
+            }
+        } message: {
+            Text("It's removed from the channel for everyone.")
+        }
+    }
+
+    private func details(_ f: RemoteFile) -> String {
+        let size = ByteCountFormatter.string(fromByteCount: f.size, countStyle: .file)
+        return f.uploader.isEmpty ? size : "\(size), from \(f.uploader)"
+    }
+}
+
+private struct TransferRow: View {
+    let transfer: Transfer
+    let cancel: () -> Void
+
+    private var fraction: Double {
+        transfer.size > 0 ? Double(transfer.transferred) / Double(transfer.size) : 0
+    }
+
+    private var label: String { "\(transfer.inbound ? "Downloading" : "Uploading") \(transfer.remoteName)" }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(label)
+                ProgressView(value: fraction)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityValue("\(Int(fraction * 100)) percent")
+            Button("Cancel", action: cancel)
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Cancel \(transfer.remoteName)")
+        }
+    }
+}

@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// A line in a server's conversation.
-struct ChatLine: Identifiable, Hashable {
-    let id = UUID()
+struct ChatLine: Identifiable, Hashable, Codable {
+    var id = UUID()
     let from: String
     let text: String
     /// "private" lines are between me and one person.
@@ -31,7 +31,11 @@ final class ServerConnection {
 
     private(set) var state: ConnectionState = .disconnected
     private(set) var snapshot: Snapshot?
-    private(set) var lines: [ChatLine] = []
+    private(set) var lines: [ChatLine] = [] {
+        didSet { History.save(lines, for: server.id) }
+    }
+    /// Uploads and downloads under way, by transfer ID.
+    private(set) var transfers: [Int32: Transfer] = [:]
     /// The last thing that went wrong, in words.
     private(set) var problem: String?
     /// Busy connecting (the button waits).
@@ -48,6 +52,7 @@ final class ServerConnection {
         self.server = server
         self.app = app
         client = TtClient(listener: bridge)
+        lines = History.load(for: server.id)
         bridge.connection = self
     }
 
@@ -145,6 +150,57 @@ final class ServerConnection {
         run("Couldn't mute") { try $0.setUserMuted(userId: user.id, muted: muted) }
     }
 
+    // MARK: Files
+
+    /// Uploads a file picked by the person (copied first: the picker's URL
+    /// is only readable for a moment).
+    func upload(_ url: URL) {
+        guard let channel = snapshot?.myChannelId, channel > 0 else { return }
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uploads/\(UUID().uuidString)")
+        let copy = dir.appendingPathComponent(url.lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: url, to: copy)
+        } catch {
+            announce("Couldn't read that file: \(error.localizedDescription)")
+            return
+        }
+        let path = copy.path
+        run("Couldn't upload") { try $0.uploadFile(channelId: channel, localPath: path) }
+    }
+
+    /// Downloads into the app's documents (visible in the Files app).
+    func download(_ file: RemoteFile) {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var target = docs.appendingPathComponent(file.name)
+        var n = 2
+        let base = (file.name as NSString).deletingPathExtension, ext = (file.name as NSString).pathExtension
+        while FileManager.default.fileExists(atPath: target.path) {
+            target = docs.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+            n += 1
+        }
+        let path = target.path
+        run("Couldn't download") { try $0.downloadFile(channelId: file.channelId, fileId: file.id, localPath: path) }
+    }
+
+    func delete(_ file: RemoteFile) {
+        run("Couldn't delete") { try $0.deleteFile(channelId: file.channelId, fileId: file.id) }
+    }
+
+    func cancel(_ transfer: Transfer) {
+        run("Couldn't cancel") { try $0.cancelTransfer(transferId: transfer.id) }
+    }
+
+    /// May I delete it: mine, or I'm an admin.
+    func canDelete(_ file: RemoteFile) -> Bool {
+        guard let s = snapshot, let me = s.users.first(where: { $0.id == s.myUserId }) else { return false }
+        return me.admin || me.username == file.uploader
+    }
+
+    func clearHistory() { lines = [] }
+
     /// Runs a core call off the main thread; failures are announced.
     private func run(_ what: String, _ call: @escaping @Sendable (TtClient) throws -> Void) {
         let client = self.client
@@ -226,6 +282,7 @@ final class ServerConnection {
     }
 
     private var myChannel: Int32 { snapshot?.myChannelId ?? 0 }
+    private var me: User? { snapshot.flatMap { s in s.users.first { $0.id == s.myUserId } } }
 
     fileprivate func handle(_ event: Event) {
         switch event {
@@ -266,6 +323,28 @@ final class ServerConnection {
             if ch == myChannel, u.id != snapshot?.myUserId { announce("\(u.displayName) joined") }
         case .userLeft(let u, let ch):
             if ch == myChannel, u.id != snapshot?.myUserId { announce("\(u.displayName) left") }
+        case .transferChanged(let t):
+            switch t.status {
+            case .active:
+                if transfers[t.id] == nil {
+                    announce("\(t.inbound ? "Downloading" : "Uploading") \(t.remoteName)")
+                }
+                transfers[t.id] = t
+            case .finished:
+                transfers[t.id] = nil
+                announce("\(t.inbound ? "Downloaded" : "Uploaded") \(t.remoteName)")
+                if !t.inbound { try? FileManager.default.removeItem(atPath: (t.localPath as NSString).deletingLastPathComponent) }
+            case .failed:
+                transfers[t.id] = nil
+                announce("\(t.inbound ? "Download" : "Upload") of \(t.remoteName) failed")
+            case .cancelled:
+                transfers[t.id] = nil
+                announce("Cancelled \(t.remoteName)")
+            }
+        case .fileAdded(let f):
+            if f.channelId == myChannel, f.uploader != me?.username {
+                announce("New file: \(f.name)")
+            }
         case .voiceActivated(let on):
             voiceActive = on
         case .kicked(_, let ch):
@@ -273,5 +352,30 @@ final class ServerConnection {
         default: break
         }
         refresh()
+    }
+}
+
+/// Each server's conversation, kept between launches (the last 500 lines).
+enum History {
+    private static func url(_ id: UUID) -> URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("History", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(id.uuidString).json")
+    }
+
+    static func load(for id: UUID) -> [ChatLine] {
+        guard let d = try? Data(contentsOf: url(id)) else { return [] }
+        return (try? JSONDecoder().decode([ChatLine].self, from: d)) ?? []
+    }
+
+    static func save(_ lines: [ChatLine], for id: UUID) {
+        let keep = Array(lines.suffix(500))
+        guard let d = try? JSONEncoder().encode(keep) else { return }
+        try? d.write(to: url(id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    static func delete(for id: UUID) {
+        try? FileManager.default.removeItem(at: url(id))
     }
 }
