@@ -16,6 +16,7 @@ final class AppModel {
     }
     var nickname = "" { didSet { save() } }
     let sounds = SoundStore()
+    @ObservationIgnored private(set) lazy var account = NGAccountStore(app: self)
 
     private let defaults = UserDefaults.standard
 
@@ -43,6 +44,15 @@ final class AppModel {
         }
         Passwords.set(password, for: server.id)
         save()
+        account.changed()
+    }
+
+    /// From NG Account: the servers as the account has them now (no sync
+    /// back of this change).
+    func applySynced(_ list: [SavedServer], passwords: [UUID: String]) {
+        servers = list
+        for (id, p) in passwords { Passwords.set(p, for: id) }
+        save()
     }
 
     func delete(_ server: SavedServer) {
@@ -52,11 +62,13 @@ final class AppModel {
         Passwords.set("", for: server.id)
         History.delete(for: server.id)
         save()
+        account.deleted(server.key)
     }
 
     func move(from: IndexSet, to: Int) {
         servers.move(fromOffsets: from, toOffset: to)
         save()
+        account.changed()
     }
 
     /// The server's connection, made (not connected) on first use.

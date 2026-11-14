@@ -13,6 +13,14 @@ struct SavedServer: Codable, Identifiable, Hashable {
     var nickname = ""
     /// A channel to join after logging in ("/Lobby/"); empty for none.
     var joinChannel = ""
+    /// Its key in NG Account (servers from the old app keep theirs).
+    var syncKey: String?
+    /// Whether NG Account gets its password (nil: yes).
+    var syncPassword: Bool?
+    /// What NG Account had that this app doesn't use (certificates…).
+    var syncOther: String?
+
+    var key: String { syncKey ?? id.uuidString }
 
     var title: String { name.isEmpty ? host : name }
 }
@@ -32,10 +40,30 @@ enum TalkMode: String, Codable, CaseIterable, Identifiable {
 
 /// Passwords, one keychain item per saved server.
 enum Passwords {
-    private static func query(_ id: UUID) -> [String: Any] {
+    private static func query(_ id: UUID) -> [String: Any] { query(service: "TeamTalk NG server", account: id.uuidString) }
+
+    static func query(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "TeamTalk NG server",
-         kSecAttrAccount as String: id.uuidString]
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: account]
+    }
+
+    /// A secret in the keychain by service and name ("" when none).
+    static func secret(_ service: String, _ account: String) -> String {
+        var q = query(service: service, account: account)
+        q[kSecReturnData as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return "" }
+        return String(decoding: d, as: UTF8.self)
+    }
+
+    static func setSecret(_ value: String, _ service: String, _ account: String) {
+        SecItemDelete(query(service: service, account: account) as CFDictionary)
+        guard !value.isEmpty else { return }
+        var q = query(service: service, account: account)
+        q[kSecValueData as String] = Data(value.utf8)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(q as CFDictionary, nil)
     }
 
     static func get(_ id: UUID) -> String {

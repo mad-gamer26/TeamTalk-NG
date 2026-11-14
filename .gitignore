@@ -5,3 +5,4 @@
 /apps/ios/Generated/
 /apps/ios/*.xcodeproj/
 /apps/ios/build/
+/apps/ios/TeamTalkNG/Info.plist

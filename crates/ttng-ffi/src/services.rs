@@ -314,3 +314,69 @@ impl NgAccountClient {
         })
     }
 }
+
+/// A saved server on the device, by its sync key (its list position is its
+/// order).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct LocalServer {
+    pub key: String,
+    pub server: SyncedServer,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Rekey {
+    pub old_key: String,
+    pub new_key: String,
+}
+
+/// The device's list after a sync, and what to keep for the next one.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct SyncOutcome {
+    /// Keep it (no secrets in it) and pass it to the next sync.
+    pub state_json: String,
+    pub servers: Vec<LocalServer>,
+    /// The account changed the list: save it.
+    pub changed: bool,
+    /// Servers matched up with the account's copy (their keys changed).
+    pub rekeyed: Vec<Rekey>,
+}
+
+/// Syncs the device's servers with the account (pull, apply, push). The
+/// state is "" the first time.
+#[uniffi::export]
+pub fn ng_sync(client: Arc<NgAccountClient>, state_json: String, local: Vec<LocalServer>) -> Result<SyncOutcome> {
+    let mut state = svc::SyncState::from_json(&state_json);
+    let local = local
+        .into_iter()
+        .map(|l| svc::LocalServer {
+            key: l.key,
+            server: l.server.into(),
+        })
+        .collect();
+    let outcome = client.with(|a| svc::sync(a, &mut state, local))?;
+    Ok(SyncOutcome {
+        state_json: state.to_json(),
+        servers: outcome
+            .servers
+            .into_iter()
+            .map(|l| LocalServer {
+                key: l.key,
+                server: l.server.into(),
+            })
+            .collect(),
+        changed: outcome.changed,
+        rekeyed: outcome
+            .rekeyed
+            .into_iter()
+            .map(|(old_key, new_key)| Rekey { old_key, new_key })
+            .collect(),
+    })
+}
+
+/// Records that the device removed a server (sent at the next sync).
+#[uniffi::export]
+pub fn ng_sync_deleted(state_json: String, key: String) -> String {
+    let mut state = svc::SyncState::from_json(&state_json);
+    state.deleted(&key);
+    state.to_json()
+}

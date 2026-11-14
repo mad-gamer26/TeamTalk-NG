@@ -163,6 +163,11 @@ struct SettingsView: View {
                 }
                 Section {
                     NavigationLink("Sounds") { SoundsView() }
+                    NavigationLink {
+                        NGAccountView()
+                    } label: {
+                        LabeledContent("NG Account", value: model.account.email ?? "Not signed in")
+                    }
                 }
                 Section {
                     LabeledContent("TeamTalk SDK", value: sdkVersion())
