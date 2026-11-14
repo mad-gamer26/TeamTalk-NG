@@ -819,6 +819,13 @@ impl TtClient {
     }
 }
 
+/// Turns off the SDK's trial mode with a BearWare license (before the
+/// first client); whether it was accepted.
+#[uniffi::export]
+pub fn set_license(name: String, key: String) -> bool {
+    core::set_license(&name, &key)
+}
+
 /// The SDK's version ("5.23.0.5209").
 #[uniffi::export]
 pub fn sdk_version() -> String {

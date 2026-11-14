@@ -25,3 +25,12 @@ pub fn sdk_version() -> String {
     // SAFETY: p points to n valid units.
     text::from_tt(unsafe { std::slice::from_raw_parts(p, n) })
 }
+
+/// Turns off the SDK's trial mode with a license from BearWare.dk. Call it
+/// before the first `Client`; returns whether the SDK accepted it. Without
+/// one the SDK runs as a trial (it says "TRAIL MODE").
+pub fn set_license(name: &str, key: &str) -> bool {
+    let (n, k) = (text::to_tt(name), text::to_tt(key));
+    // SAFETY: both are NUL-terminated arrays of the SDK's string length.
+    unsafe { ttng_sys::TT_SetLicenseInformation(n.as_ptr(), k.as_ptr()) != 0 }
+}

@@ -14,5 +14,9 @@ Read `docs/design.md` first: it records the decisions.
 - Checks: `cargo test`, `cargo fmt --all -- --check`,
   `cargo clippy --all-targets -- -D warnings`. Tests run a real `tt5srv`
   from the SDK on a random local port; never a real server.
+- The official SDK is a trial (the owner chose to stay on it for now; see
+  docs/design.md). Its trial check can segfault a test program at exit
+  after every test passed: rerun; it isn't a test failure.
+  `set_license(name, key)` turns trial mode off once there's a license.
 - Ask before pushing, before anything that touches the stores, the old app's
   users, or the live Monitor/NG Account services.
