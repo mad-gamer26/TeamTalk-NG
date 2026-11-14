@@ -68,3 +68,12 @@ the owner's decision.
   packs, and keyboard and screen-reader behaviour, wherever the platform
   allows.
 - Every app is 100% screen-reader accessible.
+
+## Sounds (2026-11-14)
+
+The built-in pack is BearWare's classic TeamTalk sounds (from iTeamTalk), as
+the old app shipped: the owner chose this exception to "nothing reused from
+BearWare's apps". Other packs come from the catalog on ttmonitor.mad-gamer.com
+(`GET /v1/catalog`, then each file from `/v1/packs/{id}/files/{name}`,
+checked against the catalog's SHA-256). A pack missing a sound falls back to
+the built-in one.

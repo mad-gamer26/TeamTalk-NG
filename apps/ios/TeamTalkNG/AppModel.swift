@@ -15,6 +15,7 @@ final class AppModel {
         didSet { save(); connections.values.forEach { $0.applyTalkMode() } }
     }
     var nickname = "" { didSet { save() } }
+    let sounds = SoundStore()
 
     private let defaults = UserDefaults.standard
 

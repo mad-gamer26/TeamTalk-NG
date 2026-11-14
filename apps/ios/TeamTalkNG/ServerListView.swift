@@ -162,6 +162,9 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    NavigationLink("Sounds") { SoundsView() }
+                }
+                Section {
                     LabeledContent("TeamTalk SDK", value: sdkVersion())
                 }
             }

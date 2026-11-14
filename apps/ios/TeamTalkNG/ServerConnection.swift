@@ -289,11 +289,13 @@ final class ServerConnection {
     func setTransmitting(_ on: Bool) {
         guard isConnected, app?.talkMode == .pushToTalk, on != transmitting else { return }
         transmitting = on
+        sound(on ? .on : .off)
         run("Couldn't talk") { try $0.setTransmitting(on: on) }
     }
 
     func setMicMuted(_ on: Bool) {
         muted = on
+        sound(on ? .off : .on)
         applyTalkMode()
     }
 
@@ -350,6 +352,7 @@ final class ServerConnection {
     }
 
     private var myChannel: Int32 { snapshot?.myChannelId ?? 0 }
+    private func sound(_ e: SoundEvent) { app?.sounds.play(e) }
     private var me: User? { snapshot.flatMap { s in s.users.first { $0.id == s.myUserId } } }
 
     fileprivate func handle(_ event: Event) {
@@ -363,7 +366,10 @@ final class ServerConnection {
                 applyTalkMode()
             case .reconnecting(let n):
                 transmitting = false
-                if !dropped { announce("\(server.title): connection lost, reconnecting") }
+                if !dropped {
+                    sound(.serverLost)
+                    announce("\(server.title): connection lost, reconnecting")
+                }
                 dropped = n > 0
             case .disconnected:
                 transmitting = false
@@ -378,19 +384,37 @@ final class ServerConnection {
             switch m.target {
             case .user:
                 lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now))
+                sound(.privateMessage)
                 announce("Private message from \(from): \(m.text)")
             case .channel:
                 let mine = m.fromUserId == snapshot?.myUserId
                 lines.append(ChatLine(from: mine ? "Me" : from, text: m.text, privateWith: nil, time: .now))
-                if !mine { announce("\(from): \(m.text)") }
+                if !mine {
+                    sound(.channelMessage)
+                    announce("\(from): \(m.text)")
+                }
             case .broadcast:
                 lines.append(ChatLine(from: "Broadcast from \(from)", text: m.text, privateWith: nil, time: .now))
+                sound(.broadcastMessage)
                 announce("Broadcast from \(from): \(m.text)")
             }
         case .userJoined(let u, let ch):
-            if ch == myChannel, u.id != snapshot?.myUserId { announce("\(u.displayName) joined") }
+            if ch == myChannel, u.id != snapshot?.myUserId {
+                sound(.userJoined)
+                announce("\(u.displayName) joined")
+            }
         case .userLeft(let u, let ch):
-            if ch == myChannel, u.id != snapshot?.myUserId { announce("\(u.displayName) left") }
+            if ch == myChannel, u.id != snapshot?.myUserId {
+                sound(.userLeft)
+                announce("\(u.displayName) left")
+            }
+        case .userLoggedIn(let u):
+            // Not for those already there when I log in (the server lists them).
+            if state == .loggedIn, u.id != snapshot?.myUserId { sound(.loggedIn) }
+        case .userLoggedOut(let u):
+            if state == .loggedIn, u.id != snapshot?.myUserId { sound(.loggedOut) }
+        case .fileRemoved(let f):
+            if f.channelId == myChannel { sound(.fileUpdate) }
         case .transferChanged(let t):
             switch t.status {
             case .active:
@@ -400,6 +424,7 @@ final class ServerConnection {
                 transfers[t.id] = t
             case .finished:
                 transfers[t.id] = nil
+                sound(.transferComplete)
                 announce("\(t.inbound ? "Downloaded" : "Uploaded") \(t.remoteName)")
                 if !t.inbound { try? FileManager.default.removeItem(atPath: (t.localPath as NSString).deletingLastPathComponent) }
             case .failed:
@@ -411,6 +436,7 @@ final class ServerConnection {
             }
         case .fileAdded(let f):
             if f.channelId == myChannel, f.uploader != me?.username {
+                sound(.fileUpdate)
                 announce("New file: \(f.name)")
             }
         case .voiceActivated(let on):
