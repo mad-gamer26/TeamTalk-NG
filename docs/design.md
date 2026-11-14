@@ -52,3 +52,19 @@ crash in the SDK's static destructors (seen in the test programs, after
 every test has passed). BearWare's source repository (GitHub
 BearWare/TeamTalk5) carries the same license agreement. The way forward is
 the owner's decision.
+
+## Mac: a fork of TTAccessible (decided 2026-11-14)
+
+- The Mac app is a fork of TTAccessible (github.com/math65/ttaccessible,
+  GPLv3, AppKit and SwiftUI) that keeps its own engine: its Swift SDK
+  layer, microphone engine (TT_InsertAudioBlock into the virtual device,
+  WebRTC AEC3) and its build-time SDK patches. NG's identity, Monitor, NG
+  Account and other NG features are added on top, and upstream's changes
+  keep being merged. The Mac app doesn't use the Rust core (for now).
+- It is GPLv3, with its source published to everyone who gets it; the
+  owner accepted that.
+- iPhone, Android and Windows stay on the Rust core with native interfaces,
+  modelled on TTAccessible: its features, settings, announcements, sound
+  packs, and keyboard and screen-reader behaviour, wherever the platform
+  allows.
+- Every app is 100% screen-reader accessible.
