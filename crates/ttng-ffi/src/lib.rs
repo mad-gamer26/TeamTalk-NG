@@ -15,9 +15,11 @@ uniffi::setup_scaffolding!();
 mod admin;
 mod monitor;
 mod services;
+mod sound;
 pub use admin::*;
 pub use monitor::*;
 pub use services::*;
+pub use sound::*;
 
 /// What went wrong, in words the apps can show as they are (`message`).
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Error)]

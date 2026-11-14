@@ -18,10 +18,12 @@ use ttng_sys as sys;
 mod channels;
 mod people;
 mod server;
+mod sound;
 use channels::ChannelRequest;
 pub use channels::media_file_info;
 use people::PeopleRequest;
 use server::ServerRequest;
+use sound::SoundRequest;
 
 use crate::error::{Error, Result};
 use crate::model::*;
@@ -177,6 +179,7 @@ enum Request {
     StartRecording {
         path: String,
         format: RecordingFormat,
+        include_media: bool,
         reply: Reply,
     },
     StopRecording(Reply),
@@ -184,6 +187,8 @@ enum Request {
     Channels(ChannelRequest, Reply),
     /// Server administration (see server.rs).
     Server(ServerRequest),
+    /// Sound settings (see sound.rs); `None` when it answers itself.
+    Sound(SoundRequest, Option<Reply>),
     /// People (see people.rs); `None` when the request answers itself.
     People(PeopleRequest, Option<Reply>),
     Quit,
@@ -202,11 +207,15 @@ struct Model {
     files: HashMap<i32, RemoteFile>,
     transfers: HashMap<i32, Transfer>,
     /// The channel being recorded, and the file.
-    recording: Option<(i32, String)>,
+    /// The channel being recorded, the file, and whether media files are
+    /// in it too (recorded as mixed streams).
+    recording: Option<(i32, String, bool)>,
     muted_all: bool,
     relaying: Option<(i32, AudioStream)>,
     streaming: Option<MediaStream>,
     my_account: Option<UserAccount>,
+    audio: AudioSettings,
+    recording_each: Option<String>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -489,9 +498,16 @@ impl Client {
     /// Records my channel's voices (mine included) to `path`, until
     /// stopped or I leave the channel.
     pub fn start_recording(&self, path: &str, format: RecordingFormat) -> Result<()> {
+        self.start_recording_with(path, format, false)
+    }
+
+    /// As `start_recording`; `include_media` mixes in media files streamed
+    /// to the channel too.
+    pub fn start_recording_with(&self, path: &str, format: RecordingFormat, include_media: bool) -> Result<()> {
         self.ask(|reply| Request::StartRecording {
             path: path.into(),
             format,
+            include_media,
             reply,
         })
     }
@@ -693,6 +709,28 @@ impl Client {
         })
     }
 
+    /// Echo cancellation, gain control, noise suppression, microphone gain,
+    /// output and media volume (applied now, and kept for later).
+    pub fn set_audio_settings(&self, settings: AudioSettings) -> Result<()> {
+        self.ask(|r| Request::Sound(SoundRequest::Settings(settings), Some(r)))
+    }
+
+    /// My connection's numbers (ping, bytes).
+    pub fn client_statistics(&self) -> Result<ClientStatistics> {
+        let (rtx, rrx) = mpsc::channel();
+        self.tx
+            .send(Request::Sound(SoundRequest::Statistics(rtx), None))
+            .map_err(|_| Error::NotConnected)?;
+        rrx.recv_timeout(ANSWER_TIMEOUT).unwrap_or(Err(Error::Timeout))
+    }
+
+    /// Records each person's voice to files of their own in `folder` (one
+    /// file per talk, named for them and the time); `None` stops.
+    pub fn set_record_each(&self, each: Option<(&str, RecordingFormat)>) -> Result<()> {
+        let each = each.map(|(f, fmt)| (f.to_owned(), fmt));
+        self.ask(|r| Request::Sound(SoundRequest::RecordEach(each), Some(r)))
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -714,10 +752,12 @@ impl Client {
             users,
             files,
             transfers,
-            recording_path: m.recording.as_ref().map(|(_, p)| p.clone()).unwrap_or_default(),
+            recording_path: m.recording.as_ref().map(|(_, p, _)| p.clone()).unwrap_or_default(),
             muted_all: m.muted_all,
             streaming: m.streaming.clone(),
             my_account: m.my_account.clone(),
+            audio: m.audio,
+            recording_each: m.recording_each.clone(),
             relaying: m.relaying,
         }
     }
@@ -778,6 +818,11 @@ struct Worker {
     last_level: Instant,
     last_progress: Instant,
     last_stream_note: Instant,
+    /// The devices asked for (to reopen them), and whether they're duplex.
+    audio_devices: Option<AudioDevices>,
+    duplex: bool,
+    /// Recording each person: the folder and format.
+    record_each: Option<(String, RecordingFormat)>,
 }
 
 impl Worker {
@@ -806,6 +851,9 @@ impl Worker {
             last_level: Instant::now(),
             last_progress: Instant::now(),
             last_stream_note: Instant::now(),
+            audio_devices: None,
+            duplex: false,
+            record_each: None,
         }
     }
 
@@ -1216,7 +1264,12 @@ impl Worker {
                 let cmd = unsafe { sys::TT_DoUpdateServer(self.inst, &p) };
                 self.track(cmd, Pending::Reply(reply), "Changing the server");
             }
-            Request::StartRecording { path, format, reply } => {
+            Request::StartRecording {
+                path,
+                format,
+                include_media,
+                reply,
+            } => {
                 let (channel, no_recording, already) = self
                     .model
                     .lock()
@@ -1243,10 +1296,27 @@ impl Worker {
                         RecordingFormat::Wave => sys::AudioFileFormat_AFF_WAVE_FORMAT,
                         RecordingFormat::Mp3 => sys::AudioFileFormat_AFF_MP3_128KBIT_FORMAT,
                     };
-                    // SAFETY: inst is live; p is NUL-terminated and outlives the call.
-                    if unsafe { sys::TT_StartRecordingMuxedAudioFileEx(self.inst, channel, p.as_ptr(), aff) } != 0 {
+                    let started = if include_media {
+                        // Voice and media files mixed, with the channel's codec.
+                        let mut c = sys::Channel::default();
+                        // SAFETY: inst is live; c and p are valid and outlive the calls.
+                        unsafe {
+                            sys::TT_GetChannel(self.inst, channel, &mut c) != 0
+                                && sys::TT_StartRecordingMuxedStreams(
+                                    self.inst,
+                                    sys::StreamType_STREAMTYPE_VOICE | sys::StreamType_STREAMTYPE_MEDIAFILE_AUDIO,
+                                    &c.audiocodec,
+                                    p.as_ptr(),
+                                    aff,
+                                ) != 0
+                        }
+                    } else {
+                        // SAFETY: inst is live; p is NUL-terminated and outlives the call.
+                        unsafe { sys::TT_StartRecordingMuxedAudioFileEx(self.inst, channel, p.as_ptr(), aff) != 0 }
+                    };
+                    if started {
                         if let Ok(mut m) = self.model.lock() {
-                            m.recording = Some((channel, path.clone()));
+                            m.recording = Some((channel, path.clone(), include_media));
                         }
                         self.emit(Event::RecordingChanged {
                             path,
@@ -1271,17 +1341,24 @@ impl Worker {
             Request::People(req, reply) => self.handle_people(req, reply),
             Request::Channels(req, reply) => self.handle_channels(req, reply),
             Request::Server(req) => self.handle_server(req),
+            Request::Sound(req, reply) => self.handle_sound(req, reply),
             Request::Quit => {}
         }
     }
 
     /// Ends a recording, if there is one (`error`: why it broke off).
     fn stop_recording(&mut self, error: Option<String>) -> bool {
-        let Some((channel, path)) = self.model.lock().ok().and_then(|mut m| m.recording.take()) else {
+        let Some((channel, path, streams)) = self.model.lock().ok().and_then(|mut m| m.recording.take()) else {
             return false;
         };
         // SAFETY: inst is live.
-        unsafe { sys::TT_StopRecordingMuxedAudioFileEx(self.inst, channel) };
+        unsafe {
+            if streams {
+                sys::TT_StopRecordingMuxedAudioFile(self.inst);
+            } else {
+                sys::TT_StopRecordingMuxedAudioFileEx(self.inst, channel);
+            }
+        }
         self.emit(Event::RecordingChanged {
             path,
             active: false,
@@ -1353,18 +1430,32 @@ impl Worker {
                 }
             }
         }
+        let want_duplex = self.model.lock().map(|m| m.audio.echo_cancellation).unwrap_or(false);
         // SAFETY: inst is live.
         unsafe {
+            sys::TT_CloseSoundDuplexDevices(self.inst);
             sys::TT_CloseSoundInputDevice(self.inst);
             sys::TT_CloseSoundOutputDevice(self.inst);
-            if sys::TT_InitSoundInputDevice(self.inst, input) == 0 {
-                return Err(Error::Refused("The microphone couldn't be opened.".into()));
-            }
-            if sys::TT_InitSoundOutputDevice(self.inst, output) == 0 {
-                return Err(Error::Refused("The speakers couldn't be opened.".into()));
+        }
+        self.audio_open = false;
+        // Echo cancellation needs both devices together (duplex); without
+        // it, or if duplex can't open, they're opened apart.
+        // SAFETY: inst is live.
+        self.duplex = want_duplex && unsafe { sys::TT_InitSoundDuplexDevices(self.inst, input, output) } != 0;
+        if !self.duplex {
+            // SAFETY: inst is live.
+            unsafe {
+                if sys::TT_InitSoundInputDevice(self.inst, input) == 0 {
+                    return Err(Error::Refused("The microphone couldn't be opened.".into()));
+                }
+                if sys::TT_InitSoundOutputDevice(self.inst, output) == 0 {
+                    return Err(Error::Refused("The speakers couldn't be opened.".into()));
+                }
             }
         }
         self.audio_open = true;
+        self.audio_devices = Some(devices);
+        self.apply_audio();
         Ok(())
     }
 
@@ -1613,6 +1704,9 @@ impl Worker {
                         Event::ChannelUpdated(c)
                     });
                     self.refresh_operators(id);
+                    if self.model.lock().map(|m| m.my_channel_id == id).unwrap_or(false) {
+                        self.apply_audio();
+                    }
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_REMOVE => {
@@ -1625,6 +1719,10 @@ impl Worker {
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDIN => {
                 if let Some(u) = user().map(|u| self.with_operator(u)) {
+                    self.apply_media_volume(u.id);
+                    if self.record_each.is_some() {
+                        self.record_user(u.id);
+                    }
                     if let Ok(mut m) = self.model.lock() {
                         m.users.insert(u.id, u.clone());
                     }
@@ -1656,14 +1754,24 @@ impl Worker {
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_JOINED => {
                 if let Some(u) = user().map(|u| self.with_operator(u)) {
-                    if let Ok(mut m) = self.model.lock() {
-                        if u.id == m.my_user_id {
-                            m.my_channel_id = u.channel_id;
-                        }
-                        m.users.insert(u.id, u.clone());
-                    }
+                    let me = self
+                        .model
+                        .lock()
+                        .map(|mut m| {
+                            let me = u.id == m.my_user_id;
+                            if me {
+                                m.my_channel_id = u.channel_id;
+                            }
+                            m.users.insert(u.id, u.clone());
+                            me
+                        })
+                        .unwrap_or(false);
                     let channel_id = u.channel_id;
                     self.emit(Event::UserJoined { user: u, channel_id });
+                    if me {
+                        // A new channel: maybe a fixed volume.
+                        self.apply_audio();
+                    }
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_LEFT => {
@@ -1961,6 +2069,11 @@ fn reply_of(req: Request) -> Option<Reply> {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;
         }
+        Request::Sound(_, Some(r)) => r,
+        Request::Sound(req, None) => {
+            req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
+            return None;
+        }
         Request::People(req, None) => {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;
@@ -2051,7 +2164,7 @@ fn apply_spec(c: &mut sys::Channel, spec: &ChannelSpec, making: bool) {
     }
     if let Some((on, level)) = spec.fixed_volume {
         c.audiocfg.bEnableAGC = on as sys::TTBOOL;
-        c.audiocfg.nGainLevel = level.clamp(0, 400) * sys::SoundLevel_SOUND_GAIN_DEFAULT as i32 / 100;
+        c.audiocfg.nGainLevel = level.clamp(0, 100) * crate::model::CHANNEL_GAIN_MAX / 100;
     }
     if let Some(t) = spec.voice_timeout_ms {
         c.nTimeOutTimerVoiceMSec = t.max(0);

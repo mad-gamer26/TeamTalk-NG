@@ -72,12 +72,16 @@ pub struct Channel {
     pub codec: AudioCodec,
     /// Everyone heard at one volume (the channel's gain), not their own.
     pub fixed_volume: bool,
-    /// The fixed volume, in percent (100 normal).
+    /// The fixed volume, in percent of the strongest (the desktop's
+    /// default is 30).
     pub fixed_volume_level: i32,
     /// The longest one may talk, or stream a file, without stopping (ms; 0: no limit).
     pub voice_timeout_ms: i32,
     pub media_timeout_ms: i32,
 }
+
+/// The strongest fixed channel volume (TeamTalk's CHANNEL_AUDIOCONFIG_MAX).
+pub(crate) const CHANNEL_GAIN_MAX: i32 = 32000;
 
 /// Which audio codec a channel uses.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -222,7 +226,7 @@ impl From<&sys::Channel> for Channel {
             disk_quota: c.nDiskQuota,
             codec: AudioCodec::from_sys(&c.audiocodec),
             fixed_volume: c.audiocfg.bEnableAGC != 0,
-            fixed_volume_level: gain * 100 / sys::SoundLevel_SOUND_GAIN_DEFAULT as i32,
+            fixed_volume_level: (gain * 100 + CHANNEL_GAIN_MAX / 2) / CHANNEL_GAIN_MAX,
             voice_timeout_ms: c.nTimeOutTimerVoiceMSec,
             media_timeout_ms: c.nTimeOutTimerMediaFileMSec,
             id: c.nChannelID,
@@ -645,6 +649,59 @@ impl From<&sys::FileTransfer> for Transfer {
     }
 }
 
+/// How my microphone is processed and how loud things are, as the
+/// desktop's Sound System settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioSettings {
+    /// Removes the speakers' sound from the microphone (opens the devices
+    /// together, as duplex).
+    pub echo_cancellation: bool,
+    /// Evens out the microphone's level.
+    pub gain_control: bool,
+    pub noise_suppression: bool,
+    /// The microphone's gain in percent (100 as it is); ignored while a
+    /// channel's fixed volume sets it.
+    pub mic_gain: i32,
+    /// Everything I hear, in percent (100 as it is).
+    pub output_volume: i32,
+    /// Everyone's media files, in percent of their voice (100: as loud).
+    pub media_volume: i32,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        AudioSettings {
+            echo_cancellation: false,
+            gain_control: true,
+            noise_suppression: true,
+            mic_gain: 100,
+            output_volume: 100,
+            media_volume: 100,
+        }
+    }
+}
+
+/// My connection's numbers (the desktop's "speak client statistics").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ClientStatistics {
+    pub udp_bytes_sent: i64,
+    pub udp_bytes_received: i64,
+    pub voice_bytes_sent: i64,
+    pub voice_bytes_received: i64,
+    pub media_file_bytes_sent: i64,
+    pub media_file_bytes_received: i64,
+    pub video_bytes_sent: i64,
+    pub video_bytes_received: i64,
+    pub desktop_bytes_sent: i64,
+    pub desktop_bytes_received: i64,
+    /// Round trips, in ms (-1: not measured yet).
+    pub udp_ping_ms: i32,
+    pub tcp_ping_ms: i32,
+    /// Seconds since the server was last heard from.
+    pub udp_silence_s: i32,
+    pub tcp_silence_s: i32,
+}
+
 /// What a recording is saved as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecordingFormat {
@@ -988,7 +1045,8 @@ pub struct ChannelSpec {
     /// A new codec (Opus or no audio); `None` keeps it (a new channel: the
     /// parent's).
     pub codec: Option<AudioCodec>,
-    /// Fixed volume on or off and its level in percent; `None` keeps it.
+    /// Fixed volume on or off and its level (percent of the strongest);
+    /// `None` keeps it.
     pub fixed_volume: Option<(bool, i32)>,
     /// The longest one may talk, or stream, without stopping (ms, 0: no
     /// limit); `None` keeps it.
@@ -1098,6 +1156,9 @@ pub struct Snapshot {
     /// My own account, as the server gave it at login (rights, note,
     /// initial channel).
     pub my_account: Option<UserAccount>,
+    pub audio: AudioSettings,
+    /// A separate file for each person (the folder), when on.
+    pub recording_each: Option<String>,
 }
 
 impl Snapshot {

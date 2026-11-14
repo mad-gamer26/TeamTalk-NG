@@ -15,6 +15,22 @@ final class AppModel {
         didSet { save(); connections.values.forEach { $0.applyTalkMode() } }
     }
     var nickname = "" { didSet { save() } }
+
+    /// The desktop's Sound System settings, for every server.
+    var audio = defaultAudioSettings() {
+        didSet {
+            saveAudio()
+            for c in connections.values { c.applyAudioSettings() }
+        }
+    }
+
+    /// Recording as the desktop sets it up.
+    var recordMP3 = true { didSet { save() } }
+    var recordOneFile = true { didSet { save() } }
+    var recordEachPerson = false { didSet { save() } }
+    var recordMediaFiles = false { didSet { save() } }
+    /// Each server's chat written to text files too.
+    var saveChatLogs = false { didSet { save() } }
     let sounds = SoundStore()
     @ObservationIgnored private(set) lazy var account = NGAccountStore(app: self)
     @ObservationIgnored private(set) lazy var monitor = MonitorStore(app: self)
@@ -28,6 +44,22 @@ final class AppModel {
         talkMode = TalkMode(rawValue: defaults.string(forKey: "talkMode") ?? "") ?? .pushToTalk
         voiceLevel = defaults.object(forKey: "voiceLevel") as? Double ?? 20
         nickname = defaults.string(forKey: "nickname") ?? ""
+        if let a = defaults.dictionary(forKey: "audio") as? [String: Int] {
+            audio = AudioSettings(
+                echoCancellation: a["echo"] == 1, gainControl: a["agc", default: 1] == 1, noiseSuppression: a["denoise", default: 1] == 1,
+                micGain: Int32(a["mic", default: 100]), outputVolume: Int32(a["out", default: 100]), mediaVolume: Int32(a["media", default: 100]))
+        }
+        recordMP3 = defaults.object(forKey: "recordMP3") as? Bool ?? true
+        recordOneFile = defaults.object(forKey: "recordOneFile") as? Bool ?? true
+        recordEachPerson = defaults.bool(forKey: "recordEachPerson")
+        recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
+        saveChatLogs = defaults.bool(forKey: "saveChatLogs")
+    }
+
+    private func saveAudio() {
+        defaults.set(["echo": audio.echoCancellation ? 1 : 0, "agc": audio.gainControl ? 1 : 0,
+                      "denoise": audio.noiseSuppression ? 1 : 0, "mic": Int(audio.micGain),
+                      "out": Int(audio.outputVolume), "media": Int(audio.mediaVolume)], forKey: "audio")
     }
 
     private func save() {
@@ -35,6 +67,11 @@ final class AppModel {
         defaults.set(talkMode.rawValue, forKey: "talkMode")
         defaults.set(voiceLevel, forKey: "voiceLevel")
         defaults.set(nickname, forKey: "nickname")
+        defaults.set(recordMP3, forKey: "recordMP3")
+        defaults.set(recordOneFile, forKey: "recordOneFile")
+        defaults.set(recordEachPerson, forKey: "recordEachPerson")
+        defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
+        defaults.set(saveChatLogs, forKey: "saveChatLogs")
     }
 
     func upsert(_ server: SavedServer, password: String) {

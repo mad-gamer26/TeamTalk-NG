@@ -181,7 +181,9 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    NavigationLink("Sound system") { SoundSystemView() }
                     NavigationLink("Sounds") { SoundsView() }
+                    NavigationLink("Recording") { RecordingSettingsView() }
                     NavigationLink {
                         NGAccountView()
                     } label: {

@@ -36,7 +36,10 @@ final class ServerConnection {
     private(set) var state: ConnectionState = .disconnected
     private(set) var snapshot: Snapshot?
     private(set) var lines: [ChatLine] = [] {
-        didSet { History.save(lines, for: server.id) }
+        didSet {
+            History.save(lines, for: server.id)
+            if lines.count == oldValue.count + 1, let last = lines.last { log(last) }
+        }
     }
     /// Uploads and downloads under way, by transfer ID.
     private(set) var transfers: [Int32: Transfer] = [:]
@@ -86,6 +89,7 @@ final class ServerConnection {
             password: Passwords.get(s.id), clientName: "TeamTalk NG",
             joinChannelPath: s.joinChannel, joinChannelPassword: "", reconnect: true)
         let client = self.client
+        let audio = app?.audio ?? defaultAudioSettings()
         Task {
             let allowed = await AudioSession.requestMicrophone()
             AudioSession.activate()
@@ -93,6 +97,7 @@ final class ServerConnection {
                 do {
                     try client.connect(options: options)
                     // Every connection shares the microphone and speaker.
+                    try? client.setAudioSettings(settings: audio)
                     try? client.initAudio(devices: allowed ? .shared : .virtual)
                     return nil
                 } catch {
@@ -342,25 +347,71 @@ final class ServerConnection {
 
     // MARK: Recording
 
-    var recording: Bool { !(snapshot?.recordingPath.isEmpty ?? true) }
+    var recording: Bool { !(snapshot?.recordingPath.isEmpty ?? true) || coreClient.recordingEach() != nil }
 
-    /// Records the channel into the app's documents (in the Files app),
-    /// named for the server, channel and time.
-    func startRecording(mp3: Bool) {
-        guard let s = snapshot, s.myChannelId > 0 else { return }
+    /// Records as Settings → Recording says: one file of the channel and/or
+    /// a file for each person, in Recordings (the Files app).
+    func startRecording() {
+        guard let s = snapshot, s.myChannelId > 0, let app else { return }
+        let mp3 = app.recordMP3
         let channel = s.channels.first { $0.id == s.myChannelId }
         let place = channel.map { $0.parentId == 0 ? "Root" : $0.name } ?? "Channel"
         let stamp = Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
-        let name = "\(server.title) \(place) \(stamp).\(mp3 ? "mp3" : "wav")"
-            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let base = "\(server.title) \(place) \(stamp)".replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Recordings")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let path = dir.appendingPathComponent(name).path
-        run("Couldn't record") { try $0.startRecording(path: path, format: mp3 ? .mp3 : .wave) }
+        let path = dir.appendingPathComponent("\(base).\(mp3 ? "mp3" : "wav")").path
+        let each = dir.appendingPathComponent(base, isDirectory: true)
+        let (one, eachOn, media) = (app.recordOneFile, app.recordEachPerson, app.recordMediaFiles)
+        if eachOn { try? FileManager.default.createDirectory(at: each, withIntermediateDirectories: true) }
+        let eachPath = each.path
+        run("Couldn't record") { c in
+            if one { try c.startRecordingWith(path: path, format: mp3 ? .mp3 : .wave, includeMedia: media) }
+            if eachOn {
+                try c.setRecordEach(folder: eachPath, format: mp3 ? .mp3 : .wave)
+            }
+        }
+        if eachOn && !one { announce("Recording each person") }
     }
 
     func stopRecording() {
-        run("Couldn't stop recording") { try $0.stopRecording() }
+        let each = coreClient.recordingEach() != nil, one = !(snapshot?.recordingPath.isEmpty ?? true)
+        run("Couldn't stop recording") { c in
+            if one { try c.stopRecording() }
+            if each { try c.setRecordEach(folder: nil, format: .wave) }
+        }
+        if each && !one { announce("Recordings saved, in the Files app") }
+    }
+
+    // MARK: Sound
+
+    func applyAudioSettings() {
+        guard let a = app?.audio else { return }
+        run("Couldn't change the sound") { try $0.setAudioSettings(settings: a) }
+    }
+
+    func clientStatistics() async -> ClientStatistics? {
+        let c = client
+        return await Task.detached { try? c.clientStatistics() }.value
+    }
+
+    /// Appends a chat line to today's log file (Settings → Recording).
+    private func log(_ line: ChatLine) {
+        guard app?.saveChatLogs == true else { return }
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Chat logs", isDirectory: true)
+            .appendingPathComponent(server.title.replacingOccurrences(of: "/", with: "-"), isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("\(line.time.formatted(.iso8601.year().month().day())).txt")
+        let who = line.privateWith.map { "\(line.from) (private, with \($0))" } ?? line.from
+        let text = "[\(line.time.formatted(date: .omitted, time: .standard))] \(who): \(line.text)\n"
+        if let h = try? FileHandle(forWritingTo: file) {
+            h.seekToEndOfFile()
+            h.write(Data(text.utf8))
+            try? h.close()
+        } else {
+            try? Data(text.utf8).write(to: file)
+        }
     }
 
     // MARK: Administration

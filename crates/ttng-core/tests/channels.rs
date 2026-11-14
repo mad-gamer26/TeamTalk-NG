@@ -70,7 +70,7 @@ fn every_channel_setting_round_trips() {
             operator_password: Some("op-pw".into()),
             disk_quota: Some(1_000_000),
             codec: Some(opus),
-            fixed_volume: Some((true, 150)),
+            fixed_volume: Some((true, 50)),
             voice_timeout_ms: Some(30_000),
             media_timeout_ms: Some(60_000),
             ..Default::default()
@@ -91,7 +91,7 @@ fn every_channel_setting_round_trips() {
         (CodecKind::Opus, 32000, 2, 48000, true)
     );
     assert!(c.fixed_volume);
-    assert_eq!(c.fixed_volume_level, 150);
+    assert_eq!(c.fixed_volume_level, 50);
     assert_eq!((c.voice_timeout_ms, c.media_timeout_ms), (30_000, 60_000));
 
     // A new codec; everything else as it was.

@@ -26,6 +26,7 @@ struct ServerView: View {
     @State private var showAccounts = false
     @State private var showStats = false
     @State private var showOnline = false
+    @State private var showClientStats = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
     @State private var renaming = false
@@ -84,8 +85,7 @@ struct ServerView: View {
                             if connection.recording {
                                 Button("Stop recording") { connection.stopRecording() }
                             } else {
-                                Button("Record the channel (MP3)") { connection.startRecording(mp3: true) }
-                                Button("Record the channel (WAV)") { connection.startRecording(mp3: false) }
+                                Button("Record conversations") { connection.startRecording() }
                             }
                         }
                         if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
@@ -95,6 +95,7 @@ struct ServerView: View {
                             Button("Broadcast message") { broadcasting = true }
                         }
                         Button("Online users") { showOnline = true }
+                        Button("Connection statistics") { showClientStats = true }
                         if connection.rights.updateServer {
                             Button("Server settings") { showServerSettings = true }
                         }
@@ -175,6 +176,7 @@ struct ServerView: View {
         }
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
+        .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
         .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }
         .alert("Change nickname", isPresented: $renaming) {
             TextField("Nickname", text: $newNickname)

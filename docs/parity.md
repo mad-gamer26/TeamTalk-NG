@@ -15,13 +15,13 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Sound configuration: input/output devices, refresh | todo (5): iOS audio routes (speaker, earpiece, Bluetooth, wired), chosen in the app |
-| Echo cancellation, automatic gain control, denoising | todo (5) |
+| Sound configuration: input/output devices, refresh | done on iPhone: speaker or earpiece, Bluetooth headset microphones, choice of microphone |
+| Echo cancellation, automatic gain control, denoising | done (WebRTC, as the desktop; duplex devices for echo cancellation; a channel's fixed volume sets the gain) |
 | New client instance | done: several servers at once |
 | Connect | done |
 | Preferences | partial: see Preferences |
-| Record conversations to disk | partial: one file of my channel; todo (5): separate file per person, voice and media streams, folder, text logs |
-| Speak client statistics | todo (5) |
+| Record conversations to disk | done: one file and/or a file per person, with media files, MP3 or WAV, chat logs as text files |
+| Speak client statistics | done (Connection statistics, the ping announced) |
 | Exit | n/a (iOS apps aren't quit); Disconnect per server is done |
 
 ## Me menu
@@ -100,7 +100,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | partial: nickname, talk modes; todo (2, 7): gender, away after locking or inactivity, web login; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
 | Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | partial: chat list with times; todo (6): timestamps, what the tree shows and how it sorts, MOTD on connect, events in chat; n/a: tray, always on top |
 | Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | partial: reconnect; todo (6): the rest |
-| Sound system: devices, AEC, AGC, denoise, media vs voice volume | todo (5) |
+| Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
 | Sound events: pack, volume, per-event files, enable all/clear all | partial: packs, volume, per event; todo (6): every desktop event (sent messages, voice activation, question mode, mute all, typing, transmit queue, new video/desktop, intercept), a file per event |
 | Text to speech: per-event messages with variables, voice, rate, volume, interrupt, output mode | todo (6): through VoiceOver (announcements) or the system voice |
 | Shortcuts | todo (10): hardware keyboard |
@@ -123,7 +123,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 |---|---|
 | Typing indicators | todo (8) |
 | Message templates and timestamps | todo (6) |
-| Message logs to files | todo (5) |
+| Message logs to files | done |
 
 ## Video and desktop
 

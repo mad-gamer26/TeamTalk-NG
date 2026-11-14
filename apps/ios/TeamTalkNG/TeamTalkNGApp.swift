@@ -16,11 +16,25 @@ struct TeamTalkNGApp: App {
 /// The audio session every connection shares: talking and listening, out
 /// of the speaker unless headphones are in, and kept going when locked.
 enum AudioSession {
-    static func activate() {
+    /// `speaker`: the loudspeaker rather than the earpiece (when nothing
+    /// is plugged in). `bluetoothMic`: Bluetooth headsets' microphones too
+    /// (calls quality, both ways).
+    static func activate(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
+                         bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic")) {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker])
+        var options: AVAudioSession.CategoryOptions = [.allowBluetoothA2DP]
+        if speaker { options.insert(.defaultToSpeaker) }
+        if bluetoothMic { options.insert(.allowBluetoothHFP) }
+        try? s.setCategory(.playAndRecord, mode: .default, options: options)
         try? s.setActive(true)
+        if let name = UserDefaults.standard.string(forKey: "preferredInput"),
+           let port = s.availableInputs?.first(where: { $0.uid == name }) {
+            try? s.setPreferredInput(port)
+        }
     }
+
+    /// The microphones there are now (built in, wired, Bluetooth).
+    static var inputs: [AVAudioSessionPortDescription] { AVAudioSession.sharedInstance().availableInputs ?? [] }
 
     static func requestMicrophone() async -> Bool {
         await AVAudioApplication.requestRecordPermission()

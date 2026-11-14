@@ -24,7 +24,7 @@ struct ChannelEditView: View {
     @State private var codec = opusDefault()
     @State private var originalCodec = opusDefault()
     @State private var fixedVolume = false
-    @State private var fixedLevel = 100.0
+    @State private var fixedLevel = 30.0
     @State private var voiceLimit = ""
     @State private var mediaLimit = ""
 
@@ -73,8 +73,8 @@ struct ChannelEditView: View {
                     Section {
                         Toggle("Everyone at one fixed volume", isOn: $fixedVolume)
                         if fixedVolume {
-                            Slider(value: $fixedLevel, in: 0...400, step: 10) { Text("Fixed volume") }
-                                .accessibilityValue("\(Int(fixedLevel)) percent")
+                            Slider(value: $fixedLevel, in: 0...100, step: 5) { Text("Fixed volume") }
+                                .accessibilityValue("\(Int(fixedLevel)) percent of the loudest")
                         }
                     } header: {
                         Text("Volume")
@@ -226,7 +226,7 @@ struct ChannelInfoView: View {
                     }
                     Section("Audio") {
                         row("Codec", codecWords(c.codec))
-                        row("Fixed volume", c.fixedVolume ? "On, \(c.fixedVolumeLevel) percent" : "Off")
+                        row("Fixed volume", c.fixedVolume ? "On, \(c.fixedVolumeLevel) percent of the loudest" : "Off")
                         row("Talking limit", c.voiceTimeoutMs > 0 ? "\(c.voiceTimeoutMs / 1000) seconds" : "None")
                         row("Media file limit", c.mediaTimeoutMs > 0 ? "\(c.mediaTimeoutMs / 1000) seconds" : "None")
                     }
