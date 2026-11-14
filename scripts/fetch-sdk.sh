@@ -5,7 +5,7 @@
 #
 #   scripts/fetch-sdk.sh linux|android|ios|macos|windows [...]
 #
-# Needs curl and 7z (p7zip). Already fetched (same version): skipped.
+# Needs curl and 7-Zip (7z, 7zz or 7za). Already fetched (same version): skipped.
 set -eu
 
 VERSION=5.23a
@@ -27,6 +27,9 @@ sha256() {
     if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
+SEVENZIP=$(command -v 7z || command -v 7zz || command -v 7za || true)
+[ -n "$SEVENZIP" ] || { echo "7-Zip isn't installed (7z, 7zz or 7za)." >&2; exit 1; }
+
 [ $# -gt 0 ] || { echo "Usage: $0 linux|android|ios|macos|windows [...]" >&2; exit 2; }
 for platform in "$@"; do
     set -- $(archive "$platform")
@@ -46,7 +49,7 @@ for platform in "$@"; do
         echo "$platform: $file doesn't match its pinned SHA-256 (got $got); not used" >&2
         exit 1
     fi
-    7z x -y -o"$tmp/x" "$tmp/$file" >/dev/null
+    "$SEVENZIP" x -y -o"$tmp/x" "$tmp/$file" >/dev/null
     rm -rf "$dest"
     mkdir -p "$ROOT/sdk"
     mv "$tmp/x/tt5sdk_v${VERSION}_$name" "$dest"

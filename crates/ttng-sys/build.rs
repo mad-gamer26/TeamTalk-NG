@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target = env::var("TARGET").unwrap();
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let platform = match os.as_str() {
         "linux" => "linux",
@@ -44,6 +45,33 @@ fn main() {
     } else {
         dll.clone()
     };
+    // BearWare's iOS library is "fat" (iPhone arm64 and simulator x86_64 in
+    // one file), which rustc can't bundle: link the target's slice alone,
+    // taken out with lipo (the SDK itself is unchanged).
+    let lib_dir = if platform == "ios" {
+        let slice = match arch.as_str() {
+            "aarch64" if !target.ends_with("-sim") => "arm64",
+            "x86_64" => "x86_64",
+            _ => panic!(
+                "BearWare's iOS SDK has no library for {target} (it has iPhone arm64 and the Intel simulator); build for aarch64-apple-ios"
+            ),
+        };
+        let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("teamtalk-slice");
+        std::fs::create_dir_all(&out).unwrap();
+        let status = std::process::Command::new("lipo")
+            .arg(lib_dir.join("libTeamTalk5.a"))
+            .args(["-thin", slice, "-output"])
+            .arg(out.join("libTeamTalk5.a"))
+            .status()
+            .expect("lipo (Xcode's command line tools) is needed to build for iOS");
+        assert!(
+            status.success(),
+            "lipo couldn't take the {slice} slice out of libTeamTalk5.a"
+        );
+        out
+    } else {
+        lib_dir
+    };
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:lib_dir={}", lib_dir.display());
     println!("cargo:sdk_dir={}", sdk.display());
@@ -67,7 +95,6 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=TeamTalk5");
     }
 
-    let target = env::var("TARGET").unwrap();
     let mut builder = bindgen::Builder::default()
         .header(header.to_string_lossy())
         .clang_arg(format!("--target={target}"))
@@ -82,6 +109,26 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
     if platform == "windows" {
         builder = builder.clang_arg("-DWIN32");
+    }
+    // Apple targets: clang needs the platform's SDK for system headers.
+    if platform == "ios" || platform == "macos" {
+        let sdk_name = match (
+            platform,
+            target.ends_with("-sim") || (platform == "ios" && arch == "x86_64"),
+        ) {
+            ("ios", true) => "iphonesimulator",
+            ("ios", false) => "iphoneos",
+            _ => "macosx",
+        };
+        if let Ok(out) = std::process::Command::new("xcrun")
+            .args(["--sdk", sdk_name, "--show-sdk-path"])
+            .output()
+        {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+            if !path.is_empty() {
+                builder = builder.clang_arg(format!("-isysroot{path}"));
+            }
+        }
     }
     let bindings = builder.generate().expect("couldn't generate bindings from TeamTalk.h");
     bindings
