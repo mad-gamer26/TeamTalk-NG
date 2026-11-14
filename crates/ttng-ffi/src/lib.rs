@@ -324,6 +324,75 @@ impl From<core::TextMessage> for TextMessage {
     }
 }
 
+/// A file in a channel's file area.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct RemoteFile {
+    pub id: i32,
+    pub channel_id: i32,
+    pub name: String,
+    /// In bytes.
+    pub size: i64,
+    /// Who uploaded it (username).
+    pub uploader: String,
+    /// When, as the server writes it.
+    pub uploaded: String,
+}
+
+impl From<core::RemoteFile> for RemoteFile {
+    fn from(f: core::RemoteFile) -> Self {
+        RemoteFile {
+            id: f.id,
+            channel_id: f.channel_id,
+            name: f.name,
+            size: f.size,
+            uploader: f.uploader,
+            uploaded: f.uploaded,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TransferStatus {
+    Active,
+    Finished,
+    Failed,
+    Cancelled,
+}
+
+/// An upload or a download.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Transfer {
+    pub id: i32,
+    pub channel_id: i32,
+    /// A download (true) or an upload.
+    pub inbound: bool,
+    pub local_path: String,
+    pub remote_name: String,
+    pub size: i64,
+    pub transferred: i64,
+    pub status: TransferStatus,
+}
+
+impl From<core::Transfer> for Transfer {
+    fn from(t: core::Transfer) -> Self {
+        Transfer {
+            id: t.id,
+            channel_id: t.channel_id,
+            inbound: t.inbound,
+            local_path: t.local_path,
+            remote_name: t.remote_name,
+            size: t.size,
+            transferred: t.transferred,
+            status: match t.status {
+                core::TransferStatus::Active => TransferStatus::Active,
+                core::TransferStatus::Finished => TransferStatus::Finished,
+                core::TransferStatus::Failed => TransferStatus::Failed,
+                core::TransferStatus::Cancelled => TransferStatus::Cancelled,
+            },
+        }
+    }
+}
+
 /// Everything known about a connection, at one moment.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct Snapshot {
@@ -333,6 +402,9 @@ pub struct Snapshot {
     pub my_channel_id: i32,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
+    pub files: Vec<RemoteFile>,
+    /// Uploads and downloads under way.
+    pub transfers: Vec<Transfer>,
 }
 
 impl From<core::Snapshot> for Snapshot {
@@ -344,6 +416,8 @@ impl From<core::Snapshot> for Snapshot {
             my_channel_id: s.my_channel_id,
             channels: s.channels.into_iter().map(Into::into).collect(),
             users: s.users.into_iter().map(Into::into).collect(),
+            files: s.files.into_iter().map(Into::into).collect(),
+            transfers: s.transfers.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -399,6 +473,16 @@ pub enum Event {
     VoiceActivated {
         sending: bool,
     },
+    FileAdded {
+        file: RemoteFile,
+    },
+    FileRemoved {
+        file: RemoteFile,
+    },
+    /// A transfer started, moved on (a few times a second at most), or ended.
+    TransferChanged {
+        transfer: Transfer,
+    },
     /// Kicked: from a channel (`channel_id` > 0) or the server.
     Kicked {
         by_user_id: i32,
@@ -430,6 +514,9 @@ impl From<core::Event> for Event {
             E::TalkingChanged { user_id, talking } => Self::TalkingChanged { user_id, talking },
             E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             E::VoiceActivated(sending) => Self::VoiceActivated { sending },
+            E::FileAdded(f) => Self::FileAdded { file: f.into() },
+            E::FileRemoved(f) => Self::FileRemoved { file: f.into() },
+            E::TransferChanged(t) => Self::TransferChanged { transfer: t.into() },
             E::Kicked { by_user_id, channel_id } => Self::Kicked { by_user_id, channel_id },
         }
     }
@@ -529,6 +616,25 @@ impl TtClient {
 
     pub fn snapshot(&self) -> Snapshot {
         self.inner.snapshot().into()
+    }
+
+    /// Uploads a file from this device to a channel. Returns once the server
+    /// accepts; progress arrives as `TransferChanged` events.
+    pub fn upload_file(&self, channel_id: i32, local_path: String) -> Result<()> {
+        Ok(self.inner.upload_file(channel_id, &local_path)?)
+    }
+
+    /// Downloads a channel's file to `local_path`.
+    pub fn download_file(&self, channel_id: i32, file_id: i32, local_path: String) -> Result<()> {
+        Ok(self.inner.download_file(channel_id, file_id, &local_path)?)
+    }
+
+    pub fn delete_file(&self, channel_id: i32, file_id: i32) -> Result<()> {
+        Ok(self.inner.delete_file(channel_id, file_id)?)
+    }
+
+    pub fn cancel_transfer(&self, transfer_id: i32) -> Result<()> {
+        Ok(self.inner.cancel_transfer(transfer_id)?)
     }
 
     /// A channel's path ("/Lobby/Music/"), "/" for the root.

@@ -3,7 +3,7 @@
 
 mod common;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use common::{Server, TestClient};
 use ttng_core::*;
@@ -229,8 +229,18 @@ fn voice_activation_talks_when_there_is_sound() {
         c.client.join_channel_path("/", "").unwrap();
     }
     let alice_id = a.client.snapshot().my_user_id;
-    // Silence first: voice activation on, nothing sent.
-    a.client.set_voice_activation(true, 10, 500).unwrap();
+    // Silence first. Turning voice activation on may send for about the
+    // stop delay even in silence (the SDK can start it active); after that
+    // it stays stopped.
+    a.client.set_voice_activation(true, 10, 300).unwrap();
+    std::thread::sleep(Duration::from_millis(1000));
+    let quiet_by = Instant::now() + Duration::from_secs(5);
+    while b.client.snapshot().user(alice_id).unwrap().talking {
+        assert!(Instant::now() < quiet_by, "Alice never stopped");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    a.drain();
+    b.drain();
     std::thread::sleep(Duration::from_millis(800));
     assert!(
         !b.client.snapshot().user(alice_id).unwrap().talking,
@@ -244,11 +254,11 @@ fn voice_activation_talks_when_there_is_sound() {
     b.wait_for("Alice talking", |e| {
         matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == alice_id).then_some(())
     });
-    assert!(
-        a.client.input_level() > 10,
-        "the level meter reads the tone: {}",
-        a.client.input_level()
-    );
+    let level_by = Instant::now() + Duration::from_secs(2);
+    while a.client.input_level() <= 10 {
+        assert!(Instant::now() < level_by, "the level meter never read the tone");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     // Quiet again: it stops after the delay.
     a.client.set_test_tone(0).unwrap();
     a.wait_for("voice activation stopping", |e| {

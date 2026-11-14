@@ -190,6 +190,79 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// A file in a channel's file area.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteFile {
+    pub id: i32,
+    pub channel_id: i32,
+    pub name: String,
+    /// In bytes.
+    pub size: i64,
+    /// Who uploaded it (their username).
+    pub uploader: String,
+    /// When, as the server writes it ("2026/11/14 09:30").
+    pub uploaded: String,
+}
+
+impl From<&sys::RemoteFile> for RemoteFile {
+    fn from(f: &sys::RemoteFile) -> Self {
+        RemoteFile {
+            id: f.nFileID,
+            channel_id: f.nChannelID,
+            name: from_tt(&f.szFileName),
+            size: f.nFileSize,
+            uploader: from_tt(&f.szUsername),
+            uploaded: from_tt(&f.szUploadTime),
+        }
+    }
+}
+
+/// Where a file transfer stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransferStatus {
+    Active,
+    Finished,
+    /// It broke off (the connection, the disk, or the server).
+    Failed,
+    Cancelled,
+}
+
+/// An upload or a download.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Transfer {
+    pub id: i32,
+    pub channel_id: i32,
+    /// A download (true) or an upload.
+    pub inbound: bool,
+    /// The file on this device.
+    pub local_path: String,
+    /// Its name on the server.
+    pub remote_name: String,
+    pub size: i64,
+    pub transferred: i64,
+    pub status: TransferStatus,
+}
+
+impl From<&sys::FileTransfer> for Transfer {
+    fn from(t: &sys::FileTransfer) -> Self {
+        Transfer {
+            id: t.nTransferID,
+            channel_id: t.nChannelID,
+            inbound: t.bInbound != 0,
+            local_path: from_tt(&t.szLocalFilePath),
+            remote_name: from_tt(&t.szRemoteFileName),
+            size: t.nFileSize,
+            transferred: t.nTransferred,
+            status: match t.nStatus {
+                sys::FileTransferStatus_FILETRANSFER_ACTIVE => TransferStatus::Active,
+                sys::FileTransferStatus_FILETRANSFER_FINISHED => TransferStatus::Finished,
+                sys::FileTransferStatus_FILETRANSFER_ERROR => TransferStatus::Failed,
+                _ => TransferStatus::Cancelled,
+            },
+        }
+    }
+}
+
 /// Everything the core knows about a connection, at one moment.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
@@ -199,6 +272,10 @@ pub struct Snapshot {
     pub my_channel_id: i32,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
+    /// Every channel's files (that I may see).
+    pub files: Vec<RemoteFile>,
+    /// Uploads and downloads under way.
+    pub transfers: Vec<Transfer>,
 }
 
 impl Snapshot {
@@ -227,6 +304,13 @@ impl Snapshot {
         } else {
             format!("/{}/", names.join("/"))
         }
+    }
+
+    /// A channel's files, by name.
+    pub fn files_in(&self, channel_id: i32) -> Vec<&RemoteFile> {
+        let mut f: Vec<&RemoteFile> = self.files.iter().filter(|f| f.channel_id == channel_id).collect();
+        f.sort_by_key(|f| f.name.to_lowercase());
+        f
     }
 
     /// The people in a channel.
@@ -264,6 +348,11 @@ pub enum Event {
     MessageReceived(TextMessage),
     /// Voice activation started (true) or stopped (false) sending my voice.
     VoiceActivated(bool),
+    FileAdded(RemoteFile),
+    FileRemoved(RemoteFile),
+    /// A transfer started, moved on (a few times a second at most), or
+    /// ended (its status says how).
+    TransferChanged(Transfer),
     /// I was kicked: from a channel (`channel_id` > 0) or the server.
     Kicked {
         by_user_id: i32,

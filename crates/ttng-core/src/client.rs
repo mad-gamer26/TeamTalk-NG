@@ -23,6 +23,8 @@ use crate::text::{arg, from_tt, split_message, to_tt};
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long the SDK thread waits for a message before checking for requests.
 const PUMP_MS: i32 = 20;
+/// How often transfers report progress.
+const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 /// The longest wait between reconnection attempts.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
@@ -114,6 +116,23 @@ enum Request {
         reply: Reply,
     },
     TestTone(i32, Reply),
+    Upload {
+        channel_id: i32,
+        path: String,
+        reply: Reply,
+    },
+    Download {
+        channel_id: i32,
+        file_id: i32,
+        path: String,
+        reply: Reply,
+    },
+    DeleteFile {
+        channel_id: i32,
+        file_id: i32,
+        reply: Reply,
+    },
+    CancelTransfer(i32, Reply),
     Quit,
 }
 
@@ -126,6 +145,8 @@ struct Model {
     my_channel_id: i32,
     channels: HashMap<i32, Channel>,
     users: HashMap<i32, User>,
+    files: HashMap<i32, RemoteFile>,
+    transfers: HashMap<i32, Transfer>,
 }
 
 /// A connection to one TeamTalk server. Dropping it disconnects.
@@ -249,7 +270,9 @@ impl Client {
     }
 
     /// Voice activation: talks while the microphone's level (0 to 100) is at
-    /// or above `level`, and for `stop_delay_ms` after it drops.
+    /// or above `level`, and for `stop_delay_ms` after it drops. Turning it
+    /// on may send for about `stop_delay_ms` even in silence (the SDK can
+    /// start it active).
     pub fn set_voice_activation(&self, on: bool, level: i32, stop_delay_ms: i32) -> Result<()> {
         self.ask(|reply| Request::SetVoiceActivation {
             on,
@@ -283,6 +306,41 @@ impl Client {
         self.ask(|r| Request::TestTone(hz, r))
     }
 
+    /// Uploads a file on this device to a channel's files. Returns once the
+    /// server accepts it; the transfer itself is reported in
+    /// `Event::TransferChanged`.
+    pub fn upload_file(&self, channel_id: i32, local_path: &str) -> Result<()> {
+        self.ask(|reply| Request::Upload {
+            channel_id,
+            path: local_path.into(),
+            reply,
+        })
+    }
+
+    /// Downloads a channel's file to `local_path` (replacing what's there).
+    /// Returns once the server accepts; progress in `Event::TransferChanged`.
+    pub fn download_file(&self, channel_id: i32, file_id: i32, local_path: &str) -> Result<()> {
+        self.ask(|reply| Request::Download {
+            channel_id,
+            file_id,
+            path: local_path.into(),
+            reply,
+        })
+    }
+
+    pub fn delete_file(&self, channel_id: i32, file_id: i32) -> Result<()> {
+        self.ask(|reply| Request::DeleteFile {
+            channel_id,
+            file_id,
+            reply,
+        })
+    }
+
+    /// Stops an upload or download (a partial download is left behind).
+    pub fn cancel_transfer(&self, transfer_id: i32) -> Result<()> {
+        self.ask(|r| Request::CancelTransfer(transfer_id, r))
+    }
+
     /// Everything known right now.
     pub fn snapshot(&self) -> Snapshot {
         let m = self.model.lock().unwrap_or_else(|e| e.into_inner());
@@ -290,6 +348,10 @@ impl Client {
         channels.sort_by_key(|c| c.id);
         let mut users: Vec<User> = m.users.values().cloned().collect();
         users.sort_by_key(|u| u.id);
+        let mut files: Vec<RemoteFile> = m.files.values().cloned().collect();
+        files.sort_by_key(|f| f.id);
+        let mut transfers: Vec<Transfer> = m.transfers.values().cloned().collect();
+        transfers.sort_by_key(|t| t.id);
         Snapshot {
             state: m.state.clone(),
             server: m.server.clone(),
@@ -297,6 +359,8 @@ impl Client {
             my_channel_id: m.my_channel_id,
             channels,
             users,
+            files,
+            transfers,
         }
     }
 }
@@ -346,6 +410,7 @@ struct Worker {
     level: Arc<std::sync::atomic::AtomicI32>,
     audio_open: bool,
     last_level: Instant,
+    last_progress: Instant,
 }
 
 impl Worker {
@@ -372,6 +437,7 @@ impl Worker {
             level,
             audio_open: false,
             last_level: Instant::now(),
+            last_progress: Instant::now(),
         }
     }
 
@@ -406,6 +472,10 @@ impl Worker {
                 // SAFETY: inst is live.
                 let l = unsafe { sys::TT_GetSoundInputLevel(self.inst) };
                 self.level.store(l, std::sync::atomic::Ordering::Relaxed);
+            }
+            if self.last_progress.elapsed() >= PROGRESS_EVERY {
+                self.last_progress = Instant::now();
+                self.poll_transfers();
             }
             let mut msg = sys::TTMessage::default();
             // SAFETY: inst is live; msg is a valid TTMessage for the SDK to fill.
@@ -598,7 +668,101 @@ impl Worker {
                     Err(Error::Refused("The test tone couldn't be set.".into()))
                 });
             }
+            Request::Upload {
+                channel_id,
+                path,
+                reply,
+            } => {
+                if !std::path::Path::new(&path).is_file() {
+                    let _ = reply.send(Err(Error::Refused(format!("There's no file at {path}."))));
+                    return;
+                }
+                let p = arg(&path);
+                // SAFETY: inst is live; p is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoSendFile(self.inst, channel_id, p.as_ptr()) };
+                self.track(cmd, Pending::Reply(reply), "Uploading that file");
+            }
+            Request::Download {
+                channel_id,
+                file_id,
+                path,
+                reply,
+            } => {
+                if !self.has_file(channel_id, file_id) {
+                    let _ = reply.send(Err(self.missing_file()));
+                    return;
+                }
+                let p = arg(&path);
+                // SAFETY: inst is live; p is NUL-terminated and outlives the call.
+                let cmd = unsafe { sys::TT_DoRecvFile(self.inst, channel_id, file_id, p.as_ptr()) };
+                self.track(cmd, Pending::Reply(reply), "Downloading that file");
+            }
+            Request::DeleteFile {
+                channel_id,
+                file_id,
+                reply,
+            } => {
+                if !self.has_file(channel_id, file_id) {
+                    let _ = reply.send(Err(self.missing_file()));
+                    return;
+                }
+                // SAFETY: inst is live.
+                let cmd = unsafe { sys::TT_DoDeleteFile(self.inst, channel_id, file_id) };
+                self.track(cmd, Pending::Reply(reply), "Deleting that file");
+            }
+            Request::CancelTransfer(id, reply) => {
+                // SAFETY: inst is live.
+                let ok = unsafe { sys::TT_CancelFileTransfer(self.inst, id) } != 0;
+                let ended = self.model.lock().ok().and_then(|mut m| m.transfers.remove(&id));
+                match ended {
+                    Some(mut t) if ok => {
+                        t.status = TransferStatus::Cancelled;
+                        self.emit(Event::TransferChanged(t));
+                        let _ = reply.send(Ok(()));
+                    }
+                    _ => {
+                        let _ = reply.send(Err(Error::Refused("That transfer isn't running.".into())));
+                    }
+                }
+            }
             Request::Quit => {}
+        }
+    }
+
+    fn has_file(&self, channel_id: i32, file_id: i32) -> bool {
+        self.model
+            .lock()
+            .map(|m| m.files.get(&file_id).is_some_and(|f| f.channel_id == channel_id))
+            .unwrap_or(false)
+    }
+
+    fn missing_file(&self) -> Error {
+        if self.logged_in() {
+            Error::Refused("That file isn't there any more.".into())
+        } else {
+            Error::NotConnected
+        }
+    }
+
+    /// Progress of the transfers under way, for those that moved on.
+    fn poll_transfers(&mut self) {
+        let ids: Vec<(i32, i64)> = match self.model.lock() {
+            Ok(m) if !m.transfers.is_empty() => m.transfers.values().map(|t| (t.id, t.transferred)).collect(),
+            _ => return,
+        };
+        for (id, before) in ids {
+            let mut info = sys::FileTransfer::default();
+            // SAFETY: inst is live; info is a valid FileTransfer for the SDK to fill.
+            if unsafe { sys::TT_GetFileTransferInfo(self.inst, id, &mut info) } == 0 {
+                continue;
+            }
+            let t = Transfer::from(&info);
+            if t.transferred != before && t.status == TransferStatus::Active {
+                if let Ok(mut m) = self.model.lock() {
+                    m.transfers.insert(id, t.clone());
+                }
+                self.emit(Event::TransferChanged(t));
+            }
         }
     }
 
@@ -760,6 +924,8 @@ impl Worker {
         let mut m = self.model.lock().unwrap_or_else(|e| e.into_inner());
         m.channels.clear();
         m.users.clear();
+        m.files.clear();
+        m.transfers.clear();
         m.my_user_id = 0;
         m.my_channel_id = 0;
         m.server = ServerInfo::default();
@@ -939,6 +1105,37 @@ impl Worker {
                 let on = unsafe { union.bActive } != 0;
                 self.emit(Event::VoiceActivated(on));
             }
+            sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW | sys::ClientEvent_CLIENTEVENT_CMD_FILE_REMOVE
+                if msg.ttType == sys::TTType___REMOTEFILE =>
+            {
+                // SAFETY: checked ttType.
+                let f = RemoteFile::from(unsafe { &union.remotefile });
+                if let Ok(mut m) = self.model.lock() {
+                    if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW {
+                        m.files.insert(f.id, f.clone());
+                    } else {
+                        m.files.remove(&f.id);
+                    }
+                }
+                self.emit(if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW {
+                    Event::FileAdded(f)
+                } else {
+                    Event::FileRemoved(f)
+                });
+            }
+            sys::ClientEvent_CLIENTEVENT_FILETRANSFER if msg.ttType == sys::TTType___FILETRANSFER => {
+                // SAFETY: checked ttType.
+                let t = Transfer::from(unsafe { &union.filetransfer });
+                if let Ok(mut m) = self.model.lock() {
+                    if t.status == TransferStatus::Active {
+                        m.transfers.insert(t.id, t.clone());
+                    } else if m.transfers.remove(&t.id).is_none() && t.status == TransferStatus::Cancelled {
+                        // Already reported (cancelled here).
+                        return;
+                    }
+                }
+                self.emit(Event::TransferChanged(t));
+            }
             sys::ClientEvent_CLIENTEVENT_CMD_USER_TEXTMSG if msg.ttType == sys::TTType___TEXTMESSAGE => {
                 // SAFETY: checked ttType.
                 let t = unsafe { &union.textmessage };
@@ -1080,7 +1277,11 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::SendMessage { reply, .. }
         | Request::SetStatus { reply, .. }
         | Request::SetUserVolume { reply, .. }
-        | Request::SetUserMuted { reply, .. } => reply,
+        | Request::SetUserMuted { reply, .. }
+        | Request::Upload { reply, .. }
+        | Request::Download { reply, .. }
+        | Request::DeleteFile { reply, .. } => reply,
+        Request::CancelTransfer(_, r) => r,
         Request::Quit => return None,
     })
 }

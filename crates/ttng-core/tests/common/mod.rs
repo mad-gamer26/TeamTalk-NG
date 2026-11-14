@@ -67,7 +67,7 @@ impl Server {
     <login-attempts>0</login-attempts><max-logins-per-ipaddr>0</max-logins-per-ipaddr>
     <user-timeout>10</user-timeout><login-delay-msec>0</login-delay-msec>
   </general>
-  <file-storage><files-root>files</files-root><max-diskusage>0</max-diskusage><channel-diskquota>0</channel-diskquota></file-storage>
+  <file-storage><files-root>files</files-root><max-diskusage>1000000000</max-diskusage><channel-diskquota>100000000</channel-diskquota></file-storage>
   <logging><server-log-maxsize>-1</server-log-maxsize></logging>
   <users>{users}</users>
 </teamtalk>"#
@@ -176,6 +176,11 @@ impl TestClient {
                 Err(_) => panic!("no {what} within 10 s; events so far: {:#?}", self.seen.lock().unwrap()),
             }
         }
+    }
+
+    /// Forgets the events so far (later waits only see newer ones).
+    pub fn drain(&self) {
+        while self.events.try_recv().is_ok() {}
     }
 
     pub fn user_named(&self, nickname: &str) -> User {
