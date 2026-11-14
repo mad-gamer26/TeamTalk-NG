@@ -12,7 +12,9 @@ use ttng_core as core;
 
 uniffi::setup_scaffolding!();
 
+mod monitor;
 mod services;
+pub use monitor::*;
 pub use services::*;
 
 /// What went wrong, in words the apps can show as they are (`message`).

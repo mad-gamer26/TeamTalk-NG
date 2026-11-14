@@ -31,7 +31,7 @@ impl Ngmon {
         std::fs::write(
             dir.join("ngmon.toml"),
             format!(
-                "listen = \"127.0.0.1:{port}\"\ndata_dir = \"data\"\npacks_dir = \"packs\"\nsecret_key_file = \"secret.key\"\n\
+                "listen = \"127.0.0.1:{port}\"\nallow_private_hosts = true\ndata_dir = \"data\"\npacks_dir = \"packs\"\nsecret_key_file = \"secret.key\"\n\
                  [push]\nmode = \"none\"\n[mail]\nmode = \"outbox\"\noutbox = \"outbox\"\n"
             ),
         )

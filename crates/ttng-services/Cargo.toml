@@ -13,3 +13,8 @@ sha2 = "0.10"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The Monitor's test watches a real TeamTalk server, with the core as the
+# other person.
+ttng-core = { path = "../ttng-core" }

@@ -226,14 +226,17 @@ impl NgAccount {
     }
 }
 
-fn decode<T: serde::de::DeserializeOwned>(v: Value) -> Result<T> {
+pub(crate) fn decode<T: serde::de::DeserializeOwned>(v: Value) -> Result<T> {
     serde_json::from_value(v)
         .map_err(|e| ServiceError::Unexpected(format!("The service's answer wasn't understood ({e}).")))
 }
 
 /// The answer's JSON, or the service's words for why not. A 401 with a
 /// token means the session is over.
-fn answer(r: std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>, had_token: bool) -> Result<Value> {
+pub(crate) fn answer(
+    r: std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    had_token: bool,
+) -> Result<Value> {
     let mut resp = r.map_err(|e| ServiceError::Network(format!("Couldn't reach NG Account ({e}).")))?;
     let status = resp.status().as_u16();
     let text = resp.body_mut().read_to_string().unwrap_or_default();
