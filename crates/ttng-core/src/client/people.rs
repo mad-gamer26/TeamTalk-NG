@@ -249,9 +249,7 @@ impl Worker {
             PeopleRequest::Gender(g) => {
                 let (mode, message) = self.my_status();
                 let raw = (mode & !(0x100 | 0x1000)) | g.bits();
-                let msg = arg(&message);
-                // SAFETY: inst is live; msg is NUL-terminated and outlives the call.
-                let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, raw, msg.as_ptr()) };
+                let cmd = self.change_status(raw, &message);
                 if let Some(r) = reply {
                     self.track(cmd, Pending::Reply(r), "Changing the gender");
                 }
@@ -280,6 +278,9 @@ impl Worker {
 
     /// My status mode (with its flags) and message, as the server has them.
     pub(super) fn my_status(&self) -> (i32, String) {
+        if let Some(s) = &self.status_sent {
+            return s.clone();
+        }
         self.model
             .lock()
             .ok()
@@ -289,6 +290,17 @@ impl Worker {
                     .map(|u| (u.status_raw, u.status_message.clone()))
             })
             .unwrap_or((0, String::new()))
+    }
+
+    /// Changes my status (mode bits and message), remembered as sent.
+    pub(super) fn change_status(&mut self, raw: i32, message: &str) -> i32 {
+        let msg = arg(message);
+        // SAFETY: inst is live; msg is NUL-terminated and outlives the call.
+        let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, raw, msg.as_ptr()) };
+        if cmd > 0 {
+            self.status_sent = Some((raw, message.to_owned()));
+        }
+        cmd
     }
 
     /// The person with their operator flag (for their channel).

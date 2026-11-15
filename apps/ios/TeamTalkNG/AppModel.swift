@@ -528,6 +528,10 @@ final class AppModel {
     }
 
     func connection(for server: SavedServer) -> ServerConnection {
+        // The saved server as it is now: the navigation path holds a copy
+        // from when it was opened, and every redraw passing that back undid
+        // changes made since (this server's own volumes, the UI tests found).
+        let server = servers.first { $0.id == server.id } ?? server
         if let c = connections[server.id] {
             c.server = server
             return c

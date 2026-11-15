@@ -168,6 +168,8 @@ fn people(server: &Server) -> HashMap<String, TestClient> {
             parent_id: root,
             name: "Lobby".into(),
             permanent: true,
+            // Files allowed there (a disk quota).
+            disk_quota: Some(10_000_000),
             ..Default::default()
         },
         ChannelSpec {

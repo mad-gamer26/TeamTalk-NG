@@ -238,9 +238,7 @@ impl Worker {
         let (mode, message) = self.my_status();
         let raw = (mode & !(STATUS_STREAMING | STATUS_STREAM_PAUSED)) | flags;
         if raw != mode && self.logged_in() {
-            let msg = arg(&message);
-            // SAFETY: inst is live; msg outlives the call.
-            let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, raw, msg.as_ptr()) };
+            let cmd = self.change_status(raw, &message);
             if cmd > 0 {
                 self.pending.insert(cmd, (Pending::Part, Instant::now()));
             }

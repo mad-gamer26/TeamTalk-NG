@@ -176,6 +176,27 @@ fn status_and_nickname_changes_reach_others() {
     assert_eq!(b.user_named("Alice B.").username, "alice");
 }
 
+/// A status and a gender changed at the same moment (as the app's Status
+/// sheet does) both arrive: each is made from the other as sent, not as the
+/// server last said.
+#[test]
+fn a_status_and_a_gender_changed_together_both_arrive() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    std::thread::scope(|s| {
+        s.spawn(|| a.client.set_status(StatusMode::Away, "Back soon").unwrap());
+        s.spawn(|| a.client.set_gender(Gender::Female).unwrap());
+    });
+    let u = b.wait_until(|s| {
+        s.users
+            .iter()
+            .any(|u| u.username == "alice" && u.status == StatusMode::Away && u.gender == Gender::Female)
+    });
+    let alice = u.users.iter().find(|u| u.username == "alice").unwrap();
+    assert_eq!(alice.status_message, "Back soon");
+}
+
 #[test]
 fn voice_reaches_the_other_person() {
     let server = Server::start();

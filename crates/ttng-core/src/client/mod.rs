@@ -920,6 +920,10 @@ struct Worker {
     partial: HashMap<(u32, i32, i32), String>,
     /// Set when the server kicked or logged us out (don't reconnect).
     no_reconnect: bool,
+    /// The status last sent (mode bits, message): the next change is made
+    /// from it, not from the server's answer still on its way (a status and
+    /// a gender changed together each undid the other).
+    status_sent: Option<(i32, String)>,
     /// Logged in at least once since connect() (a retry then is a reconnect).
     logged_in_once: bool,
     /// The microphone's level, refreshed while the sound devices are open.
@@ -970,6 +974,7 @@ impl Worker {
             retry: None,
             partial: HashMap::new(),
             no_reconnect: false,
+            status_sent: None,
             logged_in_once: false,
             level,
             audio_open: false,
@@ -1147,11 +1152,9 @@ impl Worker {
             }
             Request::SendMessage { target, text, reply } => self.send_message(target, &text, reply),
             Request::SetStatus { mode, message, reply } => {
-                let msg = arg(&message);
                 // The mode changes; the flags (gender, streaming…) stay.
                 let raw = (self.my_status().0 & !0xff) | mode.raw();
-                // SAFETY: inst is live; msg is NUL-terminated and outlives the call.
-                let cmd = unsafe { sys::TT_DoChangeStatus(self.inst, raw, msg.as_ptr()) };
+                let cmd = self.change_status(raw, &message);
                 self.track(cmd, Pending::Reply(reply), "Changing the status");
             }
             Request::SetNickname(nick, reply) => {
@@ -1872,6 +1875,7 @@ impl Worker {
     }
 
     fn clear_model(&mut self) {
+        self.status_sent = None;
         if self.model.lock().map(|m| m.recording.is_some()).unwrap_or(false) {
             self.stop_recording(Some("Disconnected.".into()));
         }
