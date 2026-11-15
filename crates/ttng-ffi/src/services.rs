@@ -339,12 +339,26 @@ pub struct SyncOutcome {
     pub changed: bool,
     /// Servers matched up with the account's copy (their keys changed).
     pub rekeyed: Vec<Rekey>,
+    /// Settings the account changed (apply them).
+    pub settings: Vec<SyncSetting>,
 }
 
-/// Syncs the device's servers with the account (pull, apply, push). The
-/// state is "" the first time.
+/// A synced setting: its value as JSON, or none (not set).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct SyncSetting {
+    pub key: String,
+    pub json: Option<String>,
+}
+
+/// Syncs the device's servers, and the settings it syncs, with the account
+/// (pull, apply, push). The state is "" the first time.
 #[uniffi::export]
-pub fn ng_sync(client: Arc<NgAccountClient>, state_json: String, local: Vec<LocalServer>) -> Result<SyncOutcome> {
+pub fn ng_sync(
+    client: Arc<NgAccountClient>,
+    state_json: String,
+    local: Vec<LocalServer>,
+    settings: Vec<SyncSetting>,
+) -> Result<SyncOutcome> {
     let mut state = svc::SyncState::from_json(&state_json);
     let local = local
         .into_iter()
@@ -353,7 +367,11 @@ pub fn ng_sync(client: Arc<NgAccountClient>, state_json: String, local: Vec<Loca
             server: l.server.into(),
         })
         .collect();
-    let outcome = client.with(|a| svc::sync(a, &mut state, local))?;
+    let settings = settings
+        .into_iter()
+        .map(|s| (s.key, s.json.and_then(|j| serde_json::from_str(&j).ok())))
+        .collect();
+    let outcome = client.with(|a| svc::sync_with_settings(a, &mut state, local, settings))?;
     Ok(SyncOutcome {
         state_json: state.to_json(),
         servers: outcome
@@ -369,6 +387,14 @@ pub fn ng_sync(client: Arc<NgAccountClient>, state_json: String, local: Vec<Loca
             .rekeyed
             .into_iter()
             .map(|(old_key, new_key)| Rekey { old_key, new_key })
+            .collect(),
+        settings: outcome
+            .settings
+            .into_iter()
+            .map(|(key, v)| SyncSetting {
+                key,
+                json: v.map(|v| v.to_string()),
+            })
             .collect(),
     })
 }

@@ -27,6 +27,16 @@ final class NGAccountStore {
     /// content hashes only).
     private var state = ""
     private var again = false
+    /// Installing or removing the account's packs here (not sent meanwhile).
+    private var applyingPacks = false
+
+    /// Sound packs follow the account (the old app's): which catalog packs
+    /// are installed and which is chosen, as the old app's settings.
+    var syncPacks: Bool = UserDefaults.standard.object(forKey: "ngSyncPacks") as? Bool ?? true {
+        didSet { defaults.set(syncPacks, forKey: "ngSyncPacks"); if syncPacks { changed() } }
+    }
+    static let installedPacksKey = "ng_installed_catalog_packs"
+    static let chosenPackKey = "ng_selected_sound_pack"
     private let defaults = UserDefaults.standard
     private static let keychainService = "TeamTalk NG account"
 
@@ -186,7 +196,8 @@ final class NGAccountStore {
     private func syncOnce() async -> String? {
         let local = app.servers.map { LocalServer(key: $0.key, server: Self.synced($0)) }
         let c = client, st = state
-        let result = await Task.detached { Result { try ngSync(client: c, stateJson: st, local: local) } }.value
+        let settings = packSettings
+        let result = await Task.detached { Result { try ngSync(client: c, stateJson: st, local: local, settings: settings) } }.value
         switch result {
         case .failure(let e):
             return failed(e)
@@ -194,6 +205,7 @@ final class NGAccountStore {
             state = outcome.stateJson
             saveState()
             if outcome.changed || !outcome.rekeyed.isEmpty { apply(outcome) }
+            if !outcome.settings.isEmpty { applyPacks(outcome.settings) }
             return nil
         }
     }
@@ -236,6 +248,51 @@ final class NGAccountStore {
             return s
         }
         app.applySynced(list, passwords: passwords)
+    }
+
+    // MARK: Sound packs
+
+    private var packSettings: [SyncSetting] {
+        guard syncPacks, !applyingPacks else { return [] }
+        let s = app.sounds
+        let chosen = s.selectedId == InstalledPack.builtIn.id ? "default" : "catalog:" + s.selectedId
+        return [SyncSetting(key: Self.installedPacksKey, json: Self.fragment(s.installed.map(\.id).sorted())),
+                SyncSetting(key: Self.chosenPackKey, json: Self.fragment(chosen))]
+    }
+
+    private static func fragment(_ v: Any) -> String? {
+        (try? JSONSerialization.data(withJSONObject: v, options: [.fragmentsAllowed, .sortedKeys])).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    private static func value(_ json: String?) -> Any? {
+        json.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed) }
+    }
+
+    /// The account's packs here: downloads the missing ones from the
+    /// catalog, removes those removed elsewhere, then chooses as chosen.
+    private func applyPacks(_ settings: [SyncSetting]) {
+        let packs = settings.first { $0.key == Self.installedPacksKey }.map { Self.value($0.json) as? [String] ?? [] }
+        let chosen = settings.first { $0.key == Self.chosenPackKey }.flatMap { Self.value($0.json) as? String }
+        applyingPacks = true
+        Task {
+            defer { applyingPacks = false; changed() }
+            let s = app.sounds
+            let selected = s.selectedId
+            if let packs {
+                let want = Set(packs)
+                for p in s.installed where !want.contains(p.id) { s.remove(p) }
+                let missing = want.subtracting(s.installed.map(\.id))
+                if !missing.isEmpty, let catalog = try? await s.catalog() {
+                    for p in catalog where missing.contains(p.id) { try? await s.install(p) }
+                }
+                // Installing chooses the pack; the choice stays as it was.
+                if s.packs.contains(where: { $0.id == selected }) { s.selectedId = selected }
+            }
+            if let chosen {
+                let id = chosen == "default" ? InstalledPack.builtIn.id : chosen.hasPrefix("catalog:") ? String(chosen.dropFirst(8)) : nil
+                if let id, s.packs.contains(where: { $0.id == id }) { s.selectedId = id }
+            }
+        }
     }
 
     // MARK: The record format

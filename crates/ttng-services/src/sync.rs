@@ -10,6 +10,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::account::{NgAccount, SyncChange, SyncRecord};
@@ -34,6 +35,12 @@ pub struct SyncState {
     pub hashes: HashMap<String, String>,
     /// Removed on the device, not yet from the account.
     pub deleted: BTreeSet<String>,
+    /// Synced settings (kind "setting"): each one's revision as last seen.
+    #[serde(default)]
+    pub setting_known: HashMap<String, i64>,
+    /// Each setting's value when last in step with the account.
+    #[serde(default)]
+    pub setting_hashes: HashMap<String, String>,
 }
 
 impl SyncState {
@@ -61,6 +68,35 @@ pub struct SyncOutcome {
     pub changed: bool,
     /// Servers matched up with the account's (key changes: old → new).
     pub rekeyed: Vec<(String, String)>,
+    /// Settings the account changed: their new values (None: removed).
+    pub settings: Vec<(String, Option<Value>)>,
+}
+
+fn value_hash(v: &Option<Value>) -> String {
+    let mut h = Sha256::new();
+    h.update(v.as_ref().map(|v| v.to_string()).unwrap_or_default().as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Applies the account's setting records for the keys the device syncs.
+fn apply_settings(
+    state: &mut SyncState,
+    local: &mut HashMap<String, Option<Value>>,
+    records: &[SyncRecord],
+    out: &mut Vec<(String, Option<Value>)>,
+) {
+    for r in records.iter().filter(|r| r.kind == "setting") {
+        let Some(mine) = local.get_mut(&r.key) else { continue };
+        let value = if r.deleted { None } else { r.data.clone() };
+        // Kept when deleted too: a change is made from the latest revision.
+        state.setting_known.insert(r.key.clone(), r.rev);
+        state.setting_hashes.insert(r.key.clone(), value_hash(&value));
+        if *mine != value {
+            *mine = value.clone();
+            out.retain(|(k, _)| k != &r.key);
+            out.push((r.key.clone(), value));
+        }
+    }
 }
 
 fn same(a: &SyncedServer, b: &SyncedServer) -> bool {
@@ -154,14 +190,31 @@ fn apply(
 
 /// One sync. `local` is the device's list in its order.
 pub fn sync(account: &NgAccount, state: &mut SyncState, local: Vec<LocalServer>) -> Result<SyncOutcome> {
+    sync_with_settings(account, state, local, Vec::new())
+}
+
+/// One sync of the servers and of the settings the device syncs (`settings`:
+/// each key with its value on the device, None when it has none). Settings
+/// with other keys in the account (another app's) are left alone.
+pub fn sync_with_settings(
+    account: &NgAccount,
+    state: &mut SyncState,
+    local: Vec<LocalServer>,
+    settings: Vec<(String, Option<Value>)>,
+) -> Result<SyncOutcome> {
     let mut list = local;
+    let mut values: HashMap<String, Option<Value>> = settings.iter().cloned().collect();
+    let mut setting_changes = Vec::new();
     let mut rekeyed = Vec::new();
     let pulled = account.pull(state.last_rev)?;
     if pulled.reset {
         state.known.clear();
         state.hashes.clear();
+        state.setting_known.clear();
+        state.setting_hashes.clear();
     }
     let mut changed = apply(state, &mut list, &pulled.records, &mut rekeyed);
+    apply_settings(state, &mut values, &pulled.records, &mut setting_changes);
     state.last_rev = pulled.rev;
 
     // The device's changes.
@@ -182,6 +235,24 @@ pub fn sync(account: &NgAccount, state: &mut SyncState, local: Vec<LocalServer>)
             data: Some(s.to_json()),
         });
     }
+    let mut sent_settings: HashMap<String, String> = HashMap::new();
+    for (key, _) in &settings {
+        let v = &values[key];
+        let h = value_hash(v);
+        let known = state.setting_known.get(key).copied();
+        // Nothing to send: in step, or a setting neither side has.
+        if state.setting_hashes.get(key) == Some(&h) || (v.is_none() && !state.setting_hashes.contains_key(key)) {
+            continue;
+        }
+        sent_settings.insert(key.clone(), h);
+        changes.push(SyncChange {
+            kind: "setting".into(),
+            key: key.clone(),
+            base_rev: known.unwrap_or(0),
+            deleted: v.is_none(),
+            data: v.clone(),
+        });
+    }
     for key in &state.deleted {
         changes.push(SyncChange {
             kind: "server".into(),
@@ -193,7 +264,13 @@ pub fn sync(account: &NgAccount, state: &mut SyncState, local: Vec<LocalServer>)
     }
     for chunk in changes.chunks(500) {
         let r = account.push(chunk)?;
-        for a in &r.applied {
+        for a in r.applied.iter().filter(|a| a.kind == "setting") {
+            state.setting_known.insert(a.key.clone(), a.rev);
+            if let Some(h) = sent_settings.get(&a.key) {
+                state.setting_hashes.insert(a.key.clone(), h.clone());
+            }
+        }
+        for a in r.applied.iter().filter(|a| a.kind != "setting") {
             state.known.insert(a.key.clone(), a.rev);
             match sent.get(&a.key) {
                 Some(h) if !a.deleted => {
@@ -209,10 +286,12 @@ pub fn sync(account: &NgAccount, state: &mut SyncState, local: Vec<LocalServer>)
             state.deleted.remove(&a.key);
         }
         changed |= apply(state, &mut list, &r.conflicts, &mut rekeyed);
+        apply_settings(state, &mut values, &r.conflicts, &mut setting_changes);
     }
     Ok(SyncOutcome {
         servers: list,
         changed,
         rekeyed,
+        settings: setting_changes,
     })
 }

@@ -17,7 +17,7 @@ pub use monitor::{
     MonitorServerInput, MonitorTarget, MonitorUser, MonitorView, PrivateMessage, Registration,
 };
 pub use server_record::SyncedServer;
-pub use sync::{LocalServer, SyncOutcome, SyncState, content_hash, sync};
+pub use sync::{LocalServer, SyncOutcome, SyncState, content_hash, sync, sync_with_settings};
 
 /// The live service.
 pub const DEFAULT_BASE_URL: &str = "https://ttmonitor.mad-gamer.com";

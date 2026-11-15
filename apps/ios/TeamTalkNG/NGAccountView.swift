@@ -25,12 +25,17 @@ private struct SignedInView: View {
     @State private var changing = false
 
     var body: some View {
-        let account = model.account
+        @Bindable var account = model.account
         Form {
             Section {
                 LabeledContent("Signed in as", value: email)
             } footer: {
                 Text("Your saved servers are the same on every device signed in to this account, the old TeamTalk NG included.")
+            }
+            Section {
+                Toggle("Sync sound packs", isOn: $account.syncPacks)
+            } footer: {
+                Text("Sound packs from the catalog installed on one device are downloaded on the others, and the chosen pack is chosen everywhere.")
             }
             Section {
                 Button(account.syncing ? "Syncing…" : "Sync now") { Task { await account.sync() } }

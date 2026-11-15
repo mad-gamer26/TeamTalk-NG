@@ -156,3 +156,91 @@ fn the_account_wins_a_conflict_and_unsynced_passwords_stay_home() {
     // (An empty list on the phone isn't a delete: only `deleted` removes.)
     assert!(p.servers.iter().any(|l| l.key == "a"));
 }
+
+#[test]
+fn settings_sync_between_devices_and_others_are_left_alone() {
+    use serde_json::{Value, json};
+    let Some(ng) = Ngmon::start() else { return };
+    let (phone, _) = signed_up(&ng, "settings@example.com", "phone");
+    let ipad = signed_in(&ng, "settings@example.com", "ipad");
+    let (mut sp, mut si) = (SyncState::default(), SyncState::default());
+    let keys = |packs: Option<Value>, chosen: Option<Value>| {
+        vec![("packs".to_string(), packs), ("chosen".to_string(), chosen)]
+    };
+
+    // An old app's setting the new one doesn't sync.
+    phone
+        .push(&[SyncChange {
+            kind: "setting".into(),
+            key: "other".into(),
+            base_rev: 0,
+            deleted: false,
+            data: Some(json!(1)),
+        }])
+        .unwrap();
+    let p = sync_with_settings(
+        &phone,
+        &mut sp,
+        vec![],
+        keys(Some(json!(["rain"])), Some(json!("catalog:rain"))),
+    )
+    .unwrap();
+    assert!(p.settings.is_empty(), "nothing came from the account");
+
+    // The iPad gets them (and not "other").
+    let i = sync_with_settings(&ipad, &mut si, vec![], keys(None, None)).unwrap();
+    assert_eq!(i.settings.len(), 2);
+    assert!(i.settings.contains(&("packs".into(), Some(json!(["rain"])))));
+    assert!(i.settings.contains(&("chosen".into(), Some(json!("catalog:rain")))));
+
+    // In step: nothing either way.
+    let i = sync_with_settings(
+        &ipad,
+        &mut si,
+        vec![],
+        keys(Some(json!(["rain"])), Some(json!("catalog:rain"))),
+    )
+    .unwrap();
+    assert!(i.settings.is_empty());
+
+    // The iPad changes the choice and removes the list; the phone follows.
+    sync_with_settings(&ipad, &mut si, vec![], keys(None, Some(json!("default")))).unwrap();
+    let p = sync_with_settings(
+        &phone,
+        &mut sp,
+        vec![],
+        keys(Some(json!(["rain"])), Some(json!("catalog:rain"))),
+    )
+    .unwrap();
+    assert!(p.settings.contains(&("chosen".into(), Some(json!("default")))));
+    assert!(p.settings.contains(&("packs".into(), None)));
+
+    // Both change it before syncing: the first to arrive wins.
+    sync_with_settings(
+        &phone,
+        &mut sp,
+        vec![],
+        keys(Some(json!(["a"])), Some(json!("catalog:a"))),
+    )
+    .unwrap();
+    let i = sync_with_settings(
+        &ipad,
+        &mut si,
+        vec![],
+        keys(Some(json!(["b"])), Some(json!("catalog:b"))),
+    )
+    .unwrap();
+    assert!(i.settings.contains(&("chosen".into(), Some(json!("catalog:a")))));
+    let p = sync_with_settings(
+        &phone,
+        &mut sp,
+        vec![],
+        keys(Some(json!(["a"])), Some(json!("catalog:a"))),
+    )
+    .unwrap();
+    assert!(p.settings.is_empty());
+
+    // The old app's setting is still in the account.
+    let all = phone.pull(0).unwrap();
+    assert!(all.records.iter().any(|r| r.kind == "setting" && r.key == "other"));
+}

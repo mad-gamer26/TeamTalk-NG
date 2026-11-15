@@ -268,6 +268,7 @@ final class AppModel {
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if convertedSettings { save() }
+        sounds.packsChanged = { [weak self] in self?.account.changed() }
         // The desktop's "Sound device detected" status messages (a headset
         // in or out), and the microphone menu kept current.
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in

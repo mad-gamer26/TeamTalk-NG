@@ -36,5 +36,8 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
       the Monitor, /v1/servers/{id}/admin): with monitor mode, the server
       screen's admin screens through the Monitor.
 - [x] Monitor notification sounds (the pack's sounds, the iPhone's, or none; Monitor screen; sounds turned off in Settings → Sounds are silent).
-- [ ] NG Account sound pack sync (Account/NGPackSync.swift: installed packs
-      follow the account).
+- [x] NG Account sound pack sync: catalog packs installed and the chosen
+      pack follow the account, as the old app's settings records
+      (ng_installed_catalog_packs, ng_selected_sound_pack); core
+      sync_with_settings, tested. n/a: backing up packs made on the phone
+      (NG has no pack maker; a sound of your own per event stays local).

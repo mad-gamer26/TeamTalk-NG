@@ -97,7 +97,9 @@ final class SoundStore {
     static var catalogBase: URL { Service.baseURL }
 
     private(set) var installed: [InstalledPack] = []
-    var selectedId: String = InstalledPack.builtIn.id { didSet { save() } }
+    var selectedId: String = InstalledPack.builtIn.id { didSet { save(); if !loading, oldValue != selectedId { packsChanged?() } } }
+    /// Installed or chosen packs changed here (NG Account sends them).
+    @ObservationIgnored var packsChanged: (() -> Void)?
     /// 0–1.
     var volume: Double = 0.8 { didSet { save() } }
     private(set) var disabled: Set<SoundEvent> = []
@@ -317,6 +319,7 @@ final class SoundStore {
         installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         selectedId = pack.id
         save()
+        packsChanged?()
         // Counted in the catalog (best effort).
         var req = URLRequest(url: Self.catalogBase.appendingPathComponent("v1/catalog/\(pack.id)/installed"))
         req.httpMethod = "POST"
@@ -329,6 +332,7 @@ final class SoundStore {
         installed.removeAll { $0.id == pack.id }
         if selectedId == pack.id { selectedId = InstalledPack.builtIn.id }
         save()
+        packsChanged?()
     }
 
     private static func directory(_ id: String) -> URL {
