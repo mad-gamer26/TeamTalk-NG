@@ -1,3 +1,5 @@
+import MediaPlayer
+import UIKit
 import AVFoundation
 import Foundation
 import Observation
@@ -269,6 +271,7 @@ final class AppModel {
         loading = false
         if convertedSettings { save() }
         sounds.packsChanged = { [weak self] in self?.account.changed() }
+        setUpHeadsetButton()
         // The desktop's "Sound device detected" status messages (a headset
         // in or out), and the microphone menu kept current.
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
@@ -504,5 +507,42 @@ final class AppModel {
         let c = ServerConnection(server: server, app: self)
         connections[server.id] = c
         return c
+    }
+
+    // MARK: The headset button (the old app's)
+
+    /// The open server, or the only connected one.
+    var activeConnection: ServerConnection? {
+        if let id = navigation.last?.id, let c = connections[id], c.isConnected { return c }
+        let live = connections.values.filter(\.isConnected)
+        return live.count == 1 ? live.first : nil
+    }
+
+    /// A headset's or AirPods' button: one press talks or stops (or mutes
+    /// and unmutes, as Magic Tap); next and previous start talking, pause
+    /// stops (the old app's). iOS sends them only while this app is the one
+    /// playing: with other apps' audio playing too, they may go to that app.
+    private func setUpHeadsetButton() {
+        let center = MPRemoteCommandCenter.shared()
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let c = self?.activeConnection else { return .noActionableNowPlayingItem }
+            c.toggleTalking()
+            return .success
+        }
+        let start: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { [weak self] _ in
+            guard let c = self?.activeConnection else { return .noActionableNowPlayingItem }
+            if self?.talkMode == .pushToTalk { if !c.transmitting { c.toggleTalking() } } else if c.muted { c.toggleTalking() }
+            return .success
+        }
+        let stop: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { [weak self] _ in
+            guard let c = self?.activeConnection else { return .noActionableNowPlayingItem }
+            if self?.talkMode == .pushToTalk { if c.transmitting { c.toggleTalking() } } else if !c.muted { c.toggleTalking() }
+            return .success
+        }
+        center.playCommand.addTarget(handler: start)
+        center.nextTrackCommand.addTarget(handler: start)
+        center.previousTrackCommand.addTarget(handler: start)
+        center.pauseCommand.addTarget(handler: stop)
+        UIApplication.shared.beginReceivingRemoteControlEvents()
     }
 }

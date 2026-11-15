@@ -33,7 +33,12 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
       chosen (iOS 18 ControlWidget, iTeamTalkControls).
 - [x] Siri shortcuts: "Add to Siri" for connecting to a server.
 - [x] iCloud sync of settings and the server list (opt-in; Settings → iCloud sync, applied at the next start; passwords, sound packs and NG Account stay per device).
-- [ ] Headset button toggles talking (remote control events).
+- [~] Headset button (MPRemoteCommandCenter, the old app's mapping): one
+      press talks or stops (mutes/unmutes in voice activation), next and
+      previous start, pause stops, on the open (or only) connection.
+      Untested on the phone: iOS sends these to the app that's playing, and
+      this one mixes with others (the owner's choice), so another app's
+      audio may take them — as in the old app, which mixed too.
 - [x] Recordings list: play (the app's own player, in its audio session — not Quick Look, the owner's choice), share, delete the recordings in
       the app (now only through the Files app).
 - [x] "Return sends message" (PREF_GENERAL_SENDONRETURN).
