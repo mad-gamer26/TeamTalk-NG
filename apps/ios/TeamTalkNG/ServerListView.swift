@@ -126,6 +126,7 @@ struct ServerEditView: View {
                     TextField("Nickname (optional)", text: $server.nickname)
                 }
                 Section {
+                    Toggle("Connect when the app starts", isOn: Binding(get: { server.connectOnStart ?? false }, set: { server.connectOnStart = $0 }))
                     TextField("Channel to join (optional), like /Lobby/", text: $server.joinChannel)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -159,6 +160,7 @@ struct ServerEditView: View {
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var resetting = false
 
     var body: some View {
         @Bindable var model = model
@@ -198,6 +200,9 @@ struct SettingsView: View {
                 Section {
                     NavigationLink("Sound system") { SoundSystemView() }
                     NavigationLink("Sounds") { SoundsView() }
+                    NavigationLink("Spoken events") { SpeechView() }
+                    NavigationLink("Display") { DisplaySettingsView() }
+                    NavigationLink("Connection") { ConnectionSettingsView() }
                     NavigationLink("Recording") { RecordingSettingsView() }
                     NavigationLink {
                         NGAccountView()
@@ -214,8 +219,16 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    Button("Reset all settings", role: .destructive) { resetting = true }
+                } footer: {
+                    Text("Servers, your NG Account and downloaded sound packs stay.")
+                }
+                Section {
                     LabeledContent("TeamTalk SDK", value: sdkVersion())
                 }
+            }
+            .confirmationDialog("Reset all settings?", isPresented: $resetting, titleVisibility: .visible) {
+                Button("Reset", role: .destructive) { model.resetPreferences(); announce("Settings reset") }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

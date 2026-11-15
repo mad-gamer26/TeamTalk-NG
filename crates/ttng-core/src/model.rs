@@ -65,6 +65,8 @@ pub struct Channel {
     pub hidden: bool,
     /// Classroom channels: who may send what (user 0: everyone).
     pub transmit: Vec<TransmitPermission>,
+    /// One-at-a-time channels: who waits to talk, the one talking first.
+    pub transmit_queue: Vec<i32>,
     /// Shown to admins only; empty otherwise.
     pub operator_password: String,
     /// Bytes its files may take (0: none allowed, unless the server's own).
@@ -242,6 +244,7 @@ impl From<&sys::Channel> for Channel {
             no_voice_activation: has(sys::ChannelType_CHANNEL_NO_VOICEACTIVATION),
             no_recording: has(sys::ChannelType_CHANNEL_NO_RECORDING),
             hidden: has(sys::ChannelType_CHANNEL_HIDDEN),
+            transmit_queue: c.transmitUsersQueue.iter().copied().take_while(|u| *u != 0).collect(),
             transmit: c
                 .transmitUsers
                 .iter()

@@ -221,7 +221,7 @@ struct ServerView: View {
 
     private var channels: some View {
         let snap = connection.snapshot
-        let rows = snap.map(ChannelTree.rows) ?? []
+        let rows = snap.map { ChannelTree.rows($0, byName: model.sortChannelsByName) } ?? []
         return List(rows) { row in
             switch row {
             case .channel(let c, let depth):
@@ -230,15 +230,19 @@ struct ServerView: View {
                            edit: { channelSheet = .edit(c) },
                            delete: { deletingChannel = c },
                            moderate: connection.canModerate(channel: c.id),
-                           bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c }) {
-                    if c.hasPassword && c.id != snap?.myChannelId {
-                        passwordFor = c
-                    } else if c.id != snap?.myChannelId {
-                        connection.join(c)
+                           bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c },
+                           showTopic: model.showTopics, tap: model.channelTap) {
+                    let here = c.id == snap?.myChannelId
+                    switch model.channelTap {
+                    case .nothing: break
+                    case .joinOrLeave where here: connection.leaveChannel()
+                    default:
+                        if here { break }
+                        if c.hasPassword { passwordFor = c } else { connection.join(c) }
                     }
                 }
             case .user(let u, let depth):
-                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, rights: connection.rights,
+                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, rights: connection.rights, showUsername: model.showUsernames,
                         message: { privateWith = u }, details: { personFor = u },
                         move: { movingUser = u },
                         kick: { connection.kick(u, fromChannel: $0) },
@@ -267,14 +271,16 @@ enum ChannelTree {
         }
     }
 
-    static func rows(_ s: Snapshot) -> [Row] {
+    /// `byName`: channels alphabetically, else in the server's order.
+    static func rows(_ s: Snapshot, byName: Bool = true) -> [Row] {
         var out: [Row] = []
         func add(_ c: Channel, _ depth: Int) {
             out.append(.channel(c, depth: depth))
             for u in s.users.filter({ $0.channelId == c.id }).sorted(by: { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
                 out.append(.user(u, depth: depth + 1))
             }
-            for sub in s.channels.filter({ $0.parentId == c.id }).sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
+            let subs = s.channels.filter { $0.parentId == c.id }
+            for sub in byName ? subs.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) : subs.sorted(by: { $0.id < $1.id }) {
                 add(sub, depth + 1)
             }
         }
@@ -295,17 +301,26 @@ private struct ChannelRow: View {
     let bans: () -> Void
     let classroom: () -> Void
     let info: () -> Void
+    let showTopic: Bool
+    let tap: AppModel.ChannelTap
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
     private var here: Bool { snapshot.myChannelId == channel.id }
+    private var hint: String {
+        switch tap {
+        case .nothing: ""
+        case .joinOrLeave: here ? "Double-tap to leave." : "Double-tap to join."
+        case .join: here ? "" : "Double-tap to join."
+        }
+    }
 
     private var details: String {
         let n = snapshot.users.filter { $0.channelId == channel.id }.count
         var parts = [n == 1 ? "1 person" : "\(n) people"]
         if here { parts.insert("you're here", at: 0) }
         if channel.hasPassword { parts.append("password") }
-        if !channel.topic.isEmpty { parts.append(channel.topic) }
+        if showTopic && !channel.topic.isEmpty { parts.append(channel.topic) }
         return parts.joined(separator: ", ")
     }
 
@@ -325,7 +340,7 @@ private struct ChannelRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(name), channel")
         .accessibilityValue(details)
-        .accessibilityHint(here ? "" : "Double-tap to join.")
+        .accessibilityHint(hint)
         .accessibilityAddTraits(.isButton)
         .contextMenu { actions }
         .accessibilityActions { actions }
@@ -352,6 +367,7 @@ private struct UserRow: View {
     let depth: Int
     let isMe: Bool
     let rights: MyRights
+    let showUsername: Bool
     let message: () -> Void
     let details: () -> Void
     let move: () -> Void
@@ -360,7 +376,8 @@ private struct UserRow: View {
 
     /// Their state, said with their name.
     private var label: String {
-        var parts = [isMe ? "\(user.displayName) (you)" : user.displayName]
+        let name = showUsername && !user.username.isEmpty ? user.username : user.displayName
+        var parts = [isMe ? "\(name) (you)" : name]
         if user.talking { parts.append("talking") }
         if user.voiceMuted { parts.append("muted") }
         if user.operator { parts.append("operator") }
@@ -460,10 +477,13 @@ private struct TalkBar: View {
 
 /// The channel conversation, or one person's private messages.
 struct ChatView: View {
+    @Environment(AppModel.self) private var model
     let connection: ServerConnection
     let privateWith: User?
     @State private var draft = ""
     @FocusState private var typing: Bool
+
+    private var showTimes: Bool { model.showTimestamps }
 
     private var lines: [ChatLine] {
         connection.lines.filter { privateWith == nil ? true : $0.privateWith == privateWith!.displayName }
@@ -478,10 +498,12 @@ struct ChatView: View {
                             Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
                                 .font(.caption.weight(.semibold))
                             Spacer()
-                            Text(line.time, format: Calendar.current.isDateInToday(line.time)
-                                 ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            if showTimes {
+                                Text(line.time, format: Calendar.current.isDateInToday(line.time)
+                                     ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Text(line.text)
                     }

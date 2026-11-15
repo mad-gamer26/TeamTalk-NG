@@ -3,24 +3,37 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// The sounds a pack can have (TeamTalk's file names, shared by every pack).
+/// The sounds a pack can have (TeamTalk's file names, shared by every
+/// pack): every sound event the desktop client has.
 enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     case on, off
-    case channelMessage = "channel_msg", privateMessage = "user_msg", broadcastMessage = "broadcast_msg"
+    case channelMessage = "channel_msg", channelMessageSent = "channel_msg_sent"
+    case privateMessage = "user_msg", privateMessageSent = "user_msg_sent"
+    case broadcastMessage = "broadcast_msg"
     case serverLost = "serverlost"
     case userJoined = "newuser", userLeft = "removeuser"
     case loggedIn = "logged_on", loggedOut = "logged_off"
     case fileUpdate = "fileupdate", transferComplete = "filetx_complete"
+    case questionMode = "questionmode"
+    case voiceActivationOn = "vox_enable", voiceActivationOff = "vox_disable"
+    case voiceActivationStarts = "voiceact_on", voiceActivationStops = "voiceact_off"
+    case muteAllOn = "mute_all", muteAllOff = "unmute_all"
+    case yourTurn = "txqueue_start", turnOver = "txqueue_stop"
+    case intercepted = "intercept", interceptEnded = "interceptEnd"
+    case typing = "typing"
+    case newVideo = "videosession", newDesktop = "desktopsession"
 
     var id: Self { self }
     var fileName: String { rawValue + ".wav" }
 
     var label: String {
         switch self {
-        case .on: "Talking starts"
-        case .off: "Talking stops"
+        case .on: "Talking starts (push to talk)"
+        case .off: "Talking stops (push to talk)"
         case .channelMessage: "Channel message"
+        case .channelMessageSent: "Channel message sent"
         case .privateMessage: "Private message"
+        case .privateMessageSent: "Private message sent"
         case .broadcastMessage: "Broadcast message"
         case .serverLost: "Connection lost"
         case .userJoined: "Someone joins your channel"
@@ -29,6 +42,28 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
         case .loggedOut: "Someone logs out of the server"
         case .fileUpdate: "Channel files change"
         case .transferComplete: "Transfer finished"
+        case .questionMode: "Someone has a question"
+        case .voiceActivationOn: "Voice activation turned on"
+        case .voiceActivationOff: "Voice activation turned off"
+        case .voiceActivationStarts: "Voice activation starts sending"
+        case .voiceActivationStops: "Voice activation stops sending"
+        case .muteAllOn: "Everyone muted"
+        case .muteAllOff: "Everyone unmuted"
+        case .yourTurn: "Your turn to talk (one at a time)"
+        case .turnOver: "Your turn is over (one at a time)"
+        case .intercepted: "Someone intercepts you"
+        case .interceptEnded: "Someone stops intercepting you"
+        case .typing: "Someone is typing to you"
+        case .newVideo: "Someone sends video"
+        case .newDesktop: "Someone shares a desktop"
+        }
+    }
+
+    /// On unless the desktop has it off by default.
+    var onByDefault: Bool {
+        switch self {
+        case .voiceActivationStarts, .voiceActivationStops, .intercepted, .interceptEnded, .typing: false
+        default: true
         }
     }
 }
@@ -80,7 +115,15 @@ final class SoundStore {
         }
         selectedId = defaults.string(forKey: "soundPack") ?? InstalledPack.builtIn.id
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
-        disabled = Set((defaults.stringArray(forKey: "soundsOff") ?? []).compactMap(SoundEvent.init(rawValue:)))
+        if let off = defaults.stringArray(forKey: "soundsOff") {
+            disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
+        } else {
+            disabled = Set(SoundEvent.allCases.filter { !$0.onByDefault })
+        }
+        // Events added since the list was saved start as the desktop has them.
+        let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
+        for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
+        defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
     }
 
     var packs: [InstalledPack] { [InstalledPack.builtIn] + installed }
@@ -98,6 +141,44 @@ final class SoundStore {
     func setOn(_ e: SoundEvent, _ on: Bool) {
         if on { disabled.remove(e) } else { disabled.insert(e) }
         save()
+    }
+
+    func setAll(_ on: Bool) {
+        disabled = on ? [] : Set(SoundEvent.allCases)
+        save()
+    }
+
+    /// As the desktop has them: on and off, and no files of my own.
+    func revert() {
+        disabled = Set(SoundEvent.allCases.filter { !$0.onByDefault })
+        for e in SoundEvent.allCases { resetFile(e) }
+        save()
+    }
+
+    // MARK: A file of my own for an event
+
+    private static var customDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SoundPacks/custom", isDirectory: true)
+    }
+
+    func hasOwnFile(_ e: SoundEvent) -> Bool {
+        FileManager.default.fileExists(atPath: Self.customDirectory.appendingPathComponent(e.fileName).path)
+    }
+
+    /// Uses a picked audio file for this event (whichever pack is chosen).
+    func setFile(_ e: SoundEvent, from url: URL) -> Bool {
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        guard (try? AVAudioPlayer(contentsOf: url)) != nil else { return false }
+        try? FileManager.default.createDirectory(at: Self.customDirectory, withIntermediateDirectories: true)
+        let dest = Self.customDirectory.appendingPathComponent(e.fileName)
+        try? FileManager.default.removeItem(at: dest)
+        return (try? FileManager.default.copyItem(at: url, to: dest)) != nil
+    }
+
+    func resetFile(_ e: SoundEvent) {
+        try? FileManager.default.removeItem(at: Self.customDirectory.appendingPathComponent(e.fileName))
     }
 
     // MARK: Playing
@@ -119,6 +200,8 @@ final class SoundStore {
 
     /// The pack's sound, or the built-in one where it has none.
     private func url(for e: SoundEvent, in pack: InstalledPack) -> URL? {
+        let own = Self.customDirectory.appendingPathComponent(e.fileName)
+        if FileManager.default.fileExists(atPath: own.path) { return own }
         if pack.id != InstalledPack.builtIn.id {
             let f = Self.directory(pack.id).appendingPathComponent(e.fileName)
             if FileManager.default.fileExists(atPath: f.path) { return f }

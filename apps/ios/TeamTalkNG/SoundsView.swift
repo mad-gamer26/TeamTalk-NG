@@ -3,6 +3,13 @@ import SwiftUI
 /// Settings → Sounds: the pack, volume, and which events sound.
 struct SoundsView: View {
     @Environment(AppModel.self) private var model
+    @State private var choosingFor: SoundEvent?
+
+    @ViewBuilder private func actions(_ e: SoundEvent) -> some View {
+        Button("Play") { model.sounds.preview(e) }
+        Button("Choose a sound file") { choosingFor = e }
+        if model.sounds.hasOwnFile(e) { Button("Use the pack's sound") { model.sounds.resetFile(e) } }
+    }
 
     var body: some View {
         let sounds = model.sounds
@@ -18,14 +25,20 @@ struct SoundsView: View {
             }
             Section {
                 ForEach(SoundEvent.allCases) { e in
-                    Toggle(e.label, isOn: Binding(get: { sounds.isOn(e) }, set: { sounds.setOn(e, $0) }))
-                        .accessibilityActions { Button("Play") { sounds.preview(e) } }
-                        .contextMenu { Button("Play") { sounds.preview(e) } }
+                    Toggle(sounds.hasOwnFile(e) ? "\(e.label) (your own sound)" : e.label,
+                           isOn: Binding(get: { sounds.isOn(e) }, set: { sounds.setOn(e, $0) }))
+                        .accessibilityActions { actions(e) }
+                        .contextMenu { actions(e) }
                 }
             } header: {
                 Text("Sounds")
             } footer: {
-                Text("To hear one, use the Play action (swipe up or down with VoiceOver), or touch and hold.")
+                Text("Each sound's actions (swipe up or down with VoiceOver, or touch and hold): play it, choose your own file for it, or go back to the pack's.")
+            }
+            Section {
+                Button("Turn all on") { sounds.setAll(true) }
+                Button("Turn all off") { sounds.setAll(false) }
+                Button("As they were at first", role: .destructive) { sounds.revert() }
             }
             if sounds.installed.isEmpty == false {
                 Section("Downloaded packs") {
@@ -39,6 +52,18 @@ struct SoundsView: View {
         }
         .navigationTitle("Sounds")
         .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: Binding(get: { choosingFor != nil }, set: { if !$0 { choosingFor = nil } }),
+                      allowedContentTypes: [.audio]) { r in
+            if case .success(let url) = r, let e = choosingFor {
+                if model.sounds.setFile(e, from: url) {
+                    announce("\(e.label) uses \(url.lastPathComponent)")
+                    model.sounds.preview(e)
+                } else {
+                    announce("That file can't be played")
+                }
+            }
+            choosingFor = nil
+        }
     }
 }
 

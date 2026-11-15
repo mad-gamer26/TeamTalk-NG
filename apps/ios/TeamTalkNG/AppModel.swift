@@ -8,7 +8,13 @@ final class AppModel {
     private(set) var connections: [UUID: ServerConnection] = [:]
 
     var talkMode: TalkMode = .pushToTalk {
-        didSet { save(); connections.values.forEach { $0.applyTalkMode() } }
+        didSet {
+            save()
+            connections.values.forEach { $0.applyTalkMode() }
+            if talkMode != oldValue && (talkMode == .voiceActivation || oldValue == .voiceActivation) {
+                sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff)
+            }
+        }
     }
     /// Voice activation: the level that starts it (0–100).
     var voiceLevel: Double = 20 {
@@ -52,6 +58,38 @@ final class AppModel {
     var awayStopsVoiceActivation = false { didSet { save() } }
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
+    let speech = SpeechStore()
+
+    // MARK: Display (the desktop's Display tab)
+
+    enum ChannelTap: String, CaseIterable, Identifiable {
+        case join, joinOrLeave, nothing
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .join: "Joins it"
+            case .joinOrLeave: "Joins it, or leaves it if you're there"
+            case .nothing: "Nothing (use its actions)"
+            }
+        }
+    }
+
+    var showUsernames = false { didSet { save() } }
+    var showTopics = true { didSet { save() } }
+    var sortChannelsByName = true { didSet { save() } }
+    var channelTap = ChannelTap.join { didSet { save() } }
+    var showTimestamps = true { didSet { save() } }
+    var showMOTD = true { didSet { save() } }
+    var eventsInChat = false { didSet { save() } }
+    var notifyInBackground = true { didSet { save() } }
+
+    // MARK: Connection (the desktop's Connection tab)
+
+    var reconnect = true { didSet { save() } }
+    var joinRoot = true { didSet { save() } }
+    /// What's received from people by default (the rest is turned off for
+    /// each one as they log in).
+    var defaultSubscriptionsOff: Set<Subscription> = [] { didSet { save() } }
     @ObservationIgnored private(set) lazy var account = NGAccountStore(app: self)
     @ObservationIgnored private(set) lazy var monitor = MonitorStore(app: self)
 
@@ -75,10 +113,52 @@ final class AppModel {
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
         hearOwnStream = defaults.object(forKey: "hearOwnStream") as? Bool ?? true
+        showUsernames = defaults.bool(forKey: "showUsernames")
+        showTopics = defaults.object(forKey: "showTopics") as? Bool ?? true
+        sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
+        channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .join
+        showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
+        showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
+        eventsInChat = defaults.bool(forKey: "eventsInChat")
+        notifyInBackground = defaults.object(forKey: "notifyInBackground") as? Bool ?? true
+        reconnect = defaults.object(forKey: "reconnect") as? Bool ?? true
+        joinRoot = defaults.object(forKey: "joinRoot") as? Bool ?? true
+        defaultSubscriptionsOff = Set((defaults.stringArray(forKey: "subscriptionsOff") ?? []).compactMap { name in
+            PersonView.normal.first { "\($0)" == name }
+        })
         statusMessage = defaults.string(forKey: "statusMessage") ?? ""
         awayAfterMinutes = defaults.integer(forKey: "awayAfterMinutes")
         awayMessage = defaults.string(forKey: "awayMessage") ?? ""
         awayStopsVoiceActivation = defaults.bool(forKey: "awayStopsVoiceActivation")
+    }
+
+    /// The desktop's "Reset preferences to default": every setting as it
+    /// was at first (servers, accounts and sound packs stay).
+    func resetPreferences() {
+        let keep: Set<String> = ["servers", "installId", "ngEmail", "ngSyncState", "soundPacks"]
+        for k in defaults.dictionaryRepresentation().keys where !keep.contains(k) && !k.hasPrefix("Apple") && !k.hasPrefix("NS") {
+            defaults.removeObject(forKey: k)
+        }
+        talkMode = .pushToTalk
+        voiceLevel = 20
+        nickname = ""
+        audio = defaultAudioSettings()
+        recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
+        statusMessage = ""; awayAfterMinutes = 0; awayMessage = ""; awayStopsVoiceActivation = false
+        hearOwnStream = true
+        showUsernames = false; showTopics = true; sortChannelsByName = true; channelTap = .join
+        showTimestamps = true; showMOTD = true; eventsInChat = false; notifyInBackground = true
+        reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
+        sounds.revert()
+        sounds.volume = 0.8
+        sounds.selectedId = InstalledPack.builtIn.id
+        speech.revert()
+        AudioSession.activate()
+    }
+
+    /// Servers marked to connect when the app starts.
+    func connectOnStart() {
+        for s in servers where s.connectOnStart == true { connection(for: s).connect() }
     }
 
     /// The app went to the background (or was locked), or came back.
@@ -115,6 +195,17 @@ final class AppModel {
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
         defaults.set(hearOwnStream, forKey: "hearOwnStream")
+        defaults.set(showUsernames, forKey: "showUsernames")
+        defaults.set(showTopics, forKey: "showTopics")
+        defaults.set(sortChannelsByName, forKey: "sortChannelsByName")
+        defaults.set(channelTap.rawValue, forKey: "channelTap")
+        defaults.set(showTimestamps, forKey: "showTimestamps")
+        defaults.set(showMOTD, forKey: "showMOTD")
+        defaults.set(eventsInChat, forKey: "eventsInChat")
+        defaults.set(notifyInBackground, forKey: "notifyInBackground")
+        defaults.set(reconnect, forKey: "reconnect")
+        defaults.set(joinRoot, forKey: "joinRoot")
+        defaults.set(defaultSubscriptionsOff.map { "\($0)" }, forKey: "subscriptionsOff")
         defaults.set(statusMessage, forKey: "statusMessage")
         defaults.set(awayAfterMinutes, forKey: "awayAfterMinutes")
         defaults.set(awayMessage, forKey: "awayMessage")

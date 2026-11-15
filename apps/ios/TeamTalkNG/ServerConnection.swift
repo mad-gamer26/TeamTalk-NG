@@ -1,4 +1,6 @@
 import Foundation
+import UIKit
+import UserNotifications
 import Observation
 
 /// A line in a server's conversation.
@@ -87,7 +89,7 @@ final class ServerConnection {
             host: s.host, tcpPort: s.tcpPort, udpPort: s.udpPort, encrypted: s.encrypted,
             nickname: nickname.isEmpty ? s.username : nickname, username: s.username,
             password: Passwords.get(s.id), clientName: "TeamTalk NG",
-            joinChannelPath: s.joinChannel, joinChannelPassword: "", reconnect: true)
+            joinChannelPath: s.joinChannel, joinChannelPassword: "", reconnect: app?.reconnect ?? true)
         let client = self.client
         let audio = app?.audio ?? defaultAudioSettings()
         let hearOwn = app?.hearOwnStream ?? true
@@ -114,6 +116,11 @@ final class ServerConnection {
             } else {
                 applyTalkMode()
                 app?.monitor.appConnected(server, true)
+                // Settings → Connection: the root channel, when the server
+                // entry and the account didn't say where.
+                if app?.joinRoot == true, (snapshot?.myChannelId ?? 0) == 0 {
+                    run("Couldn't join the root channel") { try $0.joinChannelPath(path: "/", password: "") }
+                }
                 // The server's own status message, else the one in Settings.
                 let own = (try? JSONSerialization.jsonObject(with: Data((server.syncOther ?? "{}").utf8)) as? [String: Any])?["statusmsg"] as? String
                 let msg = (own?.isEmpty == false ? own : nil) ?? app?.statusMessage ?? ""
@@ -148,6 +155,8 @@ final class ServerConnection {
             target = .user(userId: user.id)
             // The server doesn't echo private messages back.
             lines.append(ChatLine(from: "Me", text: text, privateWith: user.displayName, time: .now))
+            sound(.privateMessageSent)
+            say(.privateMessageSent, ["message": text])
         } else {
             guard snap.myChannelId > 0 else { return }
             target = .channel(channelId: snap.myChannelId)
@@ -228,7 +237,7 @@ final class ServerConnection {
     }
 
     func setMuteAll(_ on: Bool) {
-        sound(on ? .off : .on)
+        sound(on ? .muteAllOn : .muteAllOff)
         run("Couldn't mute everyone") { try $0.setMuteAll(on: on) }
     }
 
@@ -566,10 +575,10 @@ final class ServerConnection {
         guard isConnected, let mode = app?.talkMode else { return }
         if mode == .pushToTalk {
             setTransmitting(!transmitting)
-            announce(transmitting ? "Talking" : "Stopped talking")
+            say(.talking, ["state": transmitting ? "Talking" : "Stopped talking"])
         } else {
             setMicMuted(!muted)
-            announce(muted ? "Microphone muted" : "Microphone on")
+            say(.talking, ["state": muted ? "Microphone muted" : "Microphone on"])
         }
     }
 
@@ -610,26 +619,64 @@ final class ServerConnection {
             refreshPending = false
             snapshot = client.snapshot()
             state = snapshot?.state ?? .disconnected
+            known = Dictionary(snapshot?.users.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
+            knownChannels = Dictionary(snapshot?.channels.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
         }
     }
 
     private var myChannel: Int32 { snapshot?.myChannelId ?? 0 }
     private func sound(_ e: SoundEvent) { app?.sounds.play(e) }
 
+    /// Says an event, the desktop's way (its message, if it's on).
+    private func say(_ e: SpeechEvent, _ vars: [String: String] = [:]) {
+        var v = vars
+        v["server"] = v["server"] ?? (snapshot?.server.name.nonEmpty ?? server.title)
+        app?.speech.say(e, v)
+    }
+
+    /// Says something about what I did (results, not events).
+    private func note(_ text: String) { app?.speech.speak(text) }
+
+    private func vars(_ u: User) -> [String: String] {
+        ["user": u.displayName, "username": u.username]
+    }
+
+    /// An event line in the chat (Settings → Display).
+    private func eventLine(_ text: String) {
+        guard app?.eventsInChat == true else { return }
+        lines.append(ChatLine(from: "Event", text: text, privateWith: nil, time: .now))
+    }
+
+    private func channelName(_ id: Int32) -> String {
+        guard let c = snapshot?.channels.first(where: { $0.id == id }) else { return "" }
+        return c.parentId == 0 ? "root" : c.name
+    }
+
+    /// Who I knew, and how, before this event (to say what changed).
+    private var known: [Int32: User] = [:]
+    private var knownChannels: [Int32: Channel] = [:]
+    private var loggedInOnce = false
+
     fileprivate func handle(_ event: Event) {
         switch event {
         case .connectionChanged(let s):
             state = s
             switch s {
-            case .loggedIn where dropped:
-                dropped = false
-                announce("\(server.title): reconnected")
-                applyTalkMode()
+            case .loggedIn:
+                if dropped {
+                    dropped = false
+                    say(.connection, ["state": "reconnected"])
+                    applyTalkMode()
+                }
+                if !loggedInOnce || app?.showMOTD == true {
+                    loggedInOnce = true
+                    Task { @MainActor in self.showMOTD() }
+                }
             case .reconnecting(let n):
                 transmitting = false
                 if !dropped {
                     sound(.serverLost)
-                    announce("\(server.title): connection lost, reconnecting")
+                    say(.connection, ["state": "connection lost, reconnecting"])
                 }
                 dropped = n > 0
             case .disconnected:
@@ -639,96 +686,202 @@ final class ServerConnection {
             }
         case .connectionFailed(let m):
             problem = m
-            announce("\(server.title): \(m)")
+            sound(.serverLost)
+            say(.connection, ["state": m])
         case .messageReceived(let m):
-            let from = snapshot?.users.first { $0.id == m.fromUserId }?.displayName ?? m.fromUsername
+            let sender = snapshot?.users.first { $0.id == m.fromUserId }
+            let from = sender?.displayName ?? m.fromUsername
+            var v = ["user": from, "username": m.fromUsername, "message": m.text]
+            let mine = m.fromUserId == snapshot?.myUserId
             switch m.target {
             case .user:
                 lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now))
                 sound(.privateMessage)
-                announce("Private message from \(from): \(m.text)")
+                say(.privateMessage, v)
+                notifyIfAway("Private message from \(from)", m.text)
             case .channel:
-                let mine = m.fromUserId == snapshot?.myUserId
                 lines.append(ChatLine(from: mine ? "Me" : from, text: m.text, privateWith: nil, time: .now))
-                if !mine {
+                if mine {
+                    sound(.channelMessageSent)
+                    say(.channelMessageSent, ["message": m.text])
+                } else {
                     sound(.channelMessage)
-                    announce("\(from): \(m.text)")
+                    say(.channelMessage, v)
                 }
             case .broadcast:
                 lines.append(ChatLine(from: "Broadcast from \(from)", text: m.text, privateWith: nil, time: .now))
-                sound(.broadcastMessage)
-                announce("Broadcast from \(from): \(m.text)")
+                if mine {
+                    v = ["message": m.text]
+                    say(.broadcastMessageSent, v)
+                } else {
+                    sound(.broadcastMessage)
+                    say(.broadcastMessage, v)
+                }
             }
         case .userJoined(let u, let ch):
-            if ch == myChannel, u.id != snapshot?.myUserId {
+            guard u.id != snapshot?.myUserId else { break }
+            if ch == myChannel {
                 sound(.userJoined)
-                announce("\(u.displayName) joined")
+                say(.joinedMine, vars(u))
+                eventLine("\(u.displayName) joined")
+            } else if state == .loggedIn {
+                var v = vars(u)
+                v["channel"] = channelName(ch)
+                say(.joined, v)
             }
         case .userLeft(let u, let ch):
-            if ch == myChannel, u.id != snapshot?.myUserId {
+            guard u.id != snapshot?.myUserId else { break }
+            if ch == myChannel {
                 sound(.userLeft)
-                announce("\(u.displayName) left")
+                say(.leftMine, vars(u))
+                eventLine("\(u.displayName) left")
+            } else if state == .loggedIn {
+                var v = vars(u)
+                v["channel"] = channelName(ch)
+                say(.left, v)
             }
         case .userLoggedIn(let u):
+            applyDefaultSubscriptions(u)
             // Not for those already there when I log in (the server lists them).
-            if state == .loggedIn, u.id != snapshot?.myUserId { sound(.loggedIn) }
+            if state == .loggedIn, u.id != snapshot?.myUserId {
+                sound(.loggedIn)
+                say(.loggedIn, vars(u))
+                eventLine("\(u.displayName) logged in")
+            }
         case .userLoggedOut(let u):
             if state == .loggedIn, u.id != snapshot?.myUserId {
                 sound(.loggedOut)
+                say(.loggedOut, vars(u))
+                eventLine("\(u.displayName) logged out")
                 departed.append((u, .now))
                 if departed.count > 200 { departed.removeFirst() }
             }
+        case .userUpdated(let u):
+            if let before = known[u.id] { changed(before, u) }
+        case .channelUpdated(let c):
+            if let before = knownChannels[c.id] { channelChanged(before, c) }
         case .fileRemoved(let f):
-            if f.channelId == myChannel { sound(.fileUpdate) }
+            if f.channelId == myChannel {
+                sound(.fileUpdate)
+                say(.fileRemoved, ["file": f.name, "user": f.uploader, "username": f.uploader])
+            }
+        case .fileAdded(let f):
+            if f.channelId == myChannel, f.uploader != me?.username {
+                sound(.fileUpdate)
+                let who = snapshot?.users.first { $0.username == f.uploader }?.displayName ?? f.uploader
+                say(.fileAdded, ["filename": f.name, "user": who, "username": f.uploader,
+                                 "filesize": ByteCountFormatter.string(fromByteCount: f.size, countStyle: .file)])
+            }
         case .transferChanged(let t):
             switch t.status {
             case .active:
                 if transfers[t.id] == nil {
-                    announce("\(t.inbound ? "Downloading" : "Uploading") \(t.remoteName)")
+                    note("\(t.inbound ? "Downloading" : "Uploading") \(t.remoteName)")
                 }
                 transfers[t.id] = t
             case .finished:
                 transfers[t.id] = nil
                 sound(.transferComplete)
-                announce("\(t.inbound ? "Downloaded" : "Uploaded") \(t.remoteName)")
+                note("\(t.inbound ? "Downloaded" : "Uploaded") \(t.remoteName)")
                 if !t.inbound { try? FileManager.default.removeItem(atPath: (t.localPath as NSString).deletingLastPathComponent) }
             case .failed:
                 transfers[t.id] = nil
                 announce("\(t.inbound ? "Download" : "Upload") of \(t.remoteName) failed")
             case .cancelled:
                 transfers[t.id] = nil
-                announce("Cancelled \(t.remoteName)")
+                note("Cancelled \(t.remoteName)")
             }
         case .streamChanged(let st):
             let name = ((st.path as NSString).lastPathComponent as NSString).deletingPathExtension
             switch st.status {
-            case .started: announce("Streaming \(name)")
-            case .finished: if !st.looping { announce("\(name) finished") }
+            case .started: note("Streaming \(name)")
+            case .finished: if !st.looping { note("\(name) finished") }
             case .failed: announce("Streaming \(name) failed")
-            case .stopped: announce("Stopped streaming")
+            case .stopped: note("Stopped streaming")
             default: break
             }
         case .recordingChanged(let path, let active, let error):
             let name = (path as NSString).lastPathComponent
             if active {
-                announce("Recording")
+                note("Recording")
             } else if let error {
                 announce("The recording stopped: \(error). Saved as \(name)")
             } else {
-                announce("Recording saved as \(name), in the Files app")
-            }
-        case .fileAdded(let f):
-            if f.channelId == myChannel, f.uploader != me?.username {
-                sound(.fileUpdate)
-                announce("New file: \(f.name)")
+                note("Recording saved as \(name), in the Files app")
             }
         case .voiceActivated(let on):
             voiceActive = on
+            sound(on ? .voiceActivationStarts : .voiceActivationStops)
         case .kicked(_, let ch):
-            announce(ch > 0 ? "You were kicked from the channel" : "You were kicked from the server")
+            say(.connection, ["state": ch > 0 ? "you were kicked from the channel" : "you were kicked from the server"])
         default: break
         }
         refresh()
+    }
+
+    /// Someone changed: question mode, intercepting me, my subscriptions.
+    private func changed(_ before: User, _ u: User) {
+        if u.status == .question && before.status != .question && u.id != snapshot?.myUserId {
+            sound(.questionMode)
+            say(.questionMode, vars(u))
+        }
+        let intercepts: [Subscription] = [.interceptUserMessages, .interceptChannelMessages, .interceptVoice, .interceptVideo, .interceptDesktop, .interceptMediaFile]
+        let was = Set(before.theirSubscriptions.on).intersection(intercepts), now = Set(u.theirSubscriptions.on).intersection(intercepts)
+        if now.count > was.count { sound(.intercepted) } else if now.count < was.count { sound(.interceptEnded) }
+        let mineBefore = Set(before.mySubscriptions.on), mineNow = Set(u.mySubscriptions.on)
+        for sub in mineNow.symmetricDifference(mineBefore) {
+            var v = vars(u)
+            v["type"] = PersonView.label(sub)
+            v["state"] = mineNow.contains(sub) ? "on" : "off"
+            say(.subscriptionChange, v)
+        }
+        if u.sendingVideo && !before.sendingVideo { sound(.newVideo) }
+        if u.sharingDesktop && !before.sharingDesktop { sound(.newDesktop) }
+    }
+
+    /// My channel changed: classroom permissions, my turn to talk.
+    private func channelChanged(_ before: Channel, _ c: Channel) {
+        guard c.id == myChannel, let me = snapshot?.myUserId else { return }
+        if c.classroom {
+            let allowed = { (ch: Channel, user: Int32, st: TransmitStream) in ch.transmit.contains { $0.userId == user && $0.allowed.contains(st) } }
+            let people = Set(before.transmit.map(\.userId) + c.transmit.map(\.userId))
+            for user in people {
+                for st in PersonView.streams where allowed(before, user, st) != allowed(c, user, st) {
+                    let name = user == 0 ? "everyone" : (snapshot?.users.first { $0.id == user }?.displayName ?? "someone")
+                    say(.classroomChange, ["type": PersonView.streamLabel(st), "state": allowed(c, user, st) ? "allowed" : "not allowed", "user": name, "username": name])
+                }
+            }
+        }
+        let wasFirst = before.transmitQueue.first == me, isFirst = c.transmitQueue.first == me
+        if isFirst && !wasFirst { sound(.yourTurn) }
+        if wasFirst && !c.transmitQueue.contains(me) { sound(.turnOver) }
+    }
+
+    /// The server's message of the day, as a line in the chat (Settings → Display).
+    private func showMOTD() {
+        guard app?.showMOTD == true, let motd = snapshot?.server.motd.trimmingCharacters(in: .whitespacesAndNewlines), !motd.isEmpty else { return }
+        if lines.last?.text == motd { return }
+        lines.append(ChatLine(from: "Message of the day", text: motd, privateWith: nil, time: .now))
+    }
+
+    /// The default subscriptions (Settings → Connection), for someone new.
+    private func applyDefaultSubscriptions(_ u: User) {
+        guard let off = app?.defaultSubscriptionsOff, !off.isEmpty, u.id != snapshot?.myUserId else { return }
+        for sub in off where u.mySubscriptions.on.contains(sub) {
+            run("Couldn't change that") { try $0.setSubscription(userId: u.id, what: sub, on: false) }
+        }
+    }
+
+    /// A notification for a private message while the app isn't in front
+    /// (the desktop's popup).
+    private func notifyIfAway(_ title: String, _ body: String) {
+        guard app?.notifyInBackground == true, UIApplication.shared.applicationState != .active else { return }
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.subtitle = server.title
+        c.body = body
+        c.sound = nil
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
 }
 

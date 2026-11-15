@@ -10,6 +10,10 @@ struct TeamTalkNGApp: App {
         WindowGroup {
             ServerListView()
                 .environment(model)
+                .task {
+                    model.connectOnStart()
+                    if model.notifyInBackground { requestNotifications() }
+                }
         }
         .onChange(of: phase) { _, p in
             // Away after a while in the background, as the desktop is after

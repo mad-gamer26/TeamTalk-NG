@@ -19,6 +19,8 @@ struct SavedServer: Codable, Identifiable, Hashable {
     var syncPassword: Bool?
     /// What NG Account had that this app doesn't use (certificates…).
     var syncOther: String?
+    /// Connect when the app starts (the desktop's "connect on startup").
+    var connectOnStart: Bool?
 
     var key: String { syncKey ?? id.uuidString }
 

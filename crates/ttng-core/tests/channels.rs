@@ -314,3 +314,35 @@ fn hearing_my_own_stream_and_refusing_what_cant_play() {
     assert!(matches!(refused, Err(Error::Refused(_))), "{refused:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn one_at_a_time_channels_queue_who_talks() {
+    let server = Server::start();
+    let admin = TestClient::logged_in(&server, "admin");
+    admin
+        .client
+        .make_channel(&ChannelSpec {
+            parent_id: root(&admin),
+            name: "Turns".into(),
+            permanent: true,
+            solo_transmit: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/Turns/", "").unwrap();
+        c.client.set_test_tone(440).unwrap();
+    }
+    let (alice, bob) = (a.client.snapshot().my_user_id, b.client.snapshot().my_user_id);
+    let ch = a.client.snapshot().my_channel_id;
+    a.client.set_transmitting(true).unwrap();
+    a.wait_until(|s| s.channel(ch).is_some_and(|c| c.transmit_queue.first() == Some(&alice)));
+    b.client.set_transmitting(true).unwrap();
+    let s = a.wait_until(|s| s.channel(ch).is_some_and(|c| c.transmit_queue.len() == 2));
+    assert_eq!(s.channel(ch).unwrap().transmit_queue, vec![alice, bob]);
+    a.client.set_transmitting(false).unwrap();
+    b.wait_until(|s| s.channel(ch).is_some_and(|c| c.transmit_queue == vec![bob]));
+}

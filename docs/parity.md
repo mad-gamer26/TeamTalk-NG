@@ -28,7 +28,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Text-to-speech events on/off, sound events on/off | partial: sounds per event done; todo (6): spoken events chosen per event with templates |
+| Text-to-speech events on/off, sound events on/off | done (every sound event and spoken event, each on or off) |
 | Change nickname | done (per server, and while connected) |
 | Change status | done |
 | Toggle question mode | done |
@@ -89,7 +89,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | Manual | todo (10): in-app help |
-| Reset preferences | todo (6) |
+| Reset preferences | done |
 | Website, check for update, about | todo (10): About; updates come from the App Store |
 | Setup wizard (Classic) | todo (10): first-run setup |
 
@@ -98,11 +98,11 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop tab | NG |
 |---|---|
 | General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; todo (7): web login; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
-| Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | partial: chat list with times; todo (6): timestamps, what the tree shows and how it sorts, MOTD on connect, events in chat; n/a: tray, always on top |
-| Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | partial: reconnect; todo (6): the rest |
+| Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | done: timestamps, events in chat, usernames or nicknames, topics, sorting, the double-tap action, the MOTD in the chat, notifications for private messages in the background (the popup); chat is always a list; n/a: language (the system's), window title, tray, always on top, updates (the App Store) |
+| Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | done: connect on start (per server), reconnect, join root, default subscriptions; n/a: local ports, max payload (the SDK handles it) |
 | Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
-| Sound events: pack, volume, per-event files, enable all/clear all | partial: packs, volume, per event; todo (6): every desktop event (sent messages, voice activation, question mode, mute all, typing, transmit queue, new video/desktop, intercept), a file per event |
-| Text to speech: per-event messages with variables, voice, rate, volume, interrupt, output mode | todo (6): through VoiceOver (announcements) or the system voice |
+| Sound events: pack, volume, per-event files, enable all/clear all | done: every desktop event (31) with the desktop's sounds built in, packs, volume, a file of your own per event, all on, all off, revert |
+| Text to speech: per-event messages with variables, voice, rate, volume, interrupt, output mode | done: the desktop's 20 events with its messages and {variables}, editable, through VoiceOver or the system voice (voice, speed, volume), interrupting or not |
 | Shortcuts | todo (10): hardware keyboard |
 | Video capture: device, resolution, format, codec | todo (9) |
 
@@ -145,7 +145,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
    properties, save configuration, statistics, bans by address.
 5. **Sound and recording** (done): audio routes, echo cancellation, gain, denoising,
    media vs voice volume, client statistics, recording options, text logs.
-6. **Preferences**: every desktop sound event, spoken events with templates,
+6. **Preferences** (done): every desktop sound event, spoken events with templates,
    display and connection options, reset.
 7. **Connecting**: encryption certificates, web login, join codes, tt:// and
    .tt files, public server list, status message and channel password per

@@ -329,6 +329,8 @@ pub struct Channel {
     pub hidden: bool,
     /// Classroom channels: who may send what.
     pub transmit: Vec<TransmitPermission>,
+    /// One-at-a-time channels: who waits to talk, the one talking first.
+    pub transmit_queue: Vec<i32>,
     /// Admins only; empty otherwise.
     pub operator_password: String,
     pub disk_quota: i64,
@@ -355,6 +357,7 @@ impl From<core::Channel> for Channel {
             no_voice_activation: c.no_voice_activation,
             no_recording: c.no_recording,
             hidden: c.hidden,
+            transmit_queue: c.transmit_queue.clone(),
             operator_password: c.operator_password.clone(),
             disk_quota: c.disk_quota,
             codec: c.codec.into(),
