@@ -15,7 +15,8 @@ final class AppModel {
             save()
             connections.values.forEach { $0.applyTalkMode() }
             if talkMode != oldValue && (talkMode == .voiceActivation || oldValue == .voiceActivation) {
-                sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff)
+                // Changed by me (the desktop's "Me" menu sounds).
+                if !loading { sounds.play(talkMode == .voiceActivation ? .voiceActivationMeOn : .voiceActivationMeOff) }
             }
         }
     }
@@ -282,6 +283,8 @@ final class AppModel {
         loading = false
         if convertedSettings { save() }
         sounds.packsChanged = { [weak self] in self?.account.changed() }
+        // The desktop plays "Voice activation enabled" when it starts with it on.
+        if talkMode == .voiceActivation { sounds.play(.voiceActivationOn) }
         setUpHeadsetButton()
         // The desktop's "Sound device detected" status messages (a headset
         // in or out), and the microphone menu kept current.

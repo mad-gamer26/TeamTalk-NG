@@ -4,6 +4,7 @@ import SwiftUI
 struct SoundsView: View {
     @Environment(AppModel.self) private var model
     @State private var choosingFor: SoundEvent?
+    @State private var importing = false
 
     @ViewBuilder private func actions(_ e: SoundEvent) -> some View {
         Button("Play") { model.sounds.preview(e) }
@@ -30,10 +31,13 @@ struct SoundsView: View {
                     ForEach(sounds.packs) { Text($0.name).tag($0.id) }
                 }
                 NavigationLink("Get sound packs") { CatalogView() }
+                Button("Import a sound pack") { importing = true }
                 Picker("Playback mode", selection: $b.playbackMode) {
                     ForEach(SoundStore.PlaybackMode.allCases) { Text($0.label).tag($0) }
                 }
                 NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: "\(Int(sounds.volume * 100)) percent")
+            } footer: {
+                Text("A desktop client's sound pack imports as it is: choose its folder (a zip opens into one in the Files app). Its sounds have the desktop's names, such as logged_on.wav and hotkey.wav.")
             }
             Section {
                 ForEach(SoundEvent.allCases) { e in
@@ -53,7 +57,7 @@ struct SoundsView: View {
                 Button("As they were at first", role: .destructive) { sounds.revert() }
             }
             if sounds.installed.isEmpty == false {
-                Section("Downloaded packs") {
+                Section("Installed packs") {
                     ForEach(sounds.installed) { p in
                         Text(p.version.isEmpty ? "\(p.name), by \(p.author)" : "\(p.name), by \(p.author), version \(p.version)")
                             .swipeActions { Button("Delete", role: .destructive) { sounds.remove(p) } }
@@ -61,6 +65,9 @@ struct SoundsView: View {
                     }
                 }
             }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { r in
+            if case .success(let url) = r { announce(model.sounds.importPack(from: url)) }
         }
         .navigationTitle("Sounds")
         .navigationBarTitleDisplayMode(.inline)

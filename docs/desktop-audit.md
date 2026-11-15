@@ -177,3 +177,17 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - NG's own keys moved off the desktop's: talk Command-Shift-P (was
   Command-T, the desktop's Speak Client Statistics), tabs Control-1/2/3
   (Command-1 to 8 are the desktop's subscriptions).
+
+## I. Sound events and packs — 2026-11-15
+
+- [x] The desktop's sound events by its names, in its order, by its file
+      names (settings.h SOUNDEVENT_*_DEFAULT), so its sound packs work as
+      they are: "Hotkey pressed" (hotkey.wav) replaces this app's own
+      talking on/off sounds (played on press and release, as the desktop's
+      push-to-talk); "Voice activation enabled/disabled via "Me" menu"
+      (vox_me_*) when I change the talk mode, "Voice activation enabled"
+      (vox_enable) when the app starts with it on. n/a: "Channel silent"
+      (no sound by default), "Desktop access request" (no desktop sharing).
+- [x] Import a sound pack from a folder (Settings → Sounds): the desktop's
+      names, any sound file kind; the old app's on.* plays as the hotkey.
+      Earlier own sounds and settings for on/off carry over.

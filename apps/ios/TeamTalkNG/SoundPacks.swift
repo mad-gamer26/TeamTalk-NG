@@ -6,60 +6,73 @@ import Observation
 /// The sounds a pack can have (TeamTalk's file names, shared by every
 /// pack): every sound event the desktop client has.
 enum SoundEvent: String, CaseIterable, Identifiable, Codable {
-    case on, off
-    case channelMessage = "channel_msg", channelMessageSent = "channel_msg_sent"
-    case privateMessage = "user_msg", privateMessageSent = "user_msg_sent"
-    case broadcastMessage = "broadcast_msg"
-    case serverLost = "serverlost"
-    case userJoined = "newuser", userLeft = "removeuser"
+    // The desktop's sound events, in its order (soundeventsmodel.cpp), by
+    // its file names (settings.h SOUNDEVENT_*_DEFAULT), so a desktop sound
+    // pack works as it is. Not here: "Channel silent" (no sound by default)
+    // and "Desktop access request" (no desktop sharing on phones).
     case loggedIn = "logged_on", loggedOut = "logged_off"
+    case userJoined = "newuser", userLeft = "removeuser"
+    case serverLost = "serverlost"
+    case privateMessage = "user_msg", privateMessageSent = "user_msg_sent"
+    case typing = "typing"
+    case channelMessage = "channel_msg", channelMessageSent = "channel_msg_sent"
+    case broadcastMessage = "broadcast_msg"
+    case hotkey = "hotkey"
+    case newVideo = "videosession", newDesktop = "desktopsession"
     case fileUpdate = "fileupdate", transferComplete = "filetx_complete"
     case questionMode = "questionmode"
     case voiceActivationOn = "vox_enable", voiceActivationOff = "vox_disable"
+    case voiceActivationMeOn = "vox_me_enable", voiceActivationMeOff = "vox_me_disable"
     case voiceActivationStarts = "voiceact_on", voiceActivationStops = "voiceact_off"
     case muteAllOn = "mute_all", muteAllOff = "unmute_all"
     case yourTurn = "txqueue_start", turnOver = "txqueue_stop"
     case intercepted = "intercept", interceptEnded = "interceptEnd"
-    case typing = "typing"
-    case newVideo = "videosession", newDesktop = "desktopsession"
 
     var id: Self { self }
     var fileName: String { rawValue + ".wav" }
 
+    /// The desktop's names.
     var label: String {
         switch self {
-        case .on: "Talking starts (push to talk)"
-        case .off: "Talking stops (push to talk)"
-        case .channelMessage: "Channel message"
-        case .channelMessageSent: "Channel message sent"
-        case .privateMessage: "Private message"
+        case .loggedIn: "User logged in"
+        case .loggedOut: "User logged out"
+        case .userJoined: "User joined channel"
+        case .userLeft: "User left channel"
+        case .serverLost: "Connection to server lost"
+        case .privateMessage: "Private message received"
         case .privateMessageSent: "Private message sent"
-        case .broadcastMessage: "Broadcast message"
-        case .serverLost: "Connection lost"
-        case .userJoined: "Someone joins your channel"
-        case .userLeft: "Someone leaves your channel"
-        case .loggedIn: "Someone logs in to the server"
-        case .loggedOut: "Someone logs out of the server"
-        case .fileUpdate: "Channel files change"
-        case .transferComplete: "Transfer finished"
-        case .questionMode: "Someone has a question"
-        case .voiceActivationOn: "Voice activation turned on"
-        case .voiceActivationOff: "Voice activation turned off"
-        case .voiceActivationStarts: "Voice activation starts sending"
-        case .voiceActivationStops: "Voice activation stops sending"
-        case .muteAllOn: "Everyone muted"
-        case .muteAllOff: "Everyone unmuted"
-        case .yourTurn: "Your turn to talk (one at a time)"
-        case .turnOver: "Your turn is over (one at a time)"
-        case .intercepted: "Someone intercepts you"
-        case .interceptEnded: "Someone stops intercepting you"
-        case .typing: "Someone is typing to you"
-        case .newVideo: "Someone sends video"
-        case .newDesktop: "Someone shares a desktop"
+        case .typing: "User is typing a private message in focused window"
+        case .channelMessage: "Channel message received"
+        case .channelMessageSent: "Channel message sent"
+        case .broadcastMessage: "Broadcast message received"
+        case .hotkey: "Hotkey pressed"
+        case .newVideo: "New video session"
+        case .newDesktop: "New desktop session"
+        case .fileUpdate: "Files updated"
+        case .transferComplete: "File transfer completed"
+        case .questionMode: "User enabled question mode"
+        case .voiceActivationOn: "Voice activation enabled"
+        case .voiceActivationOff: "Voice activation disabled"
+        case .voiceActivationMeOn: "Voice activation enabled via \"Me\" menu"
+        case .voiceActivationMeOff: "Voice activation disabled via \"Me\" menu"
+        case .voiceActivationStarts: "Voice activation triggered"
+        case .voiceActivationStops: "Voice activation stopped"
+        case .muteAllOn: "Mute master volume"
+        case .muteAllOff: "Unmute master volume"
+        case .yourTurn: "Transmit ready in \"No interruption\" channel"
+        case .turnOver: "Transmit stopped in \"No interruption\" channel"
+        case .intercepted: "Interception by another user"
+        case .interceptEnded: "End of interception by another user"
         }
     }
 
-    /// On unless the desktop has it off by default.
+    /// Earlier names: this app's talking sounds and the old app's became
+    /// the desktop's hotkey sound.
+    var olderNames: [String] { self == .hotkey ? ["on"] : [] }
+
+    /// The kinds of sound file a pack may have (the Monitor's catalog's).
+    static let extensions = ["wav", "mp3", "caf", "aiff", "aif", "m4a", "aac"]
+
     /// The desktop has every sound event on by default (SOUNDEVENT_ACTIVEEVENTS).
     var onByDefault: Bool { true }
 }
@@ -119,6 +132,8 @@ final class SoundStore {
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
+            // This app's talking on and off became the desktop's one hotkey sound.
+            if off.contains("on") && off.contains("off") { disabled.insert(.hotkey) }
             // Once: this app's earlier defaults (five off) become the
             // desktop's (all on); a list changed by hand stays.
             if !defaults.bool(forKey: "soundsDesktopDefaults") {
@@ -133,7 +148,13 @@ final class SoundStore {
         let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
-        finished = PlayerFinished { [weak self] in self?.playNext() }
+        // A sound of my own for talking on: now the hotkey's.
+        let ownOn = Self.customDirectory.appendingPathComponent("on.wav"), ownHotkey = Self.customDirectory.appendingPathComponent("hotkey.wav")
+        if FileManager.default.fileExists(atPath: ownOn.path), !FileManager.default.fileExists(atPath: ownHotkey.path) {
+            try? FileManager.default.moveItem(at: ownOn, to: ownHotkey)
+        }
+        try? FileManager.default.removeItem(at: Self.customDirectory.appendingPathComponent("off.wav"))
+                finished = PlayerFinished { [weak self] in self?.playNext() }
         loading = false
         refreshNotificationSounds()
         save()
@@ -273,8 +294,14 @@ final class SoundStore {
         let own = Self.customDirectory.appendingPathComponent(e.fileName)
         if FileManager.default.fileExists(atPath: own.path) { return own }
         if pack.id != InstalledPack.builtIn.id {
-            let f = Self.directory(pack.id).appendingPathComponent(e.fileName)
-            if FileManager.default.fileExists(atPath: f.path) { return f }
+            // The desktop's name in any kind of sound file, else an older name.
+            let dir = Self.directory(pack.id)
+            for name in [e.rawValue] + e.olderNames {
+                for ext in SoundEvent.extensions {
+                    let f = dir.appendingPathComponent("\(name).\(ext)")
+                    if FileManager.default.fileExists(atPath: f.path) { return f }
+                }
+            }
         }
         return Bundle.main.url(forResource: e.rawValue, withExtension: "wav")
     }
@@ -302,7 +329,7 @@ final class SoundStore {
         try? FileManager.default.removeItem(at: staging)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for f in pack.files where SoundEvent.allCases.contains(where: { $0.fileName == f.name }) || f.name.hasSuffix(".wav") {
+        for f in pack.files where SoundEvent.extensions.contains((f.name as NSString).pathExtension.lowercased()) {
             // Names come from the catalog: keep them to plain file names.
             guard !f.name.contains("/"), !f.name.hasPrefix(".") else { continue }
             let url = Self.catalogBase.appendingPathComponent("v1/packs/\(pack.id)/files/\(f.name)")
@@ -324,6 +351,56 @@ final class SoundStore {
         var req = URLRequest(url: Self.catalogBase.appendingPathComponent("v1/catalog/\(pack.id)/installed"))
         req.httpMethod = "POST"
         _ = try? await URLSession.shared.data(for: req)
+    }
+
+    /// Packs imported from the iPhone's files (not the catalog's).
+    static func isImported(_ id: String) -> Bool { id.hasPrefix("imported-") }
+
+    /// Imports a sound pack from a folder (a desktop client's pack, such as
+    /// one of its Sounds folders, or one unzipped in the Files app): its
+    /// sounds by the desktop's names, in any kind of sound file; chooses it.
+    /// A message saying what came in, or what's wrong.
+    func importPack(from folder: URL) -> String {
+        let reading = folder.startAccessingSecurityScopedResource()
+        defer { if reading { folder.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        var dir = folder
+        func files(_ d: URL) -> [URL] { (try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] }
+        func isDir(_ u: URL) -> Bool { (try? u.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false }
+        // A zip unzipped often holds one folder with the sounds.
+        var list = files(dir)
+        if !list.contains(where: { !isDir($0) && SoundEvent.extensions.contains($0.pathExtension.lowercased()) }),
+           let only = list.filter(isDir).first, list.filter(isDir).count == 1 {
+            dir = only
+            list = files(dir)
+        }
+        var found: [(SoundEvent, URL)] = []
+        for e in SoundEvent.allCases {
+            for name in [e.rawValue] + e.olderNames {
+                if let f = list.first(where: { $0.deletingPathExtension().lastPathComponent.caseInsensitiveCompare(name) == .orderedSame
+                    && SoundEvent.extensions.contains($0.pathExtension.lowercased()) }) {
+                    found.append((e, f))
+                    break
+                }
+            }
+        }
+        guard !found.isEmpty else {
+            return "No sounds there: a pack's sounds are named as the desktop client's, such as logged_on.wav and hotkey.wav."
+        }
+        let id = "imported-" + UUID().uuidString.prefix(8).lowercased()
+        let target = Self.directory(id)
+        try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+        var copied = 0
+        for (e, f) in found where (try? fm.copyItem(at: f, to: target.appendingPathComponent("\(e.rawValue).\(f.pathExtension.lowercased())"))) != nil {
+            copied += 1
+        }
+        guard copied > 0 else { try? fm.removeItem(at: target); return "The sounds couldn't be read." }
+        installed.append(InstalledPack(id: id, name: folder.lastPathComponent, author: "imported", version: ""))
+        installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        selectedId = id
+        save()
+        let missing = SoundEvent.allCases.count - copied
+        return "Imported \(folder.lastPathComponent): \(copied) sounds" + (missing > 0 ? ", the built-in ones for the other \(missing)." : ".")
     }
 
     func remove(_ pack: InstalledPack) {

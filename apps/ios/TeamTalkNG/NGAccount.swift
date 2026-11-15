@@ -255,8 +255,10 @@ final class NGAccountStore {
     private var packSettings: [SyncSetting] {
         guard syncPacks, !applyingPacks else { return [] }
         let s = app.sounds
-        let chosen = s.selectedId == InstalledPack.builtIn.id ? "default" : "catalog:" + s.selectedId
-        return [SyncSetting(key: Self.installedPacksKey, json: Self.fragment(s.installed.map(\.id).sorted())),
+        // A pack imported from this iPhone's files isn't in the catalog: "local".
+        let chosen = s.selectedId == InstalledPack.builtIn.id ? "default"
+            : SoundStore.isImported(s.selectedId) ? "local:" + s.selectedId : "catalog:" + s.selectedId
+        return [SyncSetting(key: Self.installedPacksKey, json: Self.fragment(s.installed.map(\.id).filter { !SoundStore.isImported($0) }.sorted())),
                 SyncSetting(key: Self.chosenPackKey, json: Self.fragment(chosen))]
     }
 
@@ -280,7 +282,7 @@ final class NGAccountStore {
             let selected = s.selectedId
             if let packs {
                 let want = Set(packs)
-                for p in s.installed where !want.contains(p.id) { s.remove(p) }
+                for p in s.installed where !want.contains(p.id) && !SoundStore.isImported(p.id) { s.remove(p) }
                 let missing = want.subtracting(s.installed.map(\.id))
                 if !missing.isEmpty, let catalog = try? await s.catalog() {
                     for p in catalog where missing.contains(p.id) { try? await s.install(p) }

@@ -880,14 +880,15 @@ final class ServerConnection {
     func setTransmitting(_ on: Bool) {
         guard isConnected, app?.talkMode == .pushToTalk, on != transmitting else { return }
         transmitting = on
-        sound(on ? .on : .off)
+        // The desktop's push-to-talk hotkey sound, pressed and released.
+        sound(.hotkey)
         if on { checkBlocked(.voice) }
         run("Couldn't talk") { try $0.setTransmitting(on: on) }
     }
 
     func setMicMuted(_ on: Bool) {
         muted = on
-        sound(on ? .off : .on)
+        sound(.hotkey)
         applyTalkMode()
     }
 
