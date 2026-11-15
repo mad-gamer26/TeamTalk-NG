@@ -405,9 +405,28 @@ private struct ChannelRow: View {
             actions
         }
         .accessibilityActions {
+            voiceOverActions
             if expandable { Button(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) } }
-            actions
         }
+    }
+
+    /// The actions in reverse, for VoiceOver (the owner's choice: its list
+    /// is the touch-and-hold menu's, reversed).
+    @ViewBuilder private var voiceOverActions: some View {
+        if moderate {
+            if channel.classroom { Button("Classroom: who may send", action: classroom) }
+            Button("Channel bans", action: bans)
+        }
+        if !picked.isEmpty { Button("Move the \(picked.count) picked here", action: movePicked) }
+        if rights.modifyChannels {
+            if channel.parentId != 0 { Button("Delete channel", action: delete) }
+            Button("Edit channel", action: edit)
+        }
+        if rights.modifyChannels || rights.createTemporaryChannels {
+            Button("New channel inside", action: newSub)
+        }
+        Button("Copy a tt:// link to it", action: copyLink)
+        Button("Channel information", action: info)
     }
 
     @ViewBuilder private var actions: some View {
@@ -476,7 +495,22 @@ private struct UserRow: View {
         .accessibilityHint("Double-tap for everything about \(isMe ? "you" : user.displayName).")
         .accessibilityAddTraits(.isButton)
         .contextMenu { if isMe { Button("Details and controls", action: details) } else { actions } }
-        .accessibilityActions { if !isMe { actions } }
+        .accessibilityActions { if !isMe { voiceOverActions } }
+    }
+
+    /// The actions in reverse, for VoiceOver.
+    @ViewBuilder private var voiceOverActions: some View {
+        if rights.ban {
+            Button("Ban by IP address and kick") { ban(.ipAddress) }
+            Button("Ban by account and kick") { ban(.username) }
+        }
+        if rights.kick {
+            Button("Kick from the server") { kick(false) }
+            if user.channelId > 0 { Button("Kick from the channel") { kick(true) } }
+        }
+        if rights.moveUsers { Button("Move to a channel", action: move) }
+        Button("Details and controls", action: details)
+        Button("Message privately", action: message)
     }
 
     @ViewBuilder private var actions: some View {

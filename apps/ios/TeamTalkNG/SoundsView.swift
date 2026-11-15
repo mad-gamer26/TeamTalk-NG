@@ -11,6 +11,13 @@ struct SoundsView: View {
         if model.sounds.hasOwnFile(e) { Button("Use the pack's sound") { model.sounds.resetFile(e) } }
     }
 
+    /// The same, reversed for VoiceOver.
+    @ViewBuilder private func voiceOverActions(_ e: SoundEvent) -> some View {
+        if model.sounds.hasOwnFile(e) { Button("Use the pack's sound") { model.sounds.resetFile(e) } }
+        Button("Choose a sound file") { choosingFor = e }
+        Button("Play") { model.sounds.preview(e) }
+    }
+
     var body: some View {
         let sounds = model.sounds
         @Bindable var b = sounds
@@ -27,7 +34,7 @@ struct SoundsView: View {
                 ForEach(SoundEvent.allCases) { e in
                     Toggle(sounds.hasOwnFile(e) ? "\(e.label) (your own sound)" : e.label,
                            isOn: Binding(get: { sounds.isOn(e) }, set: { sounds.setOn(e, $0) }))
-                        .accessibilityActions { actions(e) }
+                        .accessibilityActions { voiceOverActions(e) }
                         .contextMenu { actions(e) }
                 }
             } header: {

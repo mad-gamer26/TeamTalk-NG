@@ -115,16 +115,17 @@ private struct ServerRow: View {
             }
             Button("Delete", role: .destructive) { model.delete(server) }
         }
+        // Reversed for VoiceOver (the touch-and-hold menu's order, backwards).
         .accessibilityActions {
-            Button("Edit", action: edit)
+            Button("Delete") { model.delete(server) }
+            if connection?.state != nil && connection?.state != .disconnected {
+                Button("Disconnect") { connection?.disconnect() }
+            }
             Button("Copy its tt:// link") {
                 UIPasteboard.general.string = ttLink(entry: server.entry(password: ""))
                 announce("Link copied")
             }
-            if connection?.state != nil && connection?.state != .disconnected {
-                Button("Disconnect") { connection?.disconnect() }
-            }
-            Button("Delete") { model.delete(server) }
+            Button("Edit", action: edit)
         }
     }
 }
@@ -148,8 +149,8 @@ struct ServerEditView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityActions {
-            Button("Import from Files") { importingCert = kind }
             if has { Button("Remove") { server[keyPath: path] = "" } }
+            Button("Import from Files") { importingCert = kind }
         }
         .contextMenu {
             Button("Import from Files") { importingCert = kind }
