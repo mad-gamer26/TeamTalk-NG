@@ -359,6 +359,19 @@ final class AppModel {
     }
 
     /// Servers marked to connect when the app starts.
+    /// The server screens open (so Siri and Control Center can open one).
+    var navigation: [SavedServer] = []
+
+    /// Opens a saved server's screen and connects (Siri, Control Center).
+    func openServer(id: String) {
+        guard let s = servers.first(where: { $0.id.uuidString == id }) else { return }
+        connection(for: s).connect()
+        navigation = [s]
+    }
+
+    /// The app, for App Intents (Siri and Control Center run in it).
+    @MainActor static weak var shared: AppModel?
+
     func connectOnStart() {
         for s in servers where s.connectOnStart == true { connection(for: s).connect() }
     }
@@ -392,6 +405,8 @@ final class AppModel {
         // loaded yet back to their defaults.
         guard !loading else { return }
         defaults.set(try? JSONEncoder().encode(servers), forKey: "servers")
+        // Their names for Siri and the Control Center control.
+        Service.group?.set(servers.map { ["id": $0.id.uuidString, "name": $0.title] }, forKey: "shortcutServers")
         defaults.set(talkMode.rawValue, forKey: "talkMode")
         defaults.set(voiceLevel, forKey: "voiceLevel")
         defaults.set(nickname, forKey: "nickname")

@@ -13,7 +13,8 @@ struct ServerListView: View {
     @State private var link = ""
 
     var body: some View {
-        NavigationStack {
+        @Bindable var model = model
+        NavigationStack(path: $model.navigation) {
             List {
                 Section {
                     NavigationLink {

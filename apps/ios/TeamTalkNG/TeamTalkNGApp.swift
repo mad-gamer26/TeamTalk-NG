@@ -16,6 +16,7 @@ struct TeamTalkNGApp: App {
                     // Set up at once, so sounds and speech play along with
                     // other apps from the start (not only once connected).
                     AudioSession.activate()
+                    AppModel.shared = model
                     // The Monitor's notifications: the device token to it.
                     PushDelegate.tokenArrived = { token in Task { await model.monitor.setPushToken(token) } }
                     model.connectOnStart()

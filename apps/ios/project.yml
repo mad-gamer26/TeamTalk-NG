@@ -28,6 +28,7 @@ targets:
     platform: iOS
     sources:
       - TeamTalkNG
+      - Shared
       - path: Generated/ttng_ffi.swift
     info:
       path: TeamTalkNG/Info.plist
@@ -77,6 +78,8 @@ targets:
         # The SDK inside the core is C++ and uses zlib (and FFmpeg in the
         # SDK built from source, iconv).
         OTHER_LDFLAGS: ["-lc++", "-lz", "-liconv"]
+        # Shared/ConnectIntent.swift acts only in the app.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TTNG_APP"
     entitlements:
       path: Generated/TeamTalkNG.entitlements
       properties:
@@ -85,6 +88,8 @@ targets:
         com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
     dependencies:
       - target: TeamTalkNGNotifications
+        embed: true
+      - target: TeamTalkNGControls
         embed: true
       - framework: Generated/TeamTalkCore.xcframework
         embed: false
@@ -120,6 +125,34 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID).Notifications"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+
+  # The Control Center control (iOS 18): "Connect to Server".
+  TeamTalkNGControls:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - Controls
+      - Shared
+    info:
+      path: Generated/ControlsInfo.plist
+      properties:
+        CFBundleDisplayName: "$(TTNG_DISPLAY_NAME) Controls"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        TTNGAppGroup: "$(TTNG_APP_GROUP)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Generated/Controls.entitlements
+      properties:
+        com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID).Controls"
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
