@@ -131,6 +131,7 @@ final class SoundStore {
         let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
+        finished = PlayerFinished { [weak self] in self?.playNext() }
         loading = false
         save()
     }
@@ -207,16 +208,38 @@ final class SoundStore {
     func preview(_ e: SoundEvent, pack: InstalledPack? = nil) {
         guard let url = url(for: e, in: pack ?? selected), let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.volume = Float(volume)
+        p.delegate = finished
         players.removeAll { !$0.isPlaying }
-        // The desktop's "One by One": each waits for the one before.
-        if playbackMode == .oneByOne, let last = players.last {
-            let wait = max(0, last.duration - last.currentTime)
+        switch playbackMode {
+        case .standard:
+            // The desktop's default: a new sound stops the one playing.
+            players.forEach { $0.stop() }
+            players = [p]
+            p.play()
+        case .oneByOne:
+            // Truly one after another: it waits its turn in the queue.
+            if players.contains(where: \.isPlaying) {
+                waiting.append(p)
+            } else {
+                players.append(p)
+                p.play()
+            }
+        case .overlapping:
             players.append(p)
-            p.play(atTime: p.deviceCurrentTime + wait)
-            return
+            p.play()
         }
-        players.append(p)
-        p.play()
+    }
+
+    /// One by One: the sounds waiting for the one playing to finish.
+    @ObservationIgnored private var waiting: [AVAudioPlayer] = []
+    @ObservationIgnored private var finished: PlayerFinished?
+
+    private func playNext() {
+        players.removeAll { !$0.isPlaying }
+        guard playbackMode == .oneByOne, !players.contains(where: \.isPlaying), !waiting.isEmpty else { return }
+        let next = waiting.removeFirst()
+        players.append(next)
+        next.play()
     }
 
     /// The desktop's sound event "Playback mode".
@@ -304,5 +327,17 @@ final class SoundStore {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SoundPacks", isDirectory: true)
             .appendingPathComponent(id, isDirectory: true)
+    }
+}
+
+/// Tells the sound store a sound finished (for One by One).
+final class PlayerFinished: NSObject, AVAudioPlayerDelegate {
+    private let done: @MainActor () -> Void
+    init(_ done: @escaping @MainActor () -> Void) { self.done = done }
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in done() }
+    }
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor in done() }
     }
 }

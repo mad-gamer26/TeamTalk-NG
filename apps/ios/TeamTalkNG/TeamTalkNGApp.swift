@@ -13,6 +13,9 @@ struct TeamTalkNGApp: App {
                 .environment(model)
                 .onOpenURL { model.open($0) }
                 .task {
+                    // Set up at once, so sounds and speech play along with
+                    // other apps from the start (not only once connected).
+                    AudioSession.activate()
                     // The Monitor's notifications: the device token to it.
                     PushDelegate.tokenArrived = { token in Task { await model.monitor.setPushToken(token) } }
                     model.connectOnStart()
@@ -22,7 +25,7 @@ struct TeamTalkNGApp: App {
         .onChange(of: phase) { _, p in
             // Away after a while in the background, as the desktop is after
             // a while without input.
-            if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
+            if p == .active { model.activeChanged(true); AudioSession.activate() } else if p == .background { model.activeChanged(false) }
         }
     }
 }
