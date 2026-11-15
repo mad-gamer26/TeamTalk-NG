@@ -180,11 +180,22 @@ fn a_whole_encrypted_session_with_tt5prosrv() {
         eprintln!("skipped: no tt5prosrv (scripts/build-sdk-linux.sh linux)");
         return;
     };
+    // BearWare's Professional server starts only with a BearWare.dk web
+    // login authorized for it: its ID and access token, from
+    // TTNG_PROSRV_BEARWARE ("id token", kept private).
+    let Some((id, token)) = std::env::var("TTNG_PROSRV_BEARWARE")
+        .ok()
+        .and_then(|v| v.split_once(' ').map(|(a, b)| (a.to_owned(), b.trim().to_owned())))
+    else {
+        eprintln!("skipped: tt5prosrv needs TTNG_PROSRV_BEARWARE (a BearWare.dk ID and token)");
+        return;
+    };
     let certs = Certs::make("pro");
     let server = Server::start_exe(
         exe,
         &format!(
-            "<certificate-file>{}</certificate-file><privatekey-file>{}</privatekey-file>",
+            "<certificate-file>{}</certificate-file><privatekey-file>{}</privatekey-file>\
+             <bearware-weblogin><bearwareid>{id}</bearwareid><bearwaretoken>{token}</bearwaretoken></bearware-weblogin>",
             certs.path("srv.pem"),
             certs.path("srv.key")
         ),
