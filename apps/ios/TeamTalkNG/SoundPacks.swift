@@ -124,8 +124,8 @@ final class SoundStore {
     var selectedId: String = InstalledPack.builtIn.id { didSet { save(); if !loading, oldValue != selectedId { packsChanged?() } } }
     /// Installed or chosen packs changed here (NG Account sends them).
     @ObservationIgnored var packsChanged: (() -> Void)?
-    /// 0–1.
-    var volume: Double = 0.8 { didSet { save() } }
+    /// 0–1; the desktop's default is 100 (SOUNDEVENT_VOLUME_DEFAULT).
+    var volume: Double = 1 { didSet { save() } }
     private(set) var disabled: Set<SoundEvent> = []
 
     private let defaults = UserDefaults.standard
@@ -140,7 +140,12 @@ final class SoundStore {
         selectedId = defaults.string(forKey: "soundPack") ?? InstalledPack.builtIn.id
         playbackMode = PlaybackMode(rawValue: defaults.string(forKey: "soundPlaybackMode") ?? "") ?? .standard
         enabled = defaults.object(forKey: "soundEventsEnabled") as? Bool ?? true
-        volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
+        volume = defaults.object(forKey: "soundVolume") as? Double ?? 1
+        // Once: this app's earlier default (80) becomes the desktop's 100.
+        if !defaults.bool(forKey: "soundVolumeDesktopDefault") {
+            defaults.set(true, forKey: "soundVolumeDesktopDefault")
+            if abs(volume - 0.8) < 0.001 { volume = 1 }
+        }
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
             // This app's talking on and off sounds are the voice activation ones now.

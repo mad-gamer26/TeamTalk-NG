@@ -334,7 +334,7 @@ final class AppModel {
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
-        sounds.volume = 0.8
+        sounds.volume = 1
         sounds.selectedId = InstalledPack.builtIn.id
         speech.revert()
         chatTemplates.revert()
