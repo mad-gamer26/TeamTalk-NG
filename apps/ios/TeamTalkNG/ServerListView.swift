@@ -1,4 +1,15 @@
 import SwiftUI
+import UIKit
+
+/// The share sheet, from anywhere (a menu item or a VoiceOver action).
+@MainActor func presentShareSheet(_ items: [Any]) {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
+          var top = scene.keyWindow?.rootViewController else { return }
+    while let p = top.presentedViewController { top = p }
+    let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+    sheet.popoverPresentationController?.sourceView = top.view
+    top.present(sheet, animated: true)
+}
 
 /// The first screen: saved servers, with each one's connection state.
 struct ServerListView: View {
@@ -59,14 +70,16 @@ struct ServerListView: View {
                         Button("Import a .tt file") { importing = true }
                         // The desktop's "Export Server list to .tt File".
                         if !model.servers.isEmpty {
-                            ShareLink(item: ttFileURL(for: model.servers)) { Text("Export Server list to .tt File") }
+                            Button("Export Server list to .tt File") { presentShareSheet([ttFileURL(for: model.servers)]) }
                         }
                         Button("Open a tt:// link") { linking = true }
                     }
-                    // Its items as VoiceOver actions too, reversed (the
-                    // export is a share sheet, so it stays in the menu).
+                    // Its items as VoiceOver actions too, reversed.
                     .accessibilityActions {
                         Button("Open a tt:// link") { linking = true }
+                        if !model.servers.isEmpty {
+                            Button("Export Server list to .tt File") { presentShareSheet([ttFileURL(for: model.servers)]) }
+                        }
                         Button("Import a .tt file") { importing = true }
                         Button("Public servers and join codes") { showPublic = true }
                         Button("Type its details") { editing = SavedServer() }
