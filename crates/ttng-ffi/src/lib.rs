@@ -1505,10 +1505,10 @@ mod tests {
     fn errors_keep_their_words() {
         let e: TtError = core::Error::Server {
             code: 2001,
-            message: "The username or password is wrong.".into(),
+            message: "Incorrect username or password. Try again.".into(),
         }
         .into();
-        assert_eq!(e.to_string(), "The username or password is wrong.");
+        assert_eq!(e.to_string(), "Incorrect username or password. Try again.");
         assert!(matches!(e, TtError::Server { code: 2001, .. }));
     }
 

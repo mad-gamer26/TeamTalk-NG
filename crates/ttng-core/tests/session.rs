@@ -36,9 +36,9 @@ fn a_wrong_password_says_so_and_isnt_retried() {
     o.password = "wrong".into();
     o.reconnect = true;
     let err = a.client.connect(o).unwrap_err();
-    assert_eq!(err.to_string(), "The username or password is wrong.");
+    assert_eq!(err.to_string(), "Incorrect username or password. Try again.");
     a.wait_for("the failure event", |e| {
-        matches!(e, Event::ConnectionFailed(m) if m == "The username or password is wrong.").then_some(())
+        matches!(e, Event::ConnectionFailed(m) if m == "Incorrect username or password. Try again.").then_some(())
     });
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(

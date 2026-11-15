@@ -188,7 +188,11 @@ final class ServerConnection {
 
     func join(_ channel: Channel, password: String = "") {
         let path = channel.parentId == 0 ? "/" : client.channelPath(channelId: channel.id)
-        run("Couldn't join", onFail: { [weak self] in self?.status(nil, "Cannot join channel \(path)") }) {
+        run("Couldn't join", onFail: { [weak self] why in
+            self?.status(nil, "Cannot join channel \(path)")
+            // The desktop asks again: "Incorrect channel password. Try again."
+            if why == "Incorrect channel password. Try again." { self?.retryChannelPassword = channel }
+        }) {
             try $0.joinChannel(channelId: channel.id, password: password)
         }
     }
@@ -213,6 +217,7 @@ final class ServerConnection {
         } else {
             guard snap.myChannelId > 0 else { return }
             target = .channel(channelId: snap.myChannelId)
+            checkBlocked(.channelMessages)
         }
         run("Couldn't send") { try $0.sendMessage(target: target, text: text) }
     }
@@ -396,7 +401,30 @@ final class ServerConnection {
         var id: String { path }
     }
 
+    /// The desktop's canTx (utiltt.cpp): in a classroom channel only those
+    /// listed (or everyone, when listed) may send; in other channels the
+    /// list blocks.
+    func canTransmit(_ s: TransmitStream) -> Bool {
+        guard let snap = snapshot, let c = snap.channels.first(where: { $0.id == snap.myChannelId }) else { return true }
+        let listed = { (id: Int32) in c.transmit.contains { $0.userId == id && $0.allowed.contains(s) } }
+        return c.classroom ? (listed(snap.myUserId) || listed(0)) : !listed(snap.myUserId)
+    }
+
+    /// The desktop's "… blocked by channel operator" status message.
+    private func checkBlocked(_ s: TransmitStream) {
+        guard !canTransmit(s) else { return }
+        let what: String = switch s {
+        case .channelMessages: "Text messages"
+        case .voice: "Voice transmission"
+        case .mediaFile: "Media file transmission"
+        case .video: "Video transmission"
+        case .desktop: "Desktop transmission"
+        }
+        status(.transmissionBlocked, "\(what) blocked by channel operator")
+    }
+
     func startStream(_ plan: StreamPlan, offsetMs: UInt32, looping: Bool) {
+        checkBlocked(.mediaFile)
         run("Couldn't stream") { try $0.streamMediaFile(path: plan.path, offsetMs: offsetMs, paused: false, looping: looping) }
     }
 
@@ -629,7 +657,7 @@ final class ServerConnection {
     }
 
     /// Runs a core call off the main thread; failures are announced.
-    private func run(_ what: String, onFail: (() -> Void)? = nil, _ call: @escaping @Sendable (TtClient) throws -> Void) {
+    private func run(_ what: String, onFail: ((String) -> Void)? = nil, _ call: @escaping @Sendable (TtClient) throws -> Void) {
         let client = self.client
         Task {
             let failed: String? = await Task.detached {
@@ -637,7 +665,7 @@ final class ServerConnection {
             }.value
             if let failed {
                 problem = failed
-                onFail?()
+                onFail?(failed)
                 announce("\(what): \(failed)")
             }
         }
@@ -650,6 +678,7 @@ final class ServerConnection {
         guard isConnected, app?.talkMode == .pushToTalk, on != transmitting else { return }
         transmitting = on
         sound(on ? .on : .off)
+        if on { checkBlocked(.voice) }
         run("Couldn't talk") { try $0.setTransmitting(on: on) }
     }
 
@@ -785,6 +814,22 @@ final class ServerConnection {
         case .desktop: .classroomDesktop
         case .mediaFile: .classroomMediaFile
         }
+    }
+
+    /// A channel whose password was wrong, to ask again (the desktop's
+    /// "Join channel error").
+    var retryChannelPassword: Channel?
+    /// The login was refused for a wrong username or password (the
+    /// desktop's "Login error" dialog).
+    var loginRetry = false
+
+    /// Tries again with a corrected username and password (saved, as the
+    /// desktop's dialog does).
+    func retryLogin(username: String, password: String) {
+        loginRetry = false
+        server.username = username
+        appModel?.upsert(server, password: password)
+        connect()
     }
 
     /// A file waiting for the Stream Media File dialog.
@@ -937,6 +982,8 @@ final class ServerConnection {
             }
         case .connectionFailed(let m):
             problem = m
+            // The desktop's "Login error" dialog, to correct and try again.
+            if m == "Incorrect username or password. Try again." { loginRetry = true }
             sound(.serverLost)
             sayText(.connectivity, m)
             status(nil, m)

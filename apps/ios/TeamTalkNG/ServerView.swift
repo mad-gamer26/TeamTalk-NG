@@ -971,6 +971,9 @@ private struct DesktopDialogs: ViewModifier {
     let connection: ServerConnection
     @Binding var privateWith: User?
     let busy: Bool
+    @State private var askPassword: Channel?
+    @State private var password = ""
+    @State private var username = ""
 
     func body(content: Content) -> some View {
         content
@@ -981,6 +984,25 @@ private struct DesktopDialogs: ViewModifier {
             .sheet(item: Binding(get: { connection.streamPlan }, set: { connection.streamPlan = $0 })) { plan in
                 StreamMediaFileDialog(connection: connection, plan: plan)
             }
+            .onChange(of: connection.retryChannelPassword?.id) {
+                if let c = connection.retryChannelPassword { askPassword = c }
+                connection.retryChannelPassword = nil
+            }
+            .alert("Join channel error", isPresented: Binding(get: { askPassword != nil }, set: { if !$0 { askPassword = nil } })) {
+                SecureField("Password", text: $password)
+                Button("Join") {
+                    if let c = askPassword { connection.join(c, password: password) }
+                    password = ""
+                }
+                Button("Cancel", role: .cancel) { password = "" }
+            } message: { Text("Incorrect channel password. Try again.") }
+            .alert("Login error", isPresented: Binding(get: { connection.loginRetry }, set: { if !$0 { connection.loginRetry = false } })) {
+                TextField("Username", text: $username)
+                SecureField("Password", text: $password)
+                Button("Login") { connection.retryLogin(username: username, password: password); password = "" }
+                Button("Cancel", role: .cancel) { password = "" }
+            } message: { Text("Incorrect username or password. Try again.") }
+            .onChange(of: connection.loginRetry) { if connection.loginRetry { username = connection.server.username } }
             .alert("Excluded", isPresented: Binding(get: { connection.excludedMessage != nil },
                                                     set: { if !$0 { connection.excludedMessage = nil } })) {
                 Button("OK") {}

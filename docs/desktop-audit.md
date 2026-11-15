@@ -133,6 +133,12 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 
 ## G. Behaviour details (mainwindow.cpp) — reading in progress
 
-- [ ] What happens on: kicked, server lost, login refused, channel join
-      refused, transmission blocked, file transfer done, question mode,
-      new video/desktop session, desktop access requests.
+- [x] Server errors in the desktop's words (every CMDERR_*, in the core,
+      so all apps say the same); a wrong login opens "Login error" to
+      correct the username and password and try again (saved); a wrong
+      channel password asks again ("Join channel error"); kicked (status,
+      the desktop's words, the optional dialog); "… blocked by channel
+      operator" when talking, writing to the channel or streaming isn't
+      allowed (the desktop's canTx: classroom lists allow, others block).
+- [ ] Still to read: file transfer done, new video/desktop session,
+      desktop access requests, sound devices (headset in and out).

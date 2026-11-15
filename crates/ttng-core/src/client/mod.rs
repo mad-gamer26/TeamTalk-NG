@@ -2353,30 +2353,51 @@ fn reply_of(req: Request) -> Option<Reply> {
     })
 }
 
-/// The server's error, in plain words where TeamTalk's own text is terse.
+/// The server's error in the desktop client's words (qtTeamTalk's
+/// mainwindow.cpp, CLIENTEVENT_CMD_ERROR), so every app says what it says.
 fn server_error_text(code: i32, server_text: &str) -> String {
     let plain = match code as sys::ClientError {
-        sys::ClientError_CMDERR_INVALID_ACCOUNT => "The username or password is wrong.",
-        sys::ClientError_CMDERR_INCORRECT_CHANNEL_PASSWORD => "The channel's password is wrong.",
-        sys::ClientError_CMDERR_SERVER_BANNED => "You're banned from this server.",
-        sys::ClientError_CMDERR_CHANNEL_BANNED => "You're banned from that channel.",
-        sys::ClientError_CMDERR_NOT_AUTHORIZED => "You're not allowed to do that on this server.",
-        sys::ClientError_CMDERR_MAX_SERVER_USERS_EXCEEDED => "The server is full.",
-        sys::ClientError_CMDERR_MAX_CHANNEL_USERS_EXCEEDED => "The channel is full.",
-        sys::ClientError_CMDERR_MAX_LOGINS_PER_IPADDRESS_EXCEEDED => "Too many people are logged in from your address.",
-        sys::ClientError_CMDERR_COMMAND_FLOOD => "Too many commands too quickly; wait a moment.",
-        sys::ClientError_CMDERR_CHANNEL_NOT_FOUND => "That channel doesn't exist any more.",
-        sys::ClientError_CMDERR_USER_NOT_FOUND => "That person isn't on the server any more.",
-        sys::ClientError_CMDERR_ALREADY_IN_CHANNEL => "You're already in that channel.",
-        sys::ClientError_CMDERR_NOT_IN_CHANNEL => "You're not in a channel.",
-        sys::ClientError_CMDERR_CHANNEL_ALREADY_EXISTS => "There's already a channel with that name there.",
-        sys::ClientError_CMDERR_CHANNEL_HAS_USERS => "That channel still has people in it.",
-        sys::ClientError_CMDERR_BAN_NOT_FOUND => "That ban isn't there any more.",
-        sys::ClientError_CMDERR_MAX_DISKUSAGE_EXCEEDED => "There's no room for that file on the server.",
-        sys::ClientError_CMDERR_FILE_ALREADY_EXISTS => "That channel already has a file with that name.",
-        sys::ClientError_CMDERR_FILESHARING_DISABLED => "This server doesn't share files.",
-        sys::ClientError_CMDERR_MAX_CHANNELS_EXCEEDED => "The server has as many channels as it allows.",
-        sys::ClientError_CMDERR_INCOMPATIBLE_PROTOCOLS => "The server's TeamTalk version is incompatible.",
+        sys::ClientError_CMDERR_SYNTAX_ERROR => "Syntax error",
+        sys::ClientError_CMDERR_UNKNOWN_COMMAND => "Unknown command",
+        sys::ClientError_CMDERR_INCOMPATIBLE_PROTOCOLS => {
+            "The server uses a protocol which is incompatible with the client instance"
+        }
+        sys::ClientError_CMDERR_UNKNOWN_AUDIOCODEC => "Unknown audio codec",
+        sys::ClientError_CMDERR_MISSING_PARAMETER => {
+            "This client is not compatible with the server, so the action cannot be performed."
+        }
+        sys::ClientError_CMDERR_INVALID_USERNAME => "The username is invalid",
+        sys::ClientError_CMDERR_INVALID_ACCOUNT => "Incorrect username or password. Try again.",
+        sys::ClientError_CMDERR_INCORRECT_CHANNEL_PASSWORD => "Incorrect channel password. Try again.",
+        sys::ClientError_CMDERR_SERVER_BANNED => "Banned from server",
+        sys::ClientError_CMDERR_CHANNEL_BANNED => "Banned from channel",
+        sys::ClientError_CMDERR_NOT_AUTHORIZED => "Command not authorized",
+        sys::ClientError_CMDERR_MAX_SERVER_USERS_EXCEEDED => "Maximum number of users on server exceeded",
+        sys::ClientError_CMDERR_MAX_DISKUSAGE_EXCEEDED => "Maximum disk usage exceeded",
+        sys::ClientError_CMDERR_MAX_CHANNEL_USERS_EXCEEDED => "Maximum number of users in channel exceeded",
+        sys::ClientError_CMDERR_INCORRECT_OP_PASSWORD => "Incorrect channel operator password",
+        sys::ClientError_CMDERR_MAX_LOGINS_PER_IPADDRESS_EXCEEDED => "Maximum number of logins per IP-address exceeded",
+        sys::ClientError_CMDERR_AUDIOCODEC_BITRATE_LIMIT_EXCEEDED => "Maximum bitrate for audio codec exceeded",
+        sys::ClientError_CMDERR_MAX_CHANNELS_EXCEEDED => "The maximum number of channels has been exceeded",
+        sys::ClientError_CMDERR_COMMAND_FLOOD => "Command flooding prevented by server",
+        sys::ClientError_CMDERR_MAX_FILETRANSFERS_EXCEEDED => "Maximum number of file transfers exceeded",
+        sys::ClientError_CMDERR_ALREADY_LOGGEDIN => "Already logged in",
+        sys::ClientError_CMDERR_NOT_LOGGEDIN => "Cannot perform action because client is currently not logged in",
+        sys::ClientError_CMDERR_ALREADY_IN_CHANNEL => "Cannot join the same channel twice",
+        sys::ClientError_CMDERR_CHANNEL_ALREADY_EXISTS => "Channel already exists",
+        sys::ClientError_CMDERR_USER_NOT_FOUND => "User not found",
+        sys::ClientError_CMDERR_OPENFILE_FAILED => "Server failed to open file",
+        sys::ClientError_CMDERR_LOGINSERVICE_UNAVAILABLE => "The login service is currently unavailable",
+        sys::ClientError_CMDERR_CHANNEL_CANNOT_BE_HIDDEN => "This channel cannot be hidden",
+        sys::ClientError_CMDERR_CHANNEL_NOT_FOUND => "Channel not found",
+        sys::ClientError_CMDERR_NOT_IN_CHANNEL => "Cannot leave channel because not in channel.",
+        sys::ClientError_CMDERR_BAN_NOT_FOUND => "Banned user not found",
+        sys::ClientError_CMDERR_FILETRANSFER_NOT_FOUND => "File transfer not found",
+        sys::ClientError_CMDERR_ACCOUNT_NOT_FOUND => "User account not found",
+        sys::ClientError_CMDERR_FILE_NOT_FOUND => "File not found",
+        sys::ClientError_CMDERR_FILE_ALREADY_EXISTS => "File already exists",
+        sys::ClientError_CMDERR_FILESHARING_DISABLED => "File sharing is disabled",
+        sys::ClientError_CMDERR_CHANNEL_HAS_USERS => "Channel has active users",
         _ => "",
     };
     if !plain.is_empty() {

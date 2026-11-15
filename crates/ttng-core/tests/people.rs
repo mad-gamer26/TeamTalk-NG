@@ -237,7 +237,7 @@ fn channel_bans() {
     });
     let refused = b.client.join_channel(root, "");
     assert!(
-        matches!(&refused, Err(Error::Server { message, .. }) if message == "You're banned from that channel."),
+        matches!(&refused, Err(Error::Server { message, .. }) if message == "Banned from channel"),
         "{refused:?}"
     );
     let bans = admin.client.list_channel_bans(root).unwrap();

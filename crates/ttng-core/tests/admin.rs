@@ -58,7 +58,7 @@ fn channels_are_made_changed_and_removed() {
     assert_eq!(alice.client.snapshot().channel_path(music.id), "/Music/");
     let wrong = alice.client.join_channel(music.id, "wrong");
     assert!(
-        matches!(&wrong, Err(Error::Server { message, .. }) if message == "The channel's password is wrong."),
+        matches!(&wrong, Err(Error::Server { message, .. }) if message == "Incorrect channel password. Try again."),
         "{wrong:?}"
     );
     alice
@@ -69,13 +69,13 @@ fn channels_are_made_changed_and_removed() {
     // The same name twice.
     let again = admin.client.make_channel(&spec(root, "Music"));
     assert!(
-        matches!(&again, Err(Error::Server { message, .. }) if message == "There's already a channel with that name there."),
+        matches!(&again, Err(Error::Server { message, .. }) if message == "Channel already exists"),
         "{again:?}"
     );
     // Not for normal people.
     let refused = alice.client.make_channel(&spec(root, "Mine"));
     assert!(
-        matches!(&refused, Err(Error::Server { message, .. }) if message == "You're not allowed to do that on this server."),
+        matches!(&refused, Err(Error::Server { message, .. }) if message == "Command not authorized"),
         "{refused:?}"
     );
 
@@ -189,7 +189,7 @@ fn kicking_moving_and_banning() {
     let back = TestClient::new();
     let refused = back.client.connect(server.options("bob"));
     assert!(
-        matches!(&refused, Err(Error::Server { message, .. }) if message == "You're banned from this server."),
+        matches!(&refused, Err(Error::Server { message, .. }) if message == "Banned from server"),
         "{refused:?}"
     );
 
