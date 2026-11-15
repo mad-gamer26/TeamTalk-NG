@@ -64,9 +64,12 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       private typing (in the conversation) and typing anywhere, question
       mode, menu actions, voice/video/desktop transmission toggled. Same
       templates (shared per group, as the desktop).
-- [ ] Output mode (speech / braille / both: VoiceOver announcement vs
-      braille only) — check what iOS allows.
-- [ ] "Speak selected item in lists" (TTS_SPEAKLISTS) — check meaning.
+- [n/a] Output mode (speech / braille / both): iOS sends VoiceOver
+      announcements to speech and braille together and has no way to send
+      to braille only; NG's own choice (VoiceOver or the system voice) stays.
+- [n/a] "Speak selected item in lists": the desktop speaks list items
+      itself when no screen reader reads them; on iPhone VoiceOver always
+      does.
 - [ ] "Use toast notification" (TTS_TOAST): a visible banner.
 
 ## D. Menus → actions
