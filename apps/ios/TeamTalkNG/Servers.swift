@@ -23,6 +23,10 @@ struct SavedServer: Codable, Identifiable, Hashable {
     var connectOnStart: Bool?
     /// Join the channel I was last in (the desktop's "last joined channel").
     var joinLastChannel: Bool?
+    /// This server's own volumes (nil: the Settings ones), on this iPhone.
+    var outputVolume: Int?
+    var micGain: Int?
+    var mediaVolume: Int?
 
     var key: String { syncKey ?? id.uuidString }
 

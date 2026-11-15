@@ -182,12 +182,22 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 
 - [x] The desktop's sound events by its names, in its order, by its file
       names (settings.h SOUNDEVENT_*_DEFAULT), so its sound packs work as
-      they are: "Hotkey pressed" (hotkey.wav) replaces this app's own
-      talking on/off sounds (played on press and release, as the desktop's
-      push-to-talk); "Voice activation enabled/disabled via "Me" menu"
-      (vox_me_*) when I change the talk mode, "Voice activation enabled"
-      (vox_enable) when the app starts with it on. n/a: "Channel silent"
-      (no sound by default), "Desktop access request" (no desktop sharing).
+      they are. The owner's choices: no "Hotkey pressed" (hotkey.wav) at
+      all — push to talk starts and stops with "Voice activation
+      triggered/stopped" (voiceact_on/off), and an imported pack's
+      hotkey.wav is left out; "Voice activation enabled/disabled via "Me"
+      menu" (vox_me_*) when I change the talk mode, "Voice activation
+      enabled" (vox_enable) when the app starts with it on. n/a: "Channel
+      silent" (no sound by default), "Desktop access request".
+- [x] Per-server volumes (the desktop's separate copies, each with its
+      own): master volume, microphone gain, media files, in the server
+      screen's More → Volume for this server; following Settings until set.
+- [x] Menus: every More menu's items are its button's VoiceOver actions
+      too (reversed); what's on says its opposite ("Unmute everyone",
+      "Unmute Voice", "Stop hearing myself") instead of a check mark;
+      choices say ", on".
+- [x] Mute everyone: the view refreshes after it (the core sends no event),
+      so it toggles straight away.
 - [x] Import a sound pack from a folder (Settings → Sounds): the desktop's
       names, any sound file kind; the old app's on.* plays as the hotkey.
-      Earlier own sounds and settings for on/off carry over.
+      Earlier own sounds and settings for on/off carry over (to voiceact_*).

@@ -41,6 +41,17 @@ struct SoundSystemView: View {
                 .id(model.routeChanges)  // rebuilt when a device comes or goes
                 .accessibilityLabel("Microphone")
                 .accessibilityValue(AudioSession.inputLabel(preferredInput))
+                // The choices as VoiceOver actions, reversed; the chosen one
+                // says so.
+                .accessibilityActions {
+                    let builtIn = AudioSession.inputs.first { $0.portType == .builtInMic }
+                    let choices: [(String, String)] = [("Automatic", "")]
+                        + AudioSession.inputs.filter { $0.portType != .builtInMic }.map { ($0.portName, $0.uid) }
+                        + (builtIn.map { m in AudioSession.BuiltInMic.allCases.map { ("\(m.portName), \($0.label)", $0.tag) } } ?? [])
+                    ForEach(choices.reversed(), id: \.1) { c in
+                        Button(c.1 == preferredInput ? "\(c.0), on" : c.0) { preferredInput = c.1 }
+                    }
+                }
             } header: {
                 Text("Where sound goes")
             } footer: {

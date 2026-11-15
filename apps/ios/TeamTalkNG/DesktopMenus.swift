@@ -124,13 +124,13 @@ struct UserMenu: View {
             .init("Messages") { open(.messages) },
         ]
         if connection.canModerate(channel: user.channelId) || rights.admin {
-            m.append(.init(user.operator ? "Op, on" : "Op") { connection.setOperator(user, !user.operator) })
+            m.append(.init(user.operator ? "Remove Op" : "Op") { connection.setOperator(user, !user.operator) })
         }
         let audio = connection.hasAudio
         if audio {
             m.append(.init("Volume") { open(.volume) })
-            m.append(.init(user.voiceMuted ? "Mute Voice, on" : "Mute Voice") { connection.toggleMuteVoice(user) })
-            m.append(.init(user.mediaMuted ? "Mute Media File, on" : "Mute Media File") { connection.toggleMuteMedia(user) })
+            m.append(.init(user.voiceMuted ? "Unmute Voice" : "Mute Voice") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.mediaMuted ? "Unmute Media File" : "Mute Media File") { connection.toggleMuteMedia(user) })
         }
         if rights.kick || connection.canModerate(channel: user.channelId) {
             if user.channelId > 0 {
@@ -148,7 +148,7 @@ struct UserMenu: View {
         if audio || rights.moveUsers { m.append(.init("Advanced") { open(.advanced) }) }
         if audio {
             let all = connection.snapshot?.mutedAll ?? false
-            m.append(.init(all ? "Mute All, on" : "Mute All") { connection.setMuteAll(!all) })
+            m.append(.init(all ? "Unmute All" : "Mute All") { connection.setMuteAll(!all) })
         }
         return m
     }
@@ -163,6 +163,7 @@ struct MenuItem: Identifiable {
     let id = UUID()
     let title: String
     let action: () -> Void
+    var destructive = false
     init(_ title: String, _ action: @escaping () -> Void) {
         self.title = title
         self.action = action
@@ -254,19 +255,19 @@ struct AdvancedDialog: View {
                     Button("Lower Media File Volume") { connection.stepVolume(user, media: true, by: -1) }
                 }
                 if connection.rights.moveUsers {
-                    Button(connection.pickedToMove.contains(user.id) ? "Store User for Move, on" : "Store User for Move") {
+                    Button(connection.pickedToMove.contains(user.id) ? "Don't Store User for Move" : "Store User for Move") {
                         connection.togglePicked(user)
                     }
                     Button("Move Users Dialog") { dismiss(); moveDialog() }
                 }
                 if connection.hasAudio {
                     Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
-                           ? "Relay Voice Stream, on" : "Relay Voice Stream") {
+                           ? "Stop Relaying Voice Stream" : "Relay Voice Stream") {
                         let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
                         connection.setRelay(on ? nil : user, .voice)
                     }
                     Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
-                           ? "Relay Media File Stream, on" : "Relay Media File Stream") {
+                           ? "Stop Relaying Media File Stream" : "Relay Media File Stream") {
                         let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
                         connection.setRelay(on ? nil : user, .mediaFile)
                     }
@@ -457,6 +458,51 @@ struct StreamMediaFileDialog: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// This server's own volumes (the desktop runs one copy per server, each
+/// with its own): master volume, microphone gain and media files, each
+/// following Settings until set here; kept on this iPhone.
+struct ServerVolumeView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let connection: ServerConnection
+
+    private func level(_ label: String, _ key: WritableKeyPath<SavedServer, Int?>, global: Int32, range: ClosedRange<Int> = 0...100) -> some View {
+        let own = connection.server[keyPath: key]
+        let value = own ?? Int(global)
+        return VStack(alignment: .leading) {
+            NamedSlider(label, int: Binding(get: { value }, set: { set(key, $0) }), in: range,
+                        spoken: own == nil ? "\(value), as in Settings" : "\(value)")
+            if own != nil {
+                Button("Use Settings' \(label.lowercased())") { set(key, nil) }
+            }
+        }
+    }
+
+    private func set(_ key: WritableKeyPath<SavedServer, Int?>, _ v: Int?) {
+        var s = connection.server
+        s[keyPath: key] = v
+        model.setVolumes(of: s)
+    }
+
+    var body: some View {
+        let a = model.audio
+        NavigationStack {
+            Form {
+                Section {
+                    level("Master volume", \.outputVolume, global: a.outputVolume)
+                    level("Microphone gain", \.micGain, global: a.micGain)
+                    level("Media file vs. voice volume", \.mediaVolume, global: a.mediaVolume)
+                } footer: {
+                    Text("For \(connection.server.title) only, as the desktop client's separate copies each have their own. Until you change one here it follows Settings → Sound system.")
+                }
+            }
+            .navigationTitle("Volume for this server")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
 }

@@ -31,6 +31,7 @@ struct ServerView: View {
     @State private var showStats = false
     @State private var showOnline = false
     @State private var showAudioNet = false
+    @State private var showServerVolume = false
     @State private var showClientStats = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
@@ -89,57 +90,15 @@ struct ServerView: View {
             }
             if connection.isConnected {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // One list for the menu and its VoiceOver actions (reversed,
+                    // the owner's choice); what's on says its opposite, so
+                    // nothing needs a check mark.
+                    let items = moreItems
                     Menu("More", systemImage: "ellipsis.circle") {
-                        if (connection.snapshot?.myChannelId ?? 0) > 0 {
-                            Button("Leave channel") { connection.leaveChannel() }
-                        }
-                        Button("Status") { showStatus = true }
-                        Button("Change nickname") { renaming = true }
-                        Button("Join a channel by its path") { joiningByPath = true }
-                        if connection.hasAudio && (connection.snapshot?.myChannelId ?? 0) > 0 && connection.snapshot?.streaming == nil {
-                            Button("Stream a media file to the channel") { pickingStream = true }
-                        }
-                        Toggle("Question mode", isOn: Binding(
-                            get: { connection.me?.status == .question },
-                            set: { on in connection.setStatus(on ? .question : .available, connection.me?.statusMessage ?? "") }))
-                        if connection.hasAudio {
-                            Toggle("Hear myself", isOn: Binding(get: { connection.hearingMyself }, set: { connection.setHearMyself($0) }))
-                            Toggle("Mute everyone", isOn: Binding(get: { connection.snapshot?.mutedAll ?? false }, set: { connection.setMuteAll($0) }))
-                        }
-                        if connection.hasAudio && connection.snapshot?.relaying != nil {
-                            Button("Stop relaying") { connection.setRelay(nil) }
-                        }
-                        if connection.hasAudio && (connection.snapshot?.myChannelId ?? 0) > 0 {
-                            if connection.recording {
-                                Button("Stop recording") { connection.stopRecording() }
-                            } else {
-                                Button("Record conversations") { connection.startRecording() }
-                            }
-                        }
-                        if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
-                            Button("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) }
-                        }
-                        if connection.rights.broadcast {
-                            Button("Broadcast message") { broadcasting = true }
-                        }
-                        Button("Online users") { showOnline = true }
-                        if connection.hasAudio {
-                            Button(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }
-                        }
-                        Button("Connection statistics") { showClientStats = true }
-                        if connection.rights.updateServer {
-                            Button("Server settings") { showServerSettings = true }
-                        }
-                        if connection.rights.ban {
-                            Button("Bans") { showBans = true }
-                        }
-                        if connection.rights.admin {
-                            Button("User accounts") { showAccounts = true }
-                            Button("Server statistics") { showStats = true }
-                            Button("Save server configuration") { connection.saveServerConfig() }
-                        }
-                        Button("Clear chat history") { connection.clearHistory() }
-                        Button("Disconnect", role: .destructive) { connection.disconnect() }
+                        ForEach(items) { i in Button(i.title, role: i.destructive ? .destructive : nil, action: i.action) }
+                    }
+                    .accessibilityActions {
+                        ForEach(items.reversed()) { i in Button(i.title, action: i.action) }
                     }
                 }
             }
@@ -234,6 +193,7 @@ struct ServerView: View {
         }
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
         .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
+        .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
         .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
         .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }
@@ -1064,6 +1024,56 @@ extension ServerView {
         if let f = voFocus, f.hasPrefix("c"), let id = Int32(f.dropFirst()) { return snap?.channels.first { $0.id == id } }
         let id = focusedUser?.channelId ?? snap?.myChannelId ?? 0
         return snap?.channels.first { $0.id == id }
+    }
+
+    /// The server screen's More menu, in its order.
+    private var moreItems: [MenuItem] {
+        let snap = connection.snapshot
+        let inChannel = (snap?.myChannelId ?? 0) > 0
+        let audio = connection.hasAudio
+        var m: [MenuItem] = []
+        if inChannel { m.append(.init("Leave channel") { connection.leaveChannel() }) }
+        m.append(.init("Status") { showStatus = true })
+        m.append(.init("Change nickname") { renaming = true })
+        m.append(.init("Join a channel by its path") { joiningByPath = true })
+        if audio && inChannel && snap?.streaming == nil {
+            m.append(.init("Stream a media file to the channel") { pickingStream = true })
+        }
+        let question = connection.me?.status == .question
+        m.append(.init(question ? "Leave question mode" : "Question mode") {
+            connection.setStatus(question ? .available : .question, connection.me?.statusMessage ?? "")
+        })
+        if audio {
+            let hearing = connection.hearingMyself
+            m.append(.init(hearing ? "Stop hearing myself" : "Hear myself") { connection.setHearMyself(!hearing) })
+            let muted = snap?.mutedAll ?? false
+            m.append(.init(muted ? "Unmute everyone" : "Mute everyone") { connection.setMuteAll(!muted) })
+            m.append(.init("Volume for this server") { showServerVolume = true })
+            if snap?.relaying != nil { m.append(.init("Stop relaying") { connection.setRelay(nil) }) }
+            if inChannel {
+                m.append(connection.recording ? .init("Stop recording") { connection.stopRecording() }
+                                              : .init("Record conversations") { connection.startRecording() })
+            }
+        }
+        if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
+            m.append(.init("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) })
+        }
+        if connection.rights.broadcast { m.append(.init("Broadcast message") { broadcasting = true }) }
+        m.append(.init("Online users") { showOnline = true })
+        if audio { m.append(.init(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }) }
+        m.append(.init("Connection statistics") { showClientStats = true })
+        if connection.rights.updateServer { m.append(.init("Server settings") { showServerSettings = true }) }
+        if connection.rights.ban { m.append(.init("Bans") { showBans = true }) }
+        if connection.rights.admin {
+            m.append(.init("User accounts") { showAccounts = true })
+            m.append(.init("Server statistics") { showStats = true })
+            m.append(.init("Save server configuration") { connection.saveServerConfig() })
+        }
+        m.append(.init("Clear chat history") { connection.clearHistory() })
+        var d = MenuItem("Disconnect") { connection.disconnect() }
+        d.destructive = true
+        m.append(d)
+        return m
     }
 
     func perform(_ cmd: DesktopCommand) {

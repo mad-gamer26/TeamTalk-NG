@@ -63,6 +63,14 @@ struct ServerListView: View {
                         }
                         Button("Open a tt:// link") { linking = true }
                     }
+                    // Its items as VoiceOver actions too, reversed (the
+                    // export is a share sheet, so it stays in the menu).
+                    .accessibilityActions {
+                        Button("Open a tt:// link") { linking = true }
+                        Button("Import a .tt file") { importing = true }
+                        Button("Public servers and join codes") { showPublic = true }
+                        Button("Type its details") { editing = SavedServer() }
+                    }
                 }
             }
             .sheet(item: $editing) { server in

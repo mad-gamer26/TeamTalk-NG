@@ -174,7 +174,7 @@ final class ServerConnection {
             verifyPeer: s.encrypted && s.verifyPeer,
             webLoginUsername: s.bearwareLogin ? BearWare.username : "", webLoginToken: s.bearwareLogin ? BearWare.token : "")
         let client = self.client
-        let audio = app?.audio ?? defaultAudioSettings()
+        let audio = effectiveAudio
         let hearOwn = app?.hearOwnStream ?? true
         let streamVideo = app?.streamVideo ?? true
         Task {
@@ -354,7 +354,16 @@ final class ServerConnection {
 
     func setMuteAll(_ on: Bool) {
         sound(on ? .muteAllOn : .muteAllOff)
-        run("Couldn't mute everyone") { try $0.setMuteAll(on: on) }
+        let client = self.client
+        Task {
+            // The core sends no event for it: the view refreshes here, so
+            // the next press does the opposite straight away.
+            let failed: String? = await Task.detached {
+                do { try client.setMuteAll(on: on); return nil } catch { return words(error) }
+            }.value
+            if let failed { announce("Couldn't mute everyone: \(failed)") }
+            refresh()
+        }
     }
 
     func setOperator(_ user: User, _ on: Bool, password: String = "") {
@@ -697,8 +706,19 @@ final class ServerConnection {
         }
     }
 
+    /// The Settings volumes, with this server's own where it has them
+    /// (the desktop's separate instances, each with its own volumes).
+    var effectiveAudio: AudioSettings {
+        var a = app?.audio ?? defaultAudioSettings()
+        if let v = server.outputVolume { a.outputVolume = Int32(v) }
+        if let v = server.micGain { a.micGain = Int32(v) }
+        if let v = server.mediaVolume { a.mediaVolume = Int32(v) }
+        return a
+    }
+
     func applyAudioSettings() {
-        guard let a = app?.audio else { return }
+        guard monitorId == nil else { return }
+        let a = effectiveAudio
         run("Couldn't change the sound") { try $0.setAudioSettings(settings: a) }
     }
 
@@ -880,15 +900,15 @@ final class ServerConnection {
     func setTransmitting(_ on: Bool) {
         guard isConnected, app?.talkMode == .pushToTalk, on != transmitting else { return }
         transmitting = on
-        // The desktop's push-to-talk hotkey sound, pressed and released.
-        sound(.hotkey)
+        // Talking starts and stops (the owner's choice of sounds).
+        sound(on ? .voiceActivationStarts : .voiceActivationStops)
         if on { checkBlocked(.voice) }
         run("Couldn't talk") { try $0.setTransmitting(on: on) }
     }
 
     func setMicMuted(_ on: Bool) {
         muted = on
-        sound(.hotkey)
+        sound(on ? .voiceActivationStops : .voiceActivationStarts)
         applyTalkMode()
     }
 

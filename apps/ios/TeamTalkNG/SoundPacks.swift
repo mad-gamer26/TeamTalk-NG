@@ -8,8 +8,10 @@ import Observation
 enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     // The desktop's sound events, in its order (soundeventsmodel.cpp), by
     // its file names (settings.h SOUNDEVENT_*_DEFAULT), so a desktop sound
-    // pack works as it is. Not here: "Channel silent" (no sound by default)
-    // and "Desktop access request" (no desktop sharing on phones).
+    // pack works as it is. Not here: "Hotkey pressed" (the owner's choice:
+    // talking starts and stops with "Voice activation triggered" and
+    // "stopped" instead), "Channel silent" (no sound by default) and
+    // "Desktop access request" (no desktop sharing on phones).
     case loggedIn = "logged_on", loggedOut = "logged_off"
     case userJoined = "newuser", userLeft = "removeuser"
     case serverLost = "serverlost"
@@ -17,7 +19,6 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     case typing = "typing"
     case channelMessage = "channel_msg", channelMessageSent = "channel_msg_sent"
     case broadcastMessage = "broadcast_msg"
-    case hotkey = "hotkey"
     case newVideo = "videosession", newDesktop = "desktopsession"
     case fileUpdate = "fileupdate", transferComplete = "filetx_complete"
     case questionMode = "questionmode"
@@ -45,7 +46,6 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
         case .channelMessage: "Channel message received"
         case .channelMessageSent: "Channel message sent"
         case .broadcastMessage: "Broadcast message received"
-        case .hotkey: "Hotkey pressed"
         case .newVideo: "New video session"
         case .newDesktop: "New desktop session"
         case .fileUpdate: "Files updated"
@@ -66,9 +66,18 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Earlier names: this app's talking sounds and the old app's became
-    /// the desktop's hotkey sound.
-    var olderNames: [String] { self == .hotkey ? ["on"] : [] }
+    /// Earlier names: this app's and the old app's talking sounds are the
+    /// voice activation ones now.
+    var olderNames: [String] {
+        switch self {
+        case .voiceActivationStarts: ["on"]
+        case .voiceActivationStops: ["off"]
+        default: []
+        }
+    }
+
+    /// The desktop's sound this app doesn't use: an imported pack's is left out.
+    static let unused = ["hotkey"]
 
     /// The kinds of sound file a pack may have (the Monitor's catalog's).
     static let extensions = ["wav", "mp3", "caf", "aiff", "aif", "m4a", "aac"]
@@ -132,8 +141,9 @@ final class SoundStore {
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
-            // This app's talking on and off became the desktop's one hotkey sound.
-            if off.contains("on") && off.contains("off") { disabled.insert(.hotkey) }
+            // This app's talking on and off sounds are the voice activation ones now.
+            if off.contains("on") { disabled.insert(.voiceActivationStarts) }
+            if off.contains("off") { disabled.insert(.voiceActivationStops) }
             // Once: this app's earlier defaults (five off) become the
             // desktop's (all on); a list changed by hand stays.
             if !defaults.bool(forKey: "soundsDesktopDefaults") {
@@ -148,12 +158,23 @@ final class SoundStore {
         let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
-        // A sound of my own for talking on: now the hotkey's.
-        let ownOn = Self.customDirectory.appendingPathComponent("on.wav"), ownHotkey = Self.customDirectory.appendingPathComponent("hotkey.wav")
-        if FileManager.default.fileExists(atPath: ownOn.path), !FileManager.default.fileExists(atPath: ownHotkey.path) {
-            try? FileManager.default.moveItem(at: ownOn, to: ownHotkey)
+        // My own sounds for talking on and off: the voice activation ones now.
+        for (old, new) in [("on", "voiceact_on"), ("off", "voiceact_off"), ("hotkey", "")] {
+            let from = Self.customDirectory.appendingPathComponent("\(old).wav")
+            guard FileManager.default.fileExists(atPath: from.path) else { continue }
+            let to = Self.customDirectory.appendingPathComponent("\(new).wav")
+            if new.isEmpty || FileManager.default.fileExists(atPath: to.path) {
+                try? FileManager.default.removeItem(at: from)
+            } else {
+                try? FileManager.default.moveItem(at: from, to: to)
+            }
         }
-        try? FileManager.default.removeItem(at: Self.customDirectory.appendingPathComponent("off.wav"))
+        // Packs installed before: their hotkey sound isn't used.
+        for p in installed {
+            for ext in SoundEvent.extensions {
+                try? FileManager.default.removeItem(at: Self.directory(p.id).appendingPathComponent("hotkey.\(ext)"))
+            }
+        }
                 finished = PlayerFinished { [weak self] in self?.playNext() }
         loading = false
         refreshNotificationSounds()
@@ -332,6 +353,8 @@ final class SoundStore {
         for f in pack.files where SoundEvent.extensions.contains((f.name as NSString).pathExtension.lowercased()) {
             // Names come from the catalog: keep them to plain file names.
             guard !f.name.contains("/"), !f.name.hasPrefix(".") else { continue }
+            // The desktop's hotkey sound isn't used here.
+            if SoundEvent.unused.contains(((f.name as NSString).deletingPathExtension).lowercased()) { continue }
             let url = Self.catalogBase.appendingPathComponent("v1/packs/\(pack.id)/files/\(f.name)")
             let (data, response) = try await URLSession.shared.data(from: url)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
@@ -385,7 +408,7 @@ final class SoundStore {
             }
         }
         guard !found.isEmpty else {
-            return "No sounds there: a pack's sounds are named as the desktop client's, such as logged_on.wav and hotkey.wav."
+            return "No sounds there: a pack's sounds are named as the desktop client's, such as logged_on.wav and voiceact_on.wav."
         }
         let id = "imported-" + UUID().uuidString.prefix(8).lowercased()
         let target = Self.directory(id)
@@ -395,12 +418,15 @@ final class SoundStore {
             copied += 1
         }
         guard copied > 0 else { try? fm.removeItem(at: target); return "The sounds couldn't be read." }
+        // The desktop's hotkey sound isn't used here: not kept.
+        let droppedHotkey = list.contains { SoundEvent.unused.contains($0.deletingPathExtension().lastPathComponent.lowercased()) }
         installed.append(InstalledPack(id: id, name: folder.lastPathComponent, author: "imported", version: ""))
         installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         selectedId = id
         save()
         let missing = SoundEvent.allCases.count - copied
         return "Imported \(folder.lastPathComponent): \(copied) sounds" + (missing > 0 ? ", the built-in ones for the other \(missing)." : ".")
+            + (droppedHotkey ? " Its hotkey sound was left out: TeamTalk NG doesn't use it." : "")
     }
 
     func remove(_ pack: InstalledPack) {

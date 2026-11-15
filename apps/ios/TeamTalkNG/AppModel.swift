@@ -482,6 +482,19 @@ final class AppModel {
 
     /// From NG Account: the servers as the account has them now (no sync
     /// back of this change).
+    /// A server's own volumes changed (kept on this iPhone, not synced).
+    func setVolumes(of server: SavedServer) {
+        guard let i = servers.firstIndex(where: { $0.id == server.id }) else { return }
+        servers[i].outputVolume = server.outputVolume
+        servers[i].micGain = server.micGain
+        servers[i].mediaVolume = server.mediaVolume
+        save()
+        if let c = connections[server.id] {
+            c.server = servers[i]
+            c.applyAudioSettings()
+        }
+    }
+
     func applySynced(_ list: [SavedServer], passwords: [UUID: String]) {
         servers = list
         for (id, p) in passwords { Passwords.set(p, for: id) }

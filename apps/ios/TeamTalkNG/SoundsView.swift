@@ -37,7 +37,7 @@ struct SoundsView: View {
                 }
                 NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: "\(Int(sounds.volume * 100)) percent")
             } footer: {
-                Text("A desktop client's sound pack imports as it is: choose its folder (a zip opens into one in the Files app). Its sounds have the desktop's names, such as logged_on.wav and hotkey.wav.")
+                Text("A desktop client's sound pack imports as it is: choose its folder (a zip opens into one in the Files app). Its sounds have the desktop's names, such as logged_on.wav and voiceact_on.wav (talking starts). Its hotkey.wav is left out: it isn't used.")
             }
             Section {
                 ForEach(SoundEvent.allCases) { e in
