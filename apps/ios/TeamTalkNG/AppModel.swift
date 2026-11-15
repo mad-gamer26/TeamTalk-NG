@@ -283,8 +283,9 @@ final class AppModel {
         loading = false
         if convertedSettings { save() }
         sounds.packsChanged = { [weak self] in self?.account.changed() }
-        // The desktop plays "Voice activation enabled" when it starts with it on.
-        if talkMode == .voiceActivation { sounds.play(.voiceActivationOn) }
+        // As the desktop when it starts (mainwindow.cpp, loading settings):
+        // "Voice activation enabled" or "disabled" (vox_enable / vox_disable).
+        sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff)
         setUpHeadsetButton()
         // The desktop's "Sound device detected" status messages (a headset
         // in or out), and the microphone menu kept current.

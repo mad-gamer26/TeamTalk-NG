@@ -187,7 +187,8 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       triggered/stopped" (voiceact_on/off), and an imported pack's
       hotkey.wav is left out; "Voice activation enabled/disabled via "Me"
       menu" (vox_me_*) when I change the talk mode, "Voice activation
-      enabled" (vox_enable) when the app starts with it on. n/a: "Channel
+      enabled/disabled" (vox_enable/vox_disable) when the app starts, as the
+      desktop does. n/a: "Channel
       silent" (no sound by default), "Desktop access request".
 - [x] Per-server volumes (the desktop's separate copies, each with its
       own): master volume, microphone gain, media files, in the server
