@@ -35,6 +35,6 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
 - [ ] Monitor administration (accounts, bans, server properties through
       the Monitor, /v1/servers/{id}/admin): with monitor mode, the server
       screen's admin screens through the Monitor.
-- [ ] Monitor notification sounds (MonitorNotificationSounds.swift).
+- [x] Monitor notification sounds (the pack's sounds, the iPhone's, or none; Monitor screen; sounds turned off in Settings → Sounds are silent).
 - [ ] NG Account sound pack sync (Account/NGPackSync.swift: installed packs
       follow the account).

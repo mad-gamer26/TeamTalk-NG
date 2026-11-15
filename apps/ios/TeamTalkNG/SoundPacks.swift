@@ -133,6 +133,7 @@ final class SoundStore {
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
         finished = PlayerFinished { [weak self] in self?.playNext() }
         loading = false
+        refreshNotificationSounds()
         save()
     }
 
@@ -146,6 +147,7 @@ final class SoundStore {
         defaults.set(selectedId, forKey: "soundPack")
         defaults.set(volume, forKey: "soundVolume")
         defaults.set(disabled.map(\.rawValue), forKey: "soundsOff")
+        refreshNotificationSounds()
     }
 
     func isOn(_ e: SoundEvent) -> Bool { !disabled.contains(e) }
@@ -186,17 +188,20 @@ final class SoundStore {
         try? FileManager.default.createDirectory(at: Self.customDirectory, withIntermediateDirectories: true)
         let dest = Self.customDirectory.appendingPathComponent(e.fileName)
         try? FileManager.default.removeItem(at: dest)
-        return (try? FileManager.default.copyItem(at: url, to: dest)) != nil
+        let ok = (try? FileManager.default.copyItem(at: url, to: dest)) != nil
+        refreshNotificationSounds()
+        return ok
     }
 
     func resetFile(_ e: SoundEvent) {
         try? FileManager.default.removeItem(at: Self.customDirectory.appendingPathComponent(e.fileName))
+        refreshNotificationSounds()
     }
 
     // MARK: Playing
 
     /// The desktop's "Enable Sound Events" (all of them at once).
-    var enabled = true { didSet { defaults.set(enabled, forKey: "soundEventsEnabled") } }
+    var enabled = true { didSet { defaults.set(enabled, forKey: "soundEventsEnabled"); if !loading { refreshNotificationSounds() } } }
 
     /// Plays an event's sound (if it's on), mixed with the voices.
     func play(_ e: SoundEvent) {
@@ -257,6 +262,9 @@ final class SoundStore {
     var playbackMode = PlaybackMode.standard {
         didSet { defaults.set(playbackMode.rawValue, forKey: "soundPlaybackMode") }
     }
+
+    /// The chosen pack's sound for an event.
+    func soundURL(_ e: SoundEvent) -> URL? { url(for: e, in: selected) }
 
     /// The pack's sound, or the built-in one where it has none.
     private func url(for e: SoundEvent, in pack: InstalledPack) -> URL? {
@@ -339,5 +347,72 @@ final class PlayerFinished: NSObject, AVAudioPlayerDelegate {
     }
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in done() }
+    }
+}
+
+// MARK: Monitor notification sounds
+
+extension SoundStore {
+    /// The sounds Monitor notifications use, by the Monitor's names.
+    static let monitorEvents: [SoundEvent] = [.loggedIn, .loggedOut, .privateMessage, .channelMessage, .broadcastMessage, .serverLost]
+
+    /// Brings the notification sounds in line with the chosen pack and the
+    /// sound events (cheap when nothing changed).
+    func refreshNotificationSounds() {
+        let wanted: [(String, URL?)] = Self.monitorEvents.map { e in
+            (e.rawValue, enabled && isOn(e) ? soundURL(e) : nil)
+        }
+        Task.detached(priority: .utility) { Self.exportNotificationSounds(wanted) }
+    }
+
+    nonisolated private static func exportNotificationSounds(_ wanted: [(String, URL?)]) {
+        guard let dir = MonitorSound.directory else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let previous = MonitorSound.files
+        var files: [String: String] = [:]
+        for (name, source) in wanted {
+            guard let source else { files[name] = ""; continue }
+            // A new name when the source changes: iOS remembers sounds by name.
+            let date = ((try? FileManager.default.attributesOfItem(atPath: source.path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            let file = "ttng-\(name)-\(String(stableHash("\(source.path)|\(date)"), radix: 36)).caf"
+            if previous[name] == file, FileManager.default.fileExists(atPath: dir.appendingPathComponent(file).path) {
+                files[name] = file
+                continue
+            }
+            if (try? convertForNotification(source, to: dir.appendingPathComponent(file))) != nil { files[name] = file }
+        }
+        MonitorSound.files = files
+        let keep = Set(files.values)
+        for item in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where item.hasPrefix("ttng-") && !keep.contains(item) {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(item))
+        }
+    }
+
+    /// 16-bit PCM CAF, at most 29 seconds, which iOS takes as a notification sound.
+    nonisolated static func convertForNotification(_ source: URL, to destination: URL) throws {
+        let input = try AVAudioFile(forReading: source)
+        let format = input.processingFormat
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: format.sampleRate,
+            AVNumberOfChannelsKey: format.channelCount, AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ]
+        try? FileManager.default.removeItem(at: destination)
+        let output = try AVAudioFile(forWriting: destination, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+        var remaining = min(input.length, AVAudioFramePosition(format.sampleRate * 29))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { return }
+        while remaining > 0 {
+            try input.read(into: buffer, frameCount: AVAudioFrameCount(min(8192, remaining)))
+            if buffer.frameLength == 0 { break }
+            try output.write(from: buffer)
+            remaining -= AVAudioFramePosition(buffer.frameLength)
+        }
+    }
+
+    /// The same between launches (Swift's hashValue isn't).
+    nonisolated private static func stableHash(_ s: String) -> UInt64 {
+        var h: UInt64 = 1469598103934665603
+        for b in s.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return h
     }
 }

@@ -16,6 +16,7 @@ final class NotificationService: UNNotificationServiceExtension {
             fields = (try? JSONSerialization.jsonObject(with: opened)) as? [String: Any]
         }
         guard let f = fields else { return }
+        content.sound = MonitorSound.sound(service: f["sound"] as? String)
         if let t = f["title"] as? String, !t.isEmpty { content.title = t }
         if let t = f["subtitle"] as? String { content.subtitle = t }
         if let t = f["body"] as? String { content.body = t }

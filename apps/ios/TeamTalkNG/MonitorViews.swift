@@ -4,6 +4,7 @@ import SwiftUI
 struct MonitorListView: View {
     @Environment(AppModel.self) private var model
     @State private var adding = false
+    @State private var soundChoice = MonitorSound.choice
 
     var body: some View {
         let monitor = model.monitor
@@ -29,6 +30,14 @@ struct MonitorListView: View {
                 }
             } footer: {
                 if let p = monitor.problem { Text(p) }
+            }
+            Section {
+                Picker("Notification sound", selection: Binding(get: { MonitorSound.choice }, set: { MonitorSound.choice = $0; soundChoice = $0 })) {
+                    ForEach(MonitorSound.Choice.allCases) { Text($0.label).tag($0) }
+                }
+                .id(soundChoice)
+            } footer: {
+                Text("The sound pack's sounds follow Settings → Sounds: a sound turned off there is silent here too.")
             }
             if !monitor.events.isEmpty {
                 Section("Recent") {
