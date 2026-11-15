@@ -6,6 +6,7 @@ struct ServerListView: View {
     @State private var editing: SavedServer?
     @State private var showSettings = false
     @State private var showPublic = false
+    @State private var firstRun = false
     @State private var importing = false
     @State private var linking = false
     @State private var link = ""
@@ -65,6 +66,8 @@ struct ServerListView: View {
                 SettingsView()
             }
             .sheet(isPresented: $showPublic) { PublicServersView() }
+            .sheet(isPresented: $firstRun) { FirstRunView() }
+            .onAppear { if !UserDefaults.standard.bool(forKey: "setUp") && model.servers.isEmpty { firstRun = true } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.teamTalkFile, .xml, .data]) { r in
                 if case .success(let url) = r { model.open(url) }
             }
@@ -196,6 +199,7 @@ struct ServerEditView: View {
                 }
                 Section {
                     Toggle("Connect when the app starts", isOn: Binding(get: { server.connectOnStart ?? false }, set: { server.connectOnStart = $0 }))
+                    Toggle("Join the channel I was last in", isOn: Binding(get: { server.joinLastChannel ?? false }, set: { server.joinLastChannel = $0 }))
                     TextField("Channel to join (optional), like /Lobby/", text: $server.joinChannel)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -257,6 +261,11 @@ struct SettingsView: View {
             Form {
                 Section {
                     TextField("Nickname", text: $model.nickname)
+                    Picker("Gender", selection: $model.gender) {
+                        Text("Male").tag(Gender.male)
+                        Text("Female").tag(Gender.female)
+                        Text("Neutral").tag(Gender.neutral)
+                    }
                     TextField("Status message", text: $model.statusMessage)
                 } footer: {
                     Text("Used on servers that don't have their own.")
@@ -314,7 +323,8 @@ struct SettingsView: View {
                     Text("Servers, your NG Account and downloaded sound packs stay.")
                 }
                 Section {
-                    LabeledContent("TeamTalk SDK", value: sdkVersion())
+                    NavigationLink("Help") { HelpView() }
+                    NavigationLink("About") { AboutView() }
                 }
             }
             .confirmationDialog("Reset all settings?", isPresented: $resetting, titleVisibility: .visible) {

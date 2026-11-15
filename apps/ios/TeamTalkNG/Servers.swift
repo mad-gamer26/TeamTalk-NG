@@ -21,6 +21,8 @@ struct SavedServer: Codable, Identifiable, Hashable {
     var syncOther: String?
     /// Connect when the app starts (the desktop's "connect on startup").
     var connectOnStart: Bool?
+    /// Join the channel I was last in (the desktop's "last joined channel").
+    var joinLastChannel: Bool?
 
     var key: String { syncKey ?? id.uuidString }
 

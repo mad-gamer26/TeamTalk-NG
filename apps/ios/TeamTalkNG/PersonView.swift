@@ -157,7 +157,10 @@ struct PersonView: View {
             }
             if !isMe && (rights.moveUsers || rights.kick || rights.ban || mod) {
                 Section("Moderation") {
-                    if rights.moveUsers { Button("Move to a channel") { dismiss(); move(u) } }
+                    if rights.moveUsers {
+                        Button("Move to a channel") { dismiss(); move(u) }
+                        Button(connection.pickedToMove.contains(u.id) ? "Don't move with the others" : "Pick to move with others") { connection.togglePicked(u) }
+                    }
                     if (rights.kick || mod) && u.channelId > 0 { Button("Kick from the channel", role: .destructive) { confirm = .kickChannel } }
                     if rights.kick { Button("Kick from the server", role: .destructive) { confirm = .kickServer } }
                     if (rights.ban || mod) && u.channelId > 0 {

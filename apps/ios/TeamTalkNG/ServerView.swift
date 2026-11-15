@@ -114,6 +114,18 @@ struct ServerView: View {
             }
         }
         .accessibilityAction(.magicTap) { connection.toggleTalking() }
+        // A hardware keyboard: the main actions (Help lists them).
+        .background {
+            Group {
+                Button("Talk or stop talking") { connection.toggleTalking() }.keyboardShortcut("t", modifiers: .command)
+                Button("Mute or unmute everyone") { connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false)) }.keyboardShortcut("m", modifiers: .command)
+                Button("Channels") { tab = .channels }.keyboardShortcut("1", modifiers: .command)
+                Button("Chat") { tab = .chat }.keyboardShortcut("2", modifiers: .command)
+                Button("Files") { tab = .files }.keyboardShortcut("3", modifiers: .command)
+            }
+            .opacity(0)
+            .accessibilityHidden(true)
+        }
         .onAppear { connection.connect() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
             SecureField("Password", text: $channelPassword)
@@ -231,6 +243,7 @@ struct ServerView: View {
                            delete: { deletingChannel = c },
                            moderate: connection.canModerate(channel: c.id),
                            bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c },
+                           picked: connection.pickedToMove, movePicked: { connection.movePicked(to: c) },
                            copyLink: {
                                UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
                                announce("Link to \(c.parentId == 0 ? "the root channel" : c.name) copied")
@@ -305,6 +318,8 @@ private struct ChannelRow: View {
     let bans: () -> Void
     let classroom: () -> Void
     let info: () -> Void
+    let picked: Set<Int32>
+    let movePicked: () -> Void
     let copyLink: () -> Void
     let showTopic: Bool
     let tap: AppModel.ChannelTap
@@ -361,6 +376,7 @@ private struct ChannelRow: View {
             Button("Edit channel", action: edit)
             if channel.parentId != 0 { Button("Delete channel", role: .destructive, action: delete) }
         }
+        if !picked.isEmpty { Button("Move the \(picked.count) picked here", action: movePicked) }
         if moderate {
             Button("Channel bans", action: bans)
             if channel.classroom { Button("Classroom: who may send", action: classroom) }
@@ -543,6 +559,7 @@ struct ChatView: View {
                         if let p = privateWith { connection.setTyping(to: p, !draft.isEmpty) }
                     }
                 Button("Send", action: send)
+                    .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.horizontal)

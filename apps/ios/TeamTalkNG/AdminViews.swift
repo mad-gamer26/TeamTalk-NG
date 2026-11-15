@@ -50,13 +50,18 @@ struct BansView: View {
     let connection: ServerConnection
     @State private var bans: [Ban]?
     @State private var address = ""
+    @State private var search = ""
+
+    private func matches(_ b: Ban) -> Bool {
+        search.isEmpty || [b.username, b.nickname, b.ipAddress].contains { $0.localizedCaseInsensitiveContains(search) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
                 if let bans {
                     if bans.isEmpty { Text("Nobody is banned.").foregroundStyle(.secondary) }
-                    ForEach(bans, id: \.self) { b in
+                    ForEach(bans.filter(matches), id: \.self) { b in
                         VStack(alignment: .leading) {
                             Text(title(b))
                             Text(details(b)).font(.caption).foregroundStyle(.secondary)
@@ -83,6 +88,7 @@ struct BansView: View {
                 }
                 .padding()
             }
+            .searchable(text: $search, prompt: "Username or address")
             .navigationTitle("Bans")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

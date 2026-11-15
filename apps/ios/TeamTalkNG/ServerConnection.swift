@@ -32,6 +32,24 @@ final class ServerConnection {
     private let client: TtClient
     /// For screens that call the core themselves (off the main thread).
     var coreClient: TtClient { client }
+    /// People picked to move together (the desktop's "store for move").
+    private(set) var pickedToMove: Set<Int32> = []
+
+    func togglePicked(_ u: User) {
+        if pickedToMove.contains(u.id) { pickedToMove.remove(u.id) } else { pickedToMove.insert(u.id) }
+        announce(pickedToMove.contains(u.id) ? "\(u.displayName) picked to move, \(pickedToMove.count) in all" : "\(u.displayName) no longer picked")
+    }
+
+    /// Moves everyone picked into a channel.
+    func movePicked(to c: Channel) {
+        let ids = pickedToMove
+        pickedToMove = []
+        run("Couldn't move everyone") { cl in
+            for id in ids { try cl.moveUser(userId: id, channelId: c.id) }
+        }
+        announce(ids.count == 1 ? "Moved 1 person" : "Moved \(ids.count) people")
+    }
+
     /// Who is writing to me privately right now (until when).
     private(set) var typing: [Int32: Date] = [:]
     private var lastTypingSent: [Int32: (Bool, Date)] = [:]
@@ -104,7 +122,8 @@ final class ServerConnection {
             host: s.host, tcpPort: s.tcpPort, udpPort: s.udpPort, encrypted: s.encrypted,
             nickname: nickname.isEmpty ? s.username : nickname, username: s.username,
             password: Passwords.get(s.id), clientName: "TeamTalk NG",
-            joinChannelPath: s.joinChannel, joinChannelPassword: s.channelPassword, reconnect: app?.reconnect ?? true,
+            joinChannelPath: s.joinLastChannel == true ? (UserDefaults.standard.string(forKey: "lastChannel-\(s.id)") ?? s.joinChannel) : s.joinChannel,
+            joinChannelPassword: s.channelPassword, reconnect: app?.reconnect ?? true,
             caPem: s.encrypted ? s.caPem : "", certPem: s.encrypted ? s.certPem : "", keyPem: s.encrypted ? s.keyPem : "",
             verifyPeer: s.encrypted && s.verifyPeer,
             webLoginUsername: s.bearwareLogin ? BearWare.username : "", webLoginToken: s.bearwareLogin ? BearWare.token : "")
@@ -145,6 +164,7 @@ final class ServerConnection {
                 let own = server.statusMessage
                 let msg = own.isEmpty ? (app?.statusMessage ?? "") : own
                 if !msg.isEmpty { setStatus(.available, msg) }
+                if let g = app?.gender, g != .male { setGender(g) }
             }
         }
     }
@@ -754,6 +774,10 @@ final class ServerConnection {
                 }
             }
         case .userJoined(let u, let ch):
+            if u.id == snapshot?.myUserId, let c = snapshot?.channels.first(where: { $0.id == ch }) {
+                // The desktop's "last joined channel", per server.
+                UserDefaults.standard.set(c.parentId == 0 ? "/" : client.channelPath(channelId: ch), forKey: "lastChannel-\(server.id)")
+            }
             guard u.id != snapshot?.myUserId else { break }
             if ch == myChannel {
                 sound(.userJoined)

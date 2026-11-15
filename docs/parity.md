@@ -46,7 +46,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Intercept: user messages, channel messages, voice, video, desktop, media file | done (admins). The SDK gives intercepted private messages as addressed to me, so their real recipient isn't shown |
 | Voice volume up/down, media file volume up/down | done (sliders in 10% steps, up to 400%) |
 | Stereo: mute left/right | done, for voice and media files |
-| Store for move, move users, move dialog | partial: move one person; todo (1): several at once |
+| Store for move, move users, move dialog | done (pick several, move them together) |
 | Relay voice/media stream | done |
 | Mute voice, mute media file | done |
 | Mute all | done |
@@ -77,7 +77,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | User accounts: list, add, edit, delete (type, rights, initial channel, auto-operator channels, bitrate limit, flood protection, note) | done (and the initial channel is joined after login, as the desktop does) |
-| Banned users | done: list, remove, ban an address (wildcards) by hand; todo: search |
+| Banned users | done: list, search, remove, ban an address (wildcards) by hand |
 | Online users (with those who left) | done |
 | Broadcast message | done |
 | Server properties | done: every setting, and the version |
@@ -88,22 +88,22 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Manual | todo (10): in-app help |
+| Manual | done (Help) |
 | Reset preferences | done |
-| Website, check for update, about | todo (10): About; updates come from the App Store |
-| Setup wizard (Classic) | todo (10): first-run setup |
+| Website, check for update, about | done: About with the website; n/a: updates (the App Store) |
+| Setup wizard (Classic) | done (first-run setup: nickname, gender, talking, a first server) |
 
 ## Preferences
 
 | Desktop tab | NG |
 |---|---|
-| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
+| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; n/a: global hotkeys (iOS); keyboard shortcuts done |
 | Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | done: timestamps, events in chat, usernames or nicknames, topics, sorting, the double-tap action, the MOTD in the chat, notifications for private messages in the background (the popup); chat is always a list; n/a: language (the system's), window title, tray, always on top, updates (the App Store) |
 | Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | done: connect on start (per server), reconnect, join root, default subscriptions; n/a: local ports, max payload (the SDK handles it) |
 | Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
 | Sound events: pack, volume, per-event files, enable all/clear all | done: every desktop event (31) with the desktop's sounds built in, packs, volume, a file of your own per event, all on, all off, revert |
 | Text to speech: per-event messages with variables, voice, rate, volume, interrupt, output mode | done: the desktop's 20 events with its messages and {variables}, editable, through VoiceOver or the system voice (voice, speed, volume), interrupting or not |
-| Shortcuts | todo (10): hardware keyboard |
+| Shortcuts | done for a hardware keyboard (talk, mute everyone, the tabs, send) |
 | Video capture: device, resolution, format, codec | todo (9) |
 
 ## Server entries and connecting
@@ -113,7 +113,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Name, host, ports, encrypted, username, password, nickname, status message, channel and its password | done (kept in the old app's NG Account fields, so they sync) |
 | Encryption setup: CA, client certificate and key, verify server | done (imported from Files; certificate checking tested against a TLS server; BearWare's standard SDK server doesn't encrypt, so a whole encrypted session isn't tested here) |
 | BearWare.dk web login | done (sign in once; servers with the username "bearware" log in with it; tested against a stand-in for bearware.dk) |
-| Join code, last joined channel | done: join codes; todo: last joined channel |
+| Join code, last joined channel | done |
 | .tt files and tt:// links: open, generate | done (import and share .tt files; open and copy links) |
 | Public server list | done (official, public, and unofficial when asked) |
 
@@ -152,4 +152,4 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
    server.
 8. **Typing indicators** (done).
 9. **Video** (done, receiving; sending the camera is n/a): seeing it, sending the camera, streaming video files.
-10. **Help and polish**: About, help, first-run setup, keyboard shortcuts.
+10. **Help and polish** (done): About, help, first-run setup, keyboard shortcuts.

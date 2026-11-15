@@ -21,6 +21,8 @@ final class AppModel {
         didSet { save(); connections.values.forEach { $0.applyTalkMode() } }
     }
     var nickname = "" { didSet { save() } }
+    /// Set on every server after logging in (the desktop's gender setting).
+    var gender = Gender.neutral { didSet { save() } }
 
     /// The desktop's Sound System settings, for every server.
     var audio = defaultAudioSettings() {
@@ -110,6 +112,7 @@ final class AppModel {
         talkMode = TalkMode(rawValue: defaults.string(forKey: "talkMode") ?? "") ?? .pushToTalk
         voiceLevel = defaults.object(forKey: "voiceLevel") as? Double ?? 20
         nickname = defaults.string(forKey: "nickname") ?? ""
+        gender = ["male": Gender.male, "female": .female][defaults.string(forKey: "gender") ?? ""] ?? .neutral
         if let a = defaults.dictionary(forKey: "audio") as? [String: Int] {
             audio = AudioSettings(
                 echoCancellation: a["echo"] == 1, gainControl: a["agc", default: 1] == 1, noiseSuppression: a["denoise", default: 1] == 1,
@@ -235,6 +238,7 @@ final class AppModel {
         defaults.set(talkMode.rawValue, forKey: "talkMode")
         defaults.set(voiceLevel, forKey: "voiceLevel")
         defaults.set(nickname, forKey: "nickname")
+        defaults.set(gender == .male ? "male" : gender == .female ? "female" : "neutral", forKey: "gender")
         defaults.set(recordMP3, forKey: "recordMP3")
         defaults.set(recordOneFile, forKey: "recordOneFile")
         defaults.set(recordEachPerson, forKey: "recordEachPerson")
