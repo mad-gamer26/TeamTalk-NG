@@ -4,6 +4,7 @@
 pub mod bearware;
 mod client;
 mod error;
+pub mod loopback;
 mod model;
 pub mod mp3;
 pub mod text;

@@ -211,3 +211,17 @@ fn each_person_can_be_recorded_as_mp3() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_sound_devices_can_be_tested() {
+    // The desktop's "Test Selected": the microphone straight back.
+    let test = ttng_core::loopback::start(AudioDevices::Virtual, &AudioSettings::default()).expect("a loopback test");
+    std::thread::sleep(Duration::from_millis(300));
+    drop(test);
+    let processed = AudioSettings {
+        gain_control: true,
+        noise_suppression: true,
+        ..Default::default()
+    };
+    drop(ttng_core::loopback::start(AudioDevices::Virtual, &processed).expect("with processing"));
+}

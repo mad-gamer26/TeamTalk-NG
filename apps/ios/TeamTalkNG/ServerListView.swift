@@ -56,6 +56,10 @@ struct ServerListView: View {
                         Button("Type its details") { editing = SavedServer() }
                         Button("Public servers and join codes") { showPublic = true }
                         Button("Import a .tt file") { importing = true }
+                        // The desktop's "Export Server list to .tt File".
+                        if !model.servers.isEmpty {
+                            ShareLink(item: ttFileURL(for: model.servers)) { Text("Export Server list to .tt File") }
+                        }
                         Button("Open a tt:// link") { linking = true }
                     }
                 }

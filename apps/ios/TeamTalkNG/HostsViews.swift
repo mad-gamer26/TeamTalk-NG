@@ -183,6 +183,15 @@ struct PublicServersView: View {
     }
 }
 
+/// Every saved server in one .tt file (without passwords).
+func ttFileURL(for servers: [SavedServer]) -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("share", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("Servers.tt")
+    try? ttFileMany(entries: servers.map { $0.entry(password: "") }).write(to: url, atomically: true, encoding: .utf8)
+    return url
+}
+
 /// A .tt file to share (written for the share sheet).
 func ttFileURL(for s: SavedServer, withPassword: Bool) -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("share", isDirectory: true)

@@ -121,3 +121,28 @@ impl TtClient {
         self.inner.snapshot().recording_each
     }
 }
+
+/// The desktop's "Test Selected": the microphone played back through the
+/// speakers with these settings, until stopped.
+#[derive(Debug, uniffi::Object)]
+pub struct TtSoundLoop {
+    running: std::sync::Mutex<Option<core::loopback::SoundLoop>>,
+}
+
+#[uniffi::export]
+impl TtSoundLoop {
+    pub fn stop(&self) {
+        if let Ok(mut r) = self.running.lock() {
+            r.take();
+        }
+    }
+}
+
+/// Starts a sound test (see TtSoundLoop).
+#[uniffi::export]
+pub fn start_sound_test(devices: crate::AudioDevices, settings: AudioSettings) -> Result<std::sync::Arc<TtSoundLoop>> {
+    let l = core::loopback::start(devices.into(), &settings.into())?;
+    Ok(std::sync::Arc::new(TtSoundLoop {
+        running: std::sync::Mutex::new(Some(l)),
+    }))
+}

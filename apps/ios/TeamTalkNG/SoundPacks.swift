@@ -60,12 +60,8 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     }
 
     /// On unless the desktop has it off by default.
-    var onByDefault: Bool {
-        switch self {
-        case .voiceActivationStarts, .voiceActivationStops, .intercepted, .interceptEnded, .typing: false
-        default: true
-        }
-    }
+    /// The desktop has every sound event on by default (SOUNDEVENT_ACTIVEEVENTS).
+    var onByDefault: Bool { true }
 }
 
 /// A pack in the catalog (ttmonitor.mad-gamer.com).
@@ -120,6 +116,13 @@ final class SoundStore {
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
+            // Once: this app's earlier defaults (five off) become the
+            // desktop's (all on); a list changed by hand stays.
+            if !defaults.bool(forKey: "soundsDesktopDefaults") {
+                defaults.set(true, forKey: "soundsDesktopDefaults")
+                let oldDefault: Set<String> = ["voiceact_on", "voiceact_off", "intercept", "interceptEnd", "typing"]
+                if Set(off) == oldDefault { disabled = [] }
+            }
         } else {
             disabled = Set(SoundEvent.allCases.filter { !$0.onByDefault })
         }

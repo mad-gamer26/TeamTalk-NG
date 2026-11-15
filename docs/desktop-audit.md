@@ -22,12 +22,12 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] Channel topics in the tree: off (DISPLAY_CHANNEL_TOPIC); NG had on.
 - [x] Status-bar events in the chat: on (DISPLAY_LOGSTATUSBAR); NG's
       "joins, leaves and logins in the chat" was off.
-- [ ] Text message popup: on (DISPLAY_MESSAGEPOPUP): a private message
+- [x] Text message popup: on (DISPLAY_MESSAGEPOPUP): a private message
       opens its conversation (check what NG does in the foreground).
 - [x] Spoken events on by default exactly as TTS_ACTIVEEVENTS: logged
       in/out, joined/left my channel, private, channel and broadcast
       messages, file added/removed, menu actions.
-- [ ] Sound events: all on by default (SOUNDEVENT_ACTIVEEVENTS has all 30).
+- [x] Sound events: all on by default (SOUNDEVENT_ACTIVEEVENTS has all 30).
 
 ## B. Status-bar events (STATUSBAR_*), logged into the chat
 
@@ -83,7 +83,7 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       Pause/Resume, Upload, Download, Delete file.
 - [x] Speak user information, Speak channel information, Speak channel
       state (spoken through the spoken-events voice).
-- [ ] Copy user information to the clipboard (userinfo.ui).
+- [x] Copy user information to the clipboard (userinfo.ui, its lines).
 - [x] Volumes on the desktop's scale (utilsound.cpp refVolume: 0–100 on a
       curve, 50 normal, steps of 1): people's voice and media volume, the
       microphone gain, the master volume, media file vs. voice volume;
@@ -111,7 +111,9 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       list on startup (off). n/a: the transfer dialog (NG has none), the
       MOTD dialog (NG shows it in the chat, as the desktop's default).
 - [x] Sound events: playback mode (Default, One by One, Overlapping).
-- [ ] Sound system: "Test selected" (play a test through the output).
+- [x] Sound system: "Test Selected" (the SDK's loopback test with the
+      sound settings, through the devices a connection uses; core
+      loopback.rs, tested).
 
 ## F. Dialogs
 
@@ -120,8 +122,10 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] New channel: "Join channel on exit" (checked; made and joined).
 - [x] Server entry: "Show password" (and the channel's).
 - [x] Server list: filter by name and user count; official/unofficial.
-- [ ] Server list: export the list to a .tt file; latest hosts.
-- [ ] Volume: "Default" buttons.
+- [x] Server list: export the list to a .tt file (core: several servers
+      in one .tt, tested).
+- [ ] Server list: latest hosts.
+- [x] Volume: "Default" buttons.
 - [x] Stream media file: the dialog with the file's properties,
       "Continuously play media file", start position.
 - [ ] Stream media file: audio preprocessor (none / TeamTalk / Speex /

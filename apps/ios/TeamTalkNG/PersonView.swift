@@ -29,6 +29,25 @@ struct PersonView: View {
     }
 
     private var user: User? { connection.snapshot?.users.first { $0.id == userId } }
+
+    /// The desktop's "Copy User Information to Clipboard" (userinfodlg.cpp),
+    /// line by line in its words.
+    private func copyInfo(_ u: User) async {
+        let st = await connection.statistics(u)
+        var lines = ["User ID: \(u.id)", "Nickname: \(u.nickname)", "Username: \(u.username)",
+                     "Client: \(u.clientName) \(u.version)"]
+        lines.append("Status mode: " + (u.status == .away ? "Away" : u.status == .question ? "Question" : "Available"))
+        if !u.statusMessage.isEmpty { lines.append("Status message: \(u.statusMessage)") }
+        lines.append("User type: " + (u.admin ? "Administrator" : "Default"))
+        if !u.ipAddress.isEmpty { lines.append("IP-address: \(u.ipAddress)") }
+        if let st {
+            lines.append("Voice packet loss: \(st.voicePacketsLost)/\(st.voicePacketsReceived + st.voicePacketsLost)")
+            lines.append("Video frame loss: \(st.videoFramesLost)/\(st.videoFramesReceived + st.videoFramesLost)")
+            lines.append("Audio file packets loss: \(st.mediaAudioPacketsLost)/\(st.mediaAudioPacketsReceived + st.mediaAudioPacketsLost)")
+        }
+        UIPasteboard.general.string = lines.joined(separator: "\n")
+        announce("Copied")
+    }
     private var isMe: Bool { userId == connection.snapshot?.myUserId }
 
     var body: some View {
@@ -42,7 +61,14 @@ struct PersonView: View {
             }
             .navigationTitle(user.map { isMe ? "\($0.displayName) (you)" : $0.displayName } ?? "Gone")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                if let user {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Copy User Information to Clipboard") { Task { await copyInfo(user) } }
+                    }
+                }
+            }
             .sheet(item: $watching) { k in
                 if let u = user { VideoView(connection: connection, user: u, kind: k) }
             }

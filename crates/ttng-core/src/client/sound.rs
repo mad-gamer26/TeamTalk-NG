@@ -24,7 +24,7 @@ impl SoundRequest {
 }
 
 /// WebRTC as the desktop sets it up, with the parts chosen.
-fn webrtc(echo: bool, denoise: bool, agc: bool) -> sys::AudioPreprocessor {
+pub(crate) fn webrtc(echo: bool, denoise: bool, agc: bool) -> sys::AudioPreprocessor {
     let mut p = sys::AudioPreprocessor {
         nPreprocessor: sys::AudioPreprocessorType_WEBRTC_AUDIOPREPROCESSOR,
         ..Default::default()

@@ -9,6 +9,8 @@ struct SoundSystemView: View {
     @AppStorage("bluetoothMic") private var bluetoothMic = false
     @AppStorage("preferredInput") private var preferredInput = ""
     @AppStorage("mixWithOthers") private var mixWithOthers = true
+    /// The desktop's "Test Selected" while it runs.
+    @State private var soundTest: TtSoundLoop?
 
     var body: some View {
         @Bindable var model = model
@@ -45,6 +47,16 @@ struct SoundSystemView: View {
                 Text("Along with other apps, music and other sounds keep playing while you're connected. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways. The iPhone's front and back microphones send stereo in channels whose codec is stereo, with echo cancellation off (Apple's echo cancellation is mono).")
             }
             Section {
+                // The desktop's "Test Selected": hear your microphone through
+                // the speaker, with these settings.
+                Button(soundTest == nil ? "Test Selected" : "Stop Test") {
+                    if let t = soundTest {
+                        t.stop(); soundTest = nil
+                    } else {
+                        AudioSession.activate()
+                        do { soundTest = try startSoundTest(devices: .default, settings: model.audio) } catch { announce(words(error)) }
+                    }
+                }
                 Toggle("Echo cancellation", isOn: $model.audio.echoCancellation)
                 Toggle("Automatic gain control", isOn: $model.audio.gainControl)
                 Toggle("Noise suppression", isOn: $model.audio.noiseSuppression)
@@ -72,6 +84,7 @@ struct SoundSystemView: View {
         // So iOS lists the microphones (the session is otherwise set up
         // only on connecting).
         .onAppear { AudioSession.activate() }
+        .onDisappear { soundTest?.stop(); soundTest = nil }
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }
         .onChange(of: preferredInput) { AudioSession.activate() }

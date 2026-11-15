@@ -87,6 +87,13 @@ pub fn tt_file(entry: HostEntry) -> String {
     ttfile::to_tt_file(&entry.into())
 }
 
+/// A .tt file with several servers (the desktop's "Export Server list to
+/// .tt File").
+#[uniffi::export]
+pub fn tt_file_many(entries: Vec<HostEntry>) -> String {
+    ttfile::to_tt_file_many(&entries.into_iter().map(Into::into).collect::<Vec<_>>())
+}
+
 /// The server a tt:// link describes (nil if it isn't one).
 #[uniffi::export]
 pub fn parse_tt_link(link: String) -> Option<HostEntry> {

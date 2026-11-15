@@ -18,7 +18,7 @@ use ttng_sys as sys;
 mod channels;
 mod people;
 mod server;
-mod sound;
+pub(crate) mod sound;
 mod video;
 use channels::ChannelRequest;
 pub use channels::media_file_info;

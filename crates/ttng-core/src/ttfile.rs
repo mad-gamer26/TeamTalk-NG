@@ -112,15 +112,30 @@ fn esc(s: &str) -> String {
 
 /// A `.tt` file for one server, as the desktop writes it.
 pub fn to_tt_file(e: &HostEntry) -> String {
-    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<teamtalk version=\"5.0\">\n  <host>\n");
-    let _ = writeln!(x, "    <name>{}</name>", esc(&e.name));
-    let _ = writeln!(x, "    <address>{}</address>", esc(&e.host));
-    let _ = writeln!(x, "    <tcpport>{}</tcpport>", e.tcp_port);
-    let _ = writeln!(x, "    <udpport>{}</udpport>", e.udp_port);
-    let _ = writeln!(x, "    <encrypted>{}</encrypted>", e.encrypted);
+    to_tt_file_many(std::slice::from_ref(e))
+}
+
+/// A `.tt` file with several servers: the desktop's "Export Server list to
+/// .tt File".
+pub fn to_tt_file_many(entries: &[HostEntry]) -> String {
+    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<teamtalk version=\"5.0\">\n");
+    for e in entries {
+        host_xml(&mut x, e);
+    }
+    x.push_str("</teamtalk>\n");
+    x
+}
+
+fn host_xml(x: &mut String, e: &HostEntry) {
+    x.push_str("  <host>\n");
+    let _ = writeln!(*x, "    <name>{}</name>", esc(&e.name));
+    let _ = writeln!(*x, "    <address>{}</address>", esc(&e.host));
+    let _ = writeln!(*x, "    <tcpport>{}</tcpport>", e.tcp_port);
+    let _ = writeln!(*x, "    <udpport>{}</udpport>", e.udp_port);
+    let _ = writeln!(*x, "    <encrypted>{}</encrypted>", e.encrypted);
     if e.encrypted {
         let _ = writeln!(
-            x,
+            *x,
             "    <trusted-certificate>\n      <certificate-authority-pem>{}</certificate-authority-pem>\n      <client-certificate-pem>{}</client-certificate-pem>\n      <client-private-key-pem>{}</client-private-key-pem>\n      <verify-peer>{}</verify-peer>\n    </trusted-certificate>",
             esc(&e.ca_pem),
             esc(&e.cert_pem),
@@ -130,7 +145,7 @@ pub fn to_tt_file(e: &HostEntry) -> String {
     }
     if !e.username.is_empty() {
         let _ = writeln!(
-            x,
+            *x,
             "    <auth>\n      <username>{}</username>\n      <password>{}</password>\n      <nickname>{}</nickname>\n      <statusmsg>{}</statusmsg>\n    </auth>",
             esc(&e.username),
             esc(&e.password),
@@ -140,7 +155,7 @@ pub fn to_tt_file(e: &HostEntry) -> String {
     }
     if !e.channel.is_empty() {
         let _ = writeln!(
-            x,
+            *x,
             "    <join>\n      <channel>{}</channel>\n      <password>{}</password>\n      <join-last-channel>false</join-last-channel>\n    </join>",
             esc(&e.channel),
             esc(&e.channel_password)
@@ -148,13 +163,12 @@ pub fn to_tt_file(e: &HostEntry) -> String {
     }
     if !e.nickname.is_empty() {
         let _ = writeln!(
-            x,
+            *x,
             "    <clientsetup>\n      <nickname>{}</nickname>\n    </clientsetup>",
             esc(&e.nickname)
         );
     }
-    x.push_str("  </host>\n</teamtalk>\n");
-    x
+    x.push_str("  </host>\n");
 }
 
 fn pct(s: &str) -> String {
@@ -296,6 +310,27 @@ MIIF
         );
         assert_eq!(a.motd, "Welcome & hello");
         assert!(l[1].encrypted && l[1].verify_peer && l[1].ca_pem.contains("BEGIN CERTIFICATE"));
+    }
+
+    #[test]
+    fn several_servers_in_one_file() {
+        let a = HostEntry {
+            name: "A".into(),
+            host: "a.example".into(),
+            tcp_port: 10333,
+            udp_port: 10333,
+            ..Default::default()
+        };
+        let b = HostEntry {
+            name: "B".into(),
+            host: "b.example".into(),
+            tcp_port: 10334,
+            udp_port: 10334,
+            ..Default::default()
+        };
+        let back = parse_tt_file(&to_tt_file_many(&[a.clone(), b.clone()])).unwrap();
+        assert_eq!(back.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["A", "B"]);
+        assert_eq!(back[1].tcp_port, 10334);
     }
 
     #[test]
