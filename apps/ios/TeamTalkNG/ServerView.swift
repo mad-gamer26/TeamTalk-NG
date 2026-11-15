@@ -1016,6 +1016,9 @@ private struct DesktopDialogs: ViewModifier {
                 Button("Cancel", role: .cancel) { password = "" }
             } message: { Text("Incorrect username or password. Try again.") }
             .onChange(of: connection.loginRetry) { if connection.loginRetry { username = connection.server.username } }
+            // Already refused before this screen opened (a tt:// link
+            // connects at once): the username still filled in.
+            .onAppear { if connection.loginRetry { username = connection.server.username } }
             .alert("Excluded", isPresented: Binding(get: { connection.excludedMessage != nil },
                                                     set: { if !$0 { connection.excludedMessage = nil } })) {
                 Button("OK") {}

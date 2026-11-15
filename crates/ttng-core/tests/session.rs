@@ -56,7 +56,7 @@ fn nobody_listening_is_a_connection_error() {
     let a = TestClient::new();
     let err = a.client.connect(o).unwrap_err();
     assert!(
-        matches!(err, Error::Connection(ref m) if m.starts_with("Couldn't connect to 127.0.0.1:")),
+        matches!(err, Error::Connection(ref m) if m.starts_with("Failed to connect to 127.0.0.1 TCP port ")),
         "{err:?}"
     );
 }

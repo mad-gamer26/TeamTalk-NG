@@ -1909,12 +1909,13 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CON_FAILED => {
+                // The desktop's words.
                 let host = self
                     .options
                     .as_ref()
-                    .map(|o| format!("{}:{}", o.host, o.tcp_port))
+                    .map(|o| format!("{} TCP port {} UDP port {}", o.host, o.tcp_port, o.udp_port))
                     .unwrap_or_default();
-                self.connect_failed(format!("Couldn't connect to {host}."));
+                self.connect_failed(format!("Failed to connect to {host}"));
             }
             sys::ClientEvent_CLIENTEVENT_CON_CRYPT_ERROR => {
                 let detail = if msg.ttType == sys::TTType___CLIENTERRORMSG {

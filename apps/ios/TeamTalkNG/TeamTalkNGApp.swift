@@ -7,6 +7,10 @@ struct TeamTalkNGApp: App {
     @State private var model: AppModel
 
     init() {
+        #if DEBUG
+        // UI tests (apps/ios/UITests): every test starts as a fresh install.
+        if ProcessInfo.processInfo.arguments.contains("-UITestReset") { UITestReset.wipe() }
+        #endif
         // The old app's servers and settings (once, when this app replaced
         // it), then iCloud's newer settings, before anything reads them.
         OldAppImport.runIfNeeded()
@@ -156,3 +160,27 @@ func words(_ error: Error) -> String {
     guard UIAccessibility.isVoiceOverRunning else { return }
     AccessibilityNotification.Announcement(text).post()
 }
+
+#if DEBUG
+import Security
+
+/// Everything the app keeps, gone (UI tests only, never in a release).
+enum UITestReset {
+    static func wipe() {
+        let d = UserDefaults.standard
+        if let id = Bundle.main.bundleIdentifier { d.removePersistentDomain(forName: id) }
+        d.set(true, forKey: "setUp")  // no welcome sheet
+        if let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String, let gd = UserDefaults(suiteName: g) {
+            for k in gd.dictionaryRepresentation().keys { gd.removeObject(forKey: k) }
+        }
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword] as CFDictionary)
+        let fm = FileManager.default
+        for dir in [FileManager.SearchPathDirectory.documentDirectory, .applicationSupportDirectory] {
+            if let u = fm.urls(for: dir, in: .userDomainMask).first,
+               let items = try? fm.contentsOfDirectory(at: u, includingPropertiesForKeys: nil) {
+                for i in items { try? fm.removeItem(at: i) }
+            }
+        }
+    }
+}
+#endif

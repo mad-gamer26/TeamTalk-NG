@@ -1313,6 +1313,7 @@ version = "0.1.0"
 dependencies = [
  "mp3lame-encoder",
  "roxmltree",
+ "serde_json",
  "symphonia",
  "ttng-sys",
  "ureq",

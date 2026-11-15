@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The desktop's menu commands that have keyboard shortcuts.
 enum DesktopCommand: Hashable {
@@ -15,16 +16,16 @@ enum DesktopCommand: Hashable {
 }
 
 /// The desktop's keyboard shortcuts (mainwindow.ui), Ctrl as Command and
-/// Alt as Option, as hidden buttons for a hardware keyboard. They act on
-/// the person or channel VoiceOver is on, as the desktop's on the selected
-/// one. (SwiftUI can't take the function keys the desktop uses for
-/// Connect, Preferences and its dialogs.)
+/// Alt as Option, for a hardware keyboard: UIKit key commands on the
+/// window (not hidden buttons: those sat in the accessibility tree, around
+/// the whole screen, the UI tests found). They act on the person or channel
+/// VoiceOver is on, as the desktop's on the selected one.
 struct DesktopShortcuts: View {
     let run: (DesktopCommand) -> Void
 
-    private typealias Key = (String, KeyEquivalent, EventModifiers, DesktopCommand)
+    typealias Key = (String, KeyEquivalent, EventModifiers, DesktopCommand)
 
-    private static let keys: [Key] = {
+    static let keys: [Key] = {
         var k: [Key] = [
             ("Record Conversations to Disk", "a", [.command, .option], .record),
             ("Speak Client Statistics", "t", .command, .speakClientStats),
@@ -90,12 +91,65 @@ struct DesktopShortcuts: View {
     }()
 
     var body: some View {
-        Group {
-            ForEach(Array(Self.keys.enumerated()), id: \.offset) { _, k in
-                Button(k.0) { run(k.3) }.keyboardShortcut(k.1, modifiers: k.2)
+        // Nothing on screen: the server screen's keys while it's open.
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onAppear {
+                KeyCommands.install()
+                KeyCommands.handler = run
             }
+            .onDisappear { KeyCommands.handler = nil }
+    }
+}
+
+/// The shortcuts as UIKit key commands on the window's root view
+/// controller, which is in every responder chain; any view controller on
+/// the way handles them (the extension below) by passing them to the open
+/// server screen.
+@MainActor
+enum KeyCommands {
+    static var handler: ((DesktopCommand) -> Void)?
+    private static var installed = false
+
+    private static func flags(_ m: EventModifiers) -> UIKeyModifierFlags {
+        var f: UIKeyModifierFlags = []
+        if m.contains(.command) { f.insert(.command) }
+        if m.contains(.shift) { f.insert(.shift) }
+        if m.contains(.option) { f.insert(.alternate) }
+        if m.contains(.control) { f.insert(.control) }
+        return f
+    }
+
+    private static func input(_ k: KeyEquivalent) -> String {
+        switch k {
+        case .return: "\r"
+        case .delete: "\u{8}"
+        default: String(k.character)
         }
-        .opacity(0)
-        .accessibilityHidden(true)
+    }
+
+    static func install() {
+        guard !installed,
+              let root = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController
+        else { return }
+        installed = true
+        for (i, k) in DesktopShortcuts.keys.enumerated() {
+            let c = UIKeyCommand(title: k.0, action: #selector(UIViewController.ttngDesktopShortcut(_:)),
+                                 input: input(k.1), modifierFlags: flags(k.2), propertyList: i)
+            c.wantsPriorityOverSystemBehavior = true
+            root.addKeyCommand(c)
+        }
+    }
+
+    static func run(_ c: UIKeyCommand) {
+        guard let i = c.propertyList as? Int, DesktopShortcuts.keys.indices.contains(i) else { return }
+        handler?(DesktopShortcuts.keys[i].3)
+    }
+}
+
+extension UIViewController {
+    @objc func ttngDesktopShortcut(_ sender: UIKeyCommand) {
+        MainActor.assumeIsolated { KeyCommands.run(sender) }
     }
 }
