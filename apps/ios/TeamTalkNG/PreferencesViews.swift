@@ -88,3 +88,56 @@ struct ConnectionSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
+
+/// Settings → General, as the desktop's General tab: who I am (nickname,
+/// gender, status message, the BearWare.dk web login), inactivity, and
+/// talking.
+struct GeneralSettingsView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Form {
+            Section {
+                TextField("Nickname", text: $model.nickname).accessibilityLabel("Nickname")
+                Picker("Gender", selection: $model.gender) {
+                    Text("Male").tag(Gender.male)
+                    Text("Female").tag(Gender.female)
+                    Text("Neutral").tag(Gender.neutral)
+                }
+                TextField("Status message", text: $model.statusMessage).accessibilityLabel("Status message")
+            } footer: {
+                Text("Used on servers that don't have their own.")
+            }
+            Section {
+                NavigationLink("BearWare.dk account") { BearWareView() }
+            }
+            Section {
+                // The desktop's: seconds of inactivity, 0 means disabled.
+                NumberField("Set away status after (seconds)", value: $model.awayAfterSeconds, in: 0...86400)
+                if model.awayAfterSeconds > 0 {
+                    TextField("Status message during inactivity", text: $model.awayMessage).accessibilityLabel("Status message during inactivity")
+                    Toggle("Disable voice activation during inactivity", isOn: $model.awayStopsVoiceActivation)
+                }
+            } header: {
+                Text("Away")
+            } footer: {
+                Text("Inactivity here: TeamTalk NG in the background or the iPhone locked that long; your status becomes Away and comes back when you return. 0 means disabled.")
+            }
+            Section("Talking") {
+                Picker("Talk mode", selection: $model.talkMode) {
+                    ForEach(TalkMode.allCases) { Text($0.label).tag($0) }
+                }
+                if model.talkMode == .pushToTalk {
+                    Toggle("Push To Talk Lock", isOn: $model.pttLock)
+                }
+                if model.talkMode == .voiceActivation {
+                    NamedSlider("Voice activation level", value: $model.voiceLevel, in: 0...20, step: 1,
+                                spoken: "\(Int(model.voiceLevel))")
+                }
+            }
+        }
+        .navigationTitle("General")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
