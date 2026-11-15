@@ -44,10 +44,68 @@ enum AudioSession {
         if mixWithOthers { options.insert(.mixWithOthers) }
         try? s.setCategory(.playAndRecord, mode: echoCancellation ? .voiceChat : .default, options: options)
         try? s.setActive(true)
-        if let name = UserDefaults.standard.string(forKey: "preferredInput"),
-           let port = s.availableInputs?.first(where: { $0.uid == name }) {
-            try? s.setPreferredInput(port)
+        let choice = UserDefaults.standard.string(forKey: "preferredInput") ?? ""
+        if let built = BuiltInMic(tag: choice) {
+            useBuiltIn(built, s)
+        } else if let port = s.availableInputs?.first(where: { $0.uid == choice }) {
+            // The built-in microphone picked before it had a submenu: the bottom one.
+            if port.portType == .builtInMic { useBuiltIn(.bottom, s) } else { try? s.setPreferredInput(port) }
         }
+    }
+
+    /// The iPhone's own microphone: the bottom one (as phone calls use it),
+    /// or the front or back one in stereo.
+    enum BuiltInMic: String, CaseIterable, Identifiable {
+        case bottom, front, back
+        var id: String { rawValue }
+        var tag: String { "builtin:\(rawValue)" }
+        var label: String {
+            switch self {
+            case .bottom: "Bottom"
+            case .front: "Front, stereo"
+            case .back: "Back, stereo"
+            }
+        }
+        var orientation: AVAudioSession.Orientation {
+            switch self {
+            case .bottom: .bottom
+            case .front: .front
+            case .back: .back
+            }
+        }
+        init?(tag: String) {
+            guard tag.hasPrefix("builtin:"), let m = BuiltInMic(rawValue: String(tag.dropFirst(8))) else { return nil }
+            self = m
+        }
+    }
+
+    private static func useBuiltIn(_ choice: BuiltInMic, _ s: AVAudioSession) {
+        guard let mic = s.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
+        try? s.setPreferredInput(mic)
+        guard let source = mic.dataSources?.first(where: { $0.orientation == choice.orientation }) else { return }
+        let patterns = source.supportedPolarPatterns ?? []
+        if choice != .bottom, patterns.contains(.stereo) {
+            try? source.setPreferredPolarPattern(.stereo)
+            try? mic.setPreferredDataSource(source)
+            // Left and right as the phone is held upright.
+            try? s.setPreferredInputOrientation(.portrait)
+            try? s.setPreferredInputNumberOfChannels(min(2, s.maximumInputNumberOfChannels))
+        } else {
+            if patterns.contains(.omnidirectional) { try? source.setPreferredPolarPattern(.omnidirectional) }
+            try? mic.setPreferredDataSource(source)
+            try? s.setPreferredInputNumberOfChannels(1)
+        }
+    }
+
+    /// What the microphone setting says, in words.
+    static func inputLabel(_ choice: String) -> String {
+        if choice.isEmpty { return "Automatic" }
+        if let m = BuiltInMic(tag: choice) {
+            let name = inputs.first { $0.portType == .builtInMic }?.portName ?? "iPhone Microphone"
+            return "\(name), \(m.label)"
+        }
+        guard let port = inputs.first(where: { $0.uid == choice }) else { return "Automatic (not connected)" }
+        return port.portType == .builtInMic ? "\(port.portName), Bottom" : port.portName
     }
 
     /// The microphones there are now (built in, wired, Bluetooth).

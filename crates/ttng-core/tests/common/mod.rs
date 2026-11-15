@@ -18,6 +18,7 @@ pub struct Server {
     pub port: u16,
     dir: PathBuf,
     child: Option<Child>,
+    exe: PathBuf,
 }
 
 fn tt5srv() -> PathBuf {
@@ -25,6 +26,16 @@ fn tt5srv() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sdk/linux"));
     sdk.join("Server/tt5srv")
+}
+
+/// BearWare's encrypting server, built from source by
+/// scripts/build-sdk-linux.sh (`TTNG_PROSRV` to point elsewhere); `None`
+/// when it isn't built.
+pub fn tt5prosrv() -> Option<PathBuf> {
+    let p = std::env::var_os("TTNG_PROSRV")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sdk/linux-src/Server/tt5prosrv"));
+    p.exists().then_some(p)
 }
 
 /// A port free for both TCP and UDP.
@@ -55,6 +66,11 @@ impl Server {
 
     /// A server with more `<general>` settings (encryption, say).
     pub fn start_with(general: &str) -> Server {
+        Server::start_exe(tt5srv(), general)
+    }
+
+    /// `exe` (tt5srv or tt5prosrv) with more `<general>` settings.
+    pub fn start_exe(exe: PathBuf, general: &str) -> Server {
         let port = free_port();
         let dir = std::env::temp_dir().join(format!("ttng-test-{}-{port}", std::process::id()));
         std::fs::create_dir_all(dir.join("files")).unwrap();
@@ -79,13 +95,18 @@ impl Server {
 </teamtalk>"#
         );
         std::fs::write(dir.join("tt5srv.xml"), xml).unwrap();
-        let mut s = Server { port, dir, child: None };
+        let mut s = Server {
+            port,
+            dir,
+            child: None,
+            exe,
+        };
         s.run();
         s
     }
 
     fn run(&mut self) {
-        let child = Command::new(tt5srv())
+        let child = Command::new(&self.exe)
             .args(["-nd", "-wd"])
             .arg(&self.dir)
             .stdout(Stdio::null())

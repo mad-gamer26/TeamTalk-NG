@@ -171,6 +171,66 @@ fn encrypted_connections_check_the_servers_certificate() {
     );
 }
 
+/// A whole encrypted session against BearWare's encrypting server
+/// (tt5prosrv, built from source): logging in with its certificate checked,
+/// talking, a message; and refused with another authority's.
+#[test]
+fn a_whole_encrypted_session_with_tt5prosrv() {
+    let Some(exe) = common::tt5prosrv() else {
+        eprintln!("skipped: no tt5prosrv (scripts/build-sdk-linux.sh linux)");
+        return;
+    };
+    let certs = Certs::make("pro");
+    let server = Server::start_exe(
+        exe,
+        &format!(
+            "<certificate-file>{}</certificate-file><privatekey-file>{}</privatekey-file>",
+            certs.path("srv.pem"),
+            certs.path("srv.key")
+        ),
+    );
+    let secure = |user: &str, ca: &str| {
+        let mut o = server.options(user);
+        o.encrypted = true;
+        o.encryption = Some(Encryption {
+            ca_pem: ca.into(),
+            verify_peer: true,
+            ..Default::default()
+        });
+        o
+    };
+    // Another authority: refused over the certificate.
+    let other = Certs::make("pro-other");
+    let x = TestClient::new();
+    let refused = x.client.connect(secure("carol", &other.pem("ca.pem")));
+    assert!(
+        matches!(&refused, Err(Error::Connection(m)) if m.contains("certificate")),
+        "{refused:?}"
+    );
+    // The right one: logged in, and everything works encrypted.
+    let a = TestClient::new();
+    let b = TestClient::new();
+    for (c, user) in [(&a, "alice"), (&b, "bob")] {
+        c.client
+            .connect(secure(user, &certs.pem("ca.pem")))
+            .expect("encrypted login");
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let root = a.client.snapshot().my_channel_id;
+    a.client.send_message(MessageTarget::Channel(root), "over TLS").unwrap();
+    b.wait_for("the message", |e| {
+        matches!(e, Event::MessageReceived(m) if m.text == "over TLS").then_some(())
+    });
+    // Voice goes over the encrypted UDP too.
+    let alice = a.client.snapshot().my_user_id;
+    a.client.set_test_tone(440).unwrap();
+    a.client.set_transmitting(true).unwrap();
+    b.wait_for("Alice talking", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == alice).then_some(())
+    });
+}
+
 /// A stand-in for bearware.dk's web login, answering `username` (or
 /// nothing) to every request, and noting what was asked.
 fn fake_bearware(username: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {

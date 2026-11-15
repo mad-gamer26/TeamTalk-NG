@@ -17,14 +17,31 @@ struct SoundSystemView: View {
                 Toggle("Play along with other apps", isOn: $mixWithOthers)
                 Toggle("Play through the speaker", isOn: $speaker)
                 Toggle("Use Bluetooth headset microphones", isOn: $bluetoothMic)
-                Picker("Microphone", selection: $preferredInput) {
-                    Text("Automatic").tag("")
-                    ForEach(AudioSession.inputs, id: \.uid) { Text($0.portName).tag($0.uid) }
+                // A menu, with the iPhone's own microphone as a submenu:
+                // bottom (mono), or front or back in stereo.
+                Menu {
+                    Picker("Microphone", selection: $preferredInput) {
+                        Text("Automatic").tag("")
+                        ForEach(AudioSession.inputs.filter { $0.portType != .builtInMic }, id: \.uid) {
+                            Text($0.portName).tag($0.uid)
+                        }
+                    }
+                    if let mic = AudioSession.inputs.first(where: { $0.portType == .builtInMic }) {
+                        Menu(mic.portName) {
+                            Picker(mic.portName, selection: $preferredInput) {
+                                ForEach(AudioSession.BuiltInMic.allCases) { Text($0.label).tag($0.tag) }
+                            }
+                        }
+                    }
+                } label: {
+                    LabeledContent("Microphone", value: AudioSession.inputLabel(preferredInput))
                 }
+                .accessibilityLabel("Microphone")
+                .accessibilityValue(AudioSession.inputLabel(preferredInput))
             } header: {
                 Text("Where sound goes")
             } footer: {
-                Text("Along with other apps, music and other sounds keep playing while you're connected. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways.")
+                Text("Along with other apps, music and other sounds keep playing while you're connected. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways. The iPhone's front and back microphones send stereo in channels whose codec is stereo, with echo cancellation off (Apple's echo cancellation is mono).")
             }
             Section {
                 Toggle("Echo cancellation", isOn: $model.audio.echoCancellation)
