@@ -655,6 +655,12 @@ impl Client {
         self.ask(|r| Request::Channels(ChannelRequest::UpdateStream { offset_ms, paused }, r))
     }
 
+    /// Whether I hear the files I stream (the SDK doesn't play my own
+    /// stream back; this plays the file here too, in step).
+    pub fn set_hear_own_stream(&self, on: bool) -> Result<()> {
+        self.ask(|r| Request::Channels(ChannelRequest::HearOwnStream(on), r))
+    }
+
     pub fn stop_stream(&self) -> Result<()> {
         self.ask(|r| Request::Channels(ChannelRequest::StopStream, r))
     }
@@ -823,6 +829,9 @@ struct Worker {
     duplex: bool,
     /// Recording each person: the folder and format.
     record_each: Option<(String, RecordingFormat)>,
+    /// Play my own stream here too, and its local playback session.
+    hear_own_stream: bool,
+    local_playback: i32,
 }
 
 impl Worker {
@@ -854,6 +863,8 @@ impl Worker {
             audio_devices: None,
             duplex: false,
             record_each: None,
+            hear_own_stream: false,
+            local_playback: 0,
         }
     }
 
@@ -1430,7 +1441,24 @@ impl Worker {
                 }
             }
         }
-        let want_duplex = self.model.lock().map(|m| m.audio.echo_cancellation).unwrap_or(false);
+        let echo = self.model.lock().map(|m| m.audio.echo_cancellation).unwrap_or(false);
+        // Phones cancel echo in their own sound devices (the SDK can't open
+        // duplex devices there): iOS's Voice-Processing I/O unit, Android's
+        // voice communication stream.
+        if echo && devices != AudioDevices::Virtual {
+            if cfg!(target_os = "ios") {
+                input = sys::TT_SOUNDDEVICE_ID_VOICEPREPROCESSINGIO as i32;
+                output = input;
+            } else if cfg!(target_os = "android") {
+                let shared = if devices == AudioDevices::Shared {
+                    sys::TT_SOUNDDEVICE_ID_SHARED_FLAG as i32
+                } else {
+                    0
+                };
+                input = sys::TT_SOUNDDEVICE_ID_OPENSLES_VOICECOM as i32 | shared;
+            }
+        }
+        let want_duplex = echo && !cfg!(any(target_os = "ios", target_os = "android"));
         // SAFETY: inst is live.
         unsafe {
             sys::TT_CloseSoundDuplexDevices(self.inst);

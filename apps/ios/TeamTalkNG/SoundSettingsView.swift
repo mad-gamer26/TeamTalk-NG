@@ -8,11 +8,13 @@ struct SoundSystemView: View {
     @AppStorage("speaker") private var speaker = true
     @AppStorage("bluetoothMic") private var bluetoothMic = false
     @AppStorage("preferredInput") private var preferredInput = ""
+    @AppStorage("mixWithOthers") private var mixWithOthers = true
 
     var body: some View {
         @Bindable var model = model
         Form {
             Section {
+                Toggle("Play along with other apps", isOn: $mixWithOthers)
                 Toggle("Play through the speaker", isOn: $speaker)
                 Toggle("Use Bluetooth headset microphones", isOn: $bluetoothMic)
                 Picker("Microphone", selection: $preferredInput) {
@@ -22,7 +24,7 @@ struct SoundSystemView: View {
             } header: {
                 Text("Where sound goes")
             } footer: {
-                Text("Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways.")
+                Text("Along with other apps, music and other sounds keep playing while you're connected. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways.")
             }
             Section {
                 Toggle("Echo cancellation", isOn: $model.audio.echoCancellation)
@@ -31,7 +33,14 @@ struct SoundSystemView: View {
             } header: {
                 Text("Microphone")
             } footer: {
-                Text("Echo cancellation removes what the speaker plays from your microphone. A channel with a fixed volume sets the gain itself.")
+                Text("Echo cancellation uses the iPhone's own (as in phone calls), so the others don't hear what your speaker plays. A channel with a fixed volume sets the gain itself.")
+            }
+            Section {
+                Toggle("Hear the files you stream", isOn: $model.hearOwnStream)
+            } header: {
+                Text("Streaming")
+            } footer: {
+                Text("TeamTalk doesn't send your own stream back to you; with this on, the file plays here too, in step with what the channel hears.")
             }
             Section("Levels") {
                 level("Microphone gain", $model.audio.micGain)
@@ -44,6 +53,7 @@ struct SoundSystemView: View {
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }
         .onChange(of: preferredInput) { AudioSession.activate() }
+        .onChange(of: mixWithOthers) { AudioSession.activate() }
     }
 
     private func level(_ label: String, _ v: Binding<Int32>) -> some View {

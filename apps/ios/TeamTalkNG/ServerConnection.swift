@@ -90,6 +90,7 @@ final class ServerConnection {
             joinChannelPath: s.joinChannel, joinChannelPassword: "", reconnect: true)
         let client = self.client
         let audio = app?.audio ?? defaultAudioSettings()
+        let hearOwn = app?.hearOwnStream ?? true
         Task {
             let allowed = await AudioSession.requestMicrophone()
             AudioSession.activate()
@@ -98,6 +99,7 @@ final class ServerConnection {
                     try client.connect(options: options)
                     // Every connection shares the microphone and speaker.
                     try? client.setAudioSettings(settings: audio)
+                    try? client.setHearOwnStream(on: hearOwn)
                     try? client.initAudio(devices: allowed ? .shared : .virtual)
                     return nil
                 } catch {
@@ -419,6 +421,11 @@ final class ServerConnection {
     }
 
     // MARK: Sound
+
+    func applyHearOwnStream() {
+        guard let on = app?.hearOwnStream else { return }
+        run("Couldn't change that") { try $0.setHearOwnStream(on: on) }
+    }
 
     func applyAudioSettings() {
         guard let a = app?.audio else { return }

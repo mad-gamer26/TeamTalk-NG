@@ -245,3 +245,72 @@ fn a_stream_ends_by_itself_or_loops() {
     assert!(a.client.snapshot().streaming.is_none());
     let _ = std::fs::remove_file(&wav);
 }
+
+#[test]
+fn the_others_really_hear_a_streamed_file() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let dir = std::env::temp_dir().join(format!("ttng-hear-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    tone_wav(&wav, 3);
+    // Bob records what arrives, media files included.
+    let rec = dir.join("heard.wav");
+    b.client
+        .start_recording_with(rec.to_str().unwrap(), RecordingFormat::Wave, true)
+        .unwrap();
+    a.client
+        .stream_media_file(wav.to_str().unwrap(), 0, false, false)
+        .unwrap();
+    a.wait_for("the end", |e| {
+        matches!(e, Event::StreamChanged(s) if s.status == StreamStatus::Finished).then_some(())
+    });
+    std::thread::sleep(Duration::from_millis(800));
+    b.client.stop_recording().unwrap();
+    let data = std::fs::read(&rec).unwrap();
+    let loud = data[44..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .filter(|c| i16::from_le_bytes(**c).unsigned_abs() > 1000)
+        .count();
+    assert!(loud > 48_000, "Bob heard the tone ({loud} loud samples)");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn hearing_my_own_stream_and_refusing_what_cant_play() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let dir = std::env::temp_dir().join(format!("ttng-own-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    tone_wav(&wav, 3);
+    a.client.set_hear_own_stream(true).unwrap();
+    a.client
+        .stream_media_file(wav.to_str().unwrap(), 0, false, false)
+        .unwrap();
+    let alice = a.client.snapshot().my_user_id;
+    b.wait_for("the file playing", |e| {
+        matches!(e, Event::UserUpdated(u) if u.id == alice && u.playing_media).then_some(())
+    });
+    a.client.update_stream(None, true).unwrap();
+    a.client.update_stream(Some(500), false).unwrap();
+    a.client.stop_stream().unwrap();
+
+    let junk = dir.join("not-audio.mp3");
+    std::fs::write(&junk, b"this is text, not sound").unwrap();
+    let refused = a.client.stream_media_file(junk.to_str().unwrap(), 0, false, false);
+    assert!(matches!(refused, Err(Error::Refused(_))), "{refused:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

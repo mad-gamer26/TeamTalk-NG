@@ -20,7 +20,17 @@ final class AppModel {
     var audio = defaultAudioSettings() {
         didSet {
             saveAudio()
+            // Echo cancellation changes the audio session's mode first.
+            if audio.echoCancellation != oldValue.echoCancellation { AudioSession.activate() }
             for c in connections.values { c.applyAudioSettings() }
+        }
+    }
+
+    /// Hear the files I stream (the SDK doesn't play my own stream back).
+    var hearOwnStream = true {
+        didSet {
+            save()
+            for c in connections.values { c.applyHearOwnStream() }
         }
     }
 
@@ -64,6 +74,7 @@ final class AppModel {
         recordEachPerson = defaults.bool(forKey: "recordEachPerson")
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
+        hearOwnStream = defaults.object(forKey: "hearOwnStream") as? Bool ?? true
         statusMessage = defaults.string(forKey: "statusMessage") ?? ""
         awayAfterMinutes = defaults.integer(forKey: "awayAfterMinutes")
         awayMessage = defaults.string(forKey: "awayMessage") ?? ""
@@ -103,6 +114,7 @@ final class AppModel {
         defaults.set(recordEachPerson, forKey: "recordEachPerson")
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
+        defaults.set(hearOwnStream, forKey: "hearOwnStream")
         defaults.set(statusMessage, forKey: "statusMessage")
         defaults.set(awayAfterMinutes, forKey: "awayAfterMinutes")
         defaults.set(awayMessage, forKey: "awayMessage")
