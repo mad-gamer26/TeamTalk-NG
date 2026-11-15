@@ -224,17 +224,20 @@ struct ServerEditView: View {
                     Toggle("Log in with my BearWare.dk account", isOn: Binding(
                         get: { server.bearwareLogin },
                         set: { server.username = $0 ? "bearware" : "" }))
-                    TextField("Username", text: $server.username).accessibilityLabel("Username")
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    if showPassword {
-                        TextField("Password", text: $password).accessibilityLabel("Password")
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    } else {
-                        SecureField("Password", text: $password).accessibilityLabel("Password")
+                    // The BearWare.dk account logs in: no username or password here.
+                    if !server.bearwareLogin {
+                        TextField("Username", text: $server.username).accessibilityLabel("Username")
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        if showPassword {
+                            TextField("Password", text: $password).accessibilityLabel("Password")
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        } else {
+                            SecureField("Password", text: $password).accessibilityLabel("Password")
+                        }
+                        // The desktop's "Show password".
+                        Toggle("Show password", isOn: $showPassword)
                     }
-                    // The desktop's "Show password".
-                    Toggle("Show password", isOn: $showPassword)
                     TextField("Nickname (optional)", text: $server.nickname).accessibilityLabel("Nickname (optional)")
                     TextField("Status message (optional)", text: $server.statusMessage).accessibilityLabel("Status message (optional)")
                 }
