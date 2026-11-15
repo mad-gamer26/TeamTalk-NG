@@ -27,7 +27,7 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
 - [ ] Siri shortcuts: "Add to Siri" for connecting to a server.
 - [ ] iCloud sync of settings and the server list (opt-in).
 - [ ] Headset button toggles talking (remote control events).
-- [x] Recordings list: play (QuickLook), share, delete the recordings in
+- [x] Recordings list: play (the app's own player, in its audio session — not Quick Look, the owner's choice), share, delete the recordings in
       the app (now only through the Files app).
 - [x] "Return sends message" (PREF_GENERAL_SENDONRETURN).
 - [x] Files list sort field and order (PREF_FILES_SORT_*).
