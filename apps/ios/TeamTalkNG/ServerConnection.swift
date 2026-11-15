@@ -121,7 +121,8 @@ final class ServerConnection {
         busy = true
         problem = nil
         let s = server
-        let nickname = s.nickname.isEmpty ? (app?.nickname ?? "") : s.nickname
+        // The desktop's: the server's nickname, else mine, else "NoName".
+        let nickname = s.nickname.isEmpty ? (app?.nickname.nonEmpty ?? "NoName") : s.nickname
         let options = ConnectOptions(
             host: s.host, tcpPort: s.tcpPort, udpPort: s.udpPort, encrypted: s.encrypted,
             nickname: nickname.isEmpty ? s.username : nickname, username: s.username,
@@ -183,7 +184,10 @@ final class ServerConnection {
     // MARK: Channels and messages
 
     func join(_ channel: Channel, password: String = "") {
-        run("Couldn't join") { try $0.joinChannel(channelId: channel.id, password: password) }
+        let path = channel.parentId == 0 ? "/" : client.channelPath(channelId: channel.id)
+        run("Couldn't join", onFail: { [weak self] in self?.status(nil, "Cannot join channel \(path)") }) {
+            try $0.joinChannel(channelId: channel.id, password: password)
+        }
     }
 
     func leaveChannel() {
@@ -561,7 +565,8 @@ final class ServerConnection {
 
     func saveServerConfig() {
         run("Couldn't save the configuration") { try $0.saveServerConfig() }
-        announce("Server configuration saved")
+        note("Server configuration saved")
+        status(.serverConfigSaved, "Server configuration saved")
     }
 
     func banAddress(_ address: String, channelPath: String = "") {
@@ -600,7 +605,7 @@ final class ServerConnection {
     }
 
     /// Runs a core call off the main thread; failures are announced.
-    private func run(_ what: String, _ call: @escaping @Sendable (TtClient) throws -> Void) {
+    private func run(_ what: String, onFail: (() -> Void)? = nil, _ call: @escaping @Sendable (TtClient) throws -> Void) {
         let client = self.client
         Task {
             let failed: String? = await Task.detached {
@@ -608,6 +613,7 @@ final class ServerConnection {
             }.value
             if let failed {
                 problem = failed
+                onFail?()
                 announce("\(what): \(failed)")
             }
         }
@@ -634,10 +640,10 @@ final class ServerConnection {
         guard isConnected, let mode = app?.talkMode else { return }
         if mode == .pushToTalk {
             setTransmitting(!transmitting)
-            say(.talking, ["state": transmitting ? "Talking" : "Stopped talking"])
+            sayText(.voiceTransmission, transmitting ? "Talking" : "Stopped talking")
         } else {
             setMicMuted(!muted)
-            say(.talking, ["state": muted ? "Microphone muted" : "Microphone on"])
+            sayText(.voiceTransmission, muted ? "Microphone muted" : "Microphone on")
         }
     }
 
@@ -697,11 +703,76 @@ final class ServerConnection {
         app?.speech.say(e, v)
     }
 
-    /// Says something about what I did (results, not events).
-    private func note(_ text: String) { app?.speech.speak(text) }
+    /// Says the result of something I did (the desktop's "Menu actions").
+    private func note(_ text: String) { app?.speech.say(.menuActions, ["message": text]) }
+
+    /// Says fixed words under a spoken event (the desktop's connectivity,
+    /// transmission toggles, menu actions).
+    private func sayText(_ e: SpeechEvent, _ text: String) { app?.speech.say(e, ["message": text]) }
+
+    /// The desktop's names for subscriptions when I change mine (its
+    /// SUBCHANGE "{type}"), and the spoken event of each.
+    static func subscriptionType(_ s: Subscription) -> (name: String, event: SpeechEvent) {
+        switch s {
+        case .userMessages: ("Private messages", .subUserMessages)
+        case .channelMessages: ("Channel messages", .subChannelMessages)
+        case .broadcastMessages: ("Broadcast messages", .subBroadcastMessages)
+        case .voice: ("Voice", .subVoice)
+        case .video: ("Video", .subVideo)
+        case .desktop: ("Desktop", .subDesktop)
+        case .desktopAccess: ("Desktop input", .subDesktopInput)
+        case .mediaFile: ("Media files", .subMediaFile)
+        case .interceptUserMessages: ("Intercept private messages", .subInterceptUserMessages)
+        case .interceptChannelMessages: ("Intercept channel messages", .subInterceptChannelMessages)
+        case .interceptVoice: ("Intercept voice", .subInterceptVoice)
+        case .interceptVideo: ("Intercept video capture", .subInterceptVideo)
+        case .interceptDesktop: ("Intercept desktop", .subInterceptDesktop)
+        case .interceptMediaFile: ("Intercept media files", .subInterceptMediaFile)
+        }
+    }
+
+    /// The desktop's menu names for subscriptions (said when someone else
+    /// changes theirs to me).
+    static func subscriptionMenuName(_ s: Subscription) -> String {
+        switch s {
+        case .userMessages: "User Messages"
+        case .channelMessages: "Channel Messages"
+        case .broadcastMessages: "Broadcast Messages"
+        case .voice: "Voice"
+        case .video: "Video"
+        case .desktop: "Desktop"
+        case .desktopAccess: "Desktop Access"
+        case .mediaFile: "Media File Stream"
+        case .interceptUserMessages: "Intercept User Messages"
+        case .interceptChannelMessages: "Intercept Channel Messages"
+        case .interceptVoice: "Intercept Voice"
+        case .interceptVideo: "Intercept Video"
+        case .interceptDesktop: "Intercept Desktop"
+        case .interceptMediaFile: "Intercept Media File Stream"
+        }
+    }
+
+    static func classroomEvent(_ s: TransmitStream) -> SpeechEvent {
+        switch s {
+        case .channelMessages: .classroomChat
+        case .voice: .classroomVoice
+        case .video: .classroomVideo
+        case .desktop: .classroomDesktop
+        case .mediaFile: .classroomMediaFile
+        }
+    }
+
+    /// The private conversation on screen (for "typing in focused window").
+    var focusedConversation: Int32?
 
     private func vars(_ u: User) -> [String: String] {
         ["user": u.displayName, "username": u.username]
+    }
+
+    private func serverVars(_ u: User) -> [String: String] {
+        var v = vars(u)
+        v["server"] = snapshot?.server.name.nonEmpty ?? server.title
+        return v
     }
 
     /// The desktop's lines on joining a channel: where, its topic, its
@@ -720,10 +791,23 @@ final class ServerConnection {
         snapshot.flatMap { s in s.users.first { $0.id == s.myUserId }?.displayName } ?? "Me"
     }
 
-    /// An event line in the chat (Settings → Display).
-    private func eventLine(_ text: String) {
+    /// The latest status-bar message (the desktop's status bar).
+    private(set) var statusLine = ""
+
+    /// A status-bar message: always (`event` nil, the desktop's BYPASS) or
+    /// when its event is on; in the chat too with "Show status-bar events
+    /// in the chat" (on by default, as the desktop).
+    func status(_ event: StatusEvent?, _ text: String) {
+        if let event, app?.statusEvents.isOn(event) == false { return }
+        statusLine = text
         guard app?.eventsInChat == true else { return }
         lines.append(ChatLine(from: "Event", text: text, privateWith: nil, time: .now, kind: .logMessage, vars: ["content": text]))
+    }
+
+    /// A status-bar event with its message's variables.
+    private func status(_ event: StatusEvent, vars: [String: String]) {
+        guard let store = app?.statusEvents else { return }
+        status(event, store.text(event, vars))
     }
 
     private func channelName(_ id: Int32) -> String {
@@ -771,9 +855,10 @@ final class ServerConnection {
             case .loggedIn:
                 if dropped {
                     dropped = false
-                    say(.connection, ["state": "reconnected"])
                     applyTalkMode()
                 }
+                sayText(.connectivity, "Connected to \(snapshot?.server.name.nonEmpty ?? server.title)")
+                status(nil, "Connected to \(snapshot?.server.name.nonEmpty ?? server.title)")
                 if app?.chatTemplates.enabled == true, let name = snapshot?.server.name.nonEmpty ?? server.title.nonEmpty {
                     lines.append(ChatLine(from: "Server", text: "Server name: \(name)", privateWith: nil, time: .now,
                                           kind: .serverName, vars: ["server": name]))
@@ -790,10 +875,16 @@ final class ServerConnection {
                 seenChannels = []
                 if !dropped {
                     sound(.serverLost)
-                    say(.connection, ["state": "connection lost, reconnecting"])
+                    sayText(.connectivity, "Connection lost to \(server.host) TCP port \(server.tcpPort) UDP port \(server.udpPort)")
+                    status(nil, "Connection lost to \(server.host) TCP port \(server.tcpPort) UDP port \(server.udpPort)")
                 }
+                sayText(.connectivity, "Trying to reconnect to \(server.host) port \(server.tcpPort)")
                 dropped = n > 0
             case .disconnected:
+                if loggedInOnce {
+                    sayText(.connectivity, "Disconnected from \(snapshot?.server.name.nonEmpty ?? server.title)")
+                    status(nil, "Disconnected from \(snapshot?.server.name.nonEmpty ?? server.title)")
+                }
                 transmitting = false
                 voiceActive = false
                 expanded = []
@@ -803,7 +894,8 @@ final class ServerConnection {
         case .connectionFailed(let m):
             problem = m
             sound(.serverLost)
-            say(.connection, ["state": m])
+            sayText(.connectivity, m)
+            status(nil, m)
         case .messageReceived(let m):
             let sender = snapshot?.users.first { $0.id == m.fromUserId }
             let from = sender?.displayName ?? m.fromUsername
@@ -846,11 +938,12 @@ final class ServerConnection {
             if ch == myChannel {
                 sound(.userJoined)
                 say(.joinedMine, vars(u))
-                eventLine("\(u.displayName) joined")
+                status(.joinedMine, vars: vars(u))
             } else if state == .loggedIn {
                 var v = vars(u)
                 v["channel"] = channelName(ch)
                 say(.joined, v)
+                status(.joined, vars: v)
             }
         case .userLeft(let u, let ch):
             if u.id == snapshot?.myUserId { expanded.remove(ch) }
@@ -858,11 +951,12 @@ final class ServerConnection {
             if ch == myChannel {
                 sound(.userLeft)
                 say(.leftMine, vars(u))
-                eventLine("\(u.displayName) left")
+                status(.leftMine, vars: vars(u))
             } else if state == .loggedIn {
                 var v = vars(u)
                 v["channel"] = channelName(ch)
                 say(.left, v)
+                status(.left, vars: v)
             }
         case .userLoggedIn(let u):
             applyDefaultSubscriptions(u)
@@ -870,13 +964,13 @@ final class ServerConnection {
             if state == .loggedIn, u.id != snapshot?.myUserId {
                 sound(.loggedIn)
                 say(.loggedIn, vars(u))
-                eventLine("\(u.displayName) logged in")
+                status(.loggedIn, vars: serverVars(u))
             }
         case .userLoggedOut(let u):
             if state == .loggedIn, u.id != snapshot?.myUserId {
                 sound(.loggedOut)
                 say(.loggedOut, vars(u))
-                eventLine("\(u.displayName) logged out")
+                status(.loggedOut, vars: serverVars(u))
                 departed.append((u, .now))
                 if departed.count > 200 { departed.removeFirst() }
             }
@@ -888,13 +982,16 @@ final class ServerConnection {
             if f.channelId == myChannel {
                 sound(.fileUpdate)
                 say(.fileRemoved, ["file": f.name, "user": f.uploader, "username": f.uploader])
+                status(.fileRemoved, vars: ["file": f.name, "user": f.uploader, "username": f.uploader])
             }
         case .fileAdded(let f):
             if f.channelId == myChannel, f.uploader != me?.username {
                 sound(.fileUpdate)
                 let who = snapshot?.users.first { $0.username == f.uploader }?.displayName ?? f.uploader
-                say(.fileAdded, ["filename": f.name, "user": who, "username": f.uploader,
-                                 "filesize": ByteCountFormatter.string(fromByteCount: f.size, countStyle: .file)])
+                let fv = ["filename": f.name, "user": who, "username": f.uploader,
+                          "filesize": ByteCountFormatter.string(fromByteCount: f.size, countStyle: .file)]
+                say(.fileAdded, fv)
+                status(.fileAdded, vars: fv)
             }
         case .transferChanged(let t):
             switch t.status {
@@ -918,16 +1015,17 @@ final class ServerConnection {
         case .streamChanged(let st):
             let name = ((st.path as NSString).lastPathComponent as NSString).deletingPathExtension
             switch st.status {
-            case .started: note("Streaming \(name)")
-            case .finished: if !st.looping { note("\(name) finished") }
-            case .failed: announce("Streaming \(name) failed")
-            case .stopped: note("Stopped streaming")
+            case .started: note("Streaming \(name)"); status(nil, "Started streaming media file to channel")
+            case .finished: if !st.looping { note("\(name) finished"); status(nil, "Finished streaming media file to channel") }
+            case .failed: announce("Streaming \(name) failed"); status(nil, "Error streaming media file to channel")
+            case .stopped: note("Stopped streaming"); status(nil, "Aborted streaming media file to channel")
             default: break
             }
         case .recordingChanged(let path, let active, let error):
             let name = (path as NSString).lastPathComponent
             if active {
                 note("Recording")
+                status(.recordingStarted, "Recording to file: \(name)")
             } else if let error {
                 announce("The recording stopped: \(error). Saved as \(name)")
             } else {
@@ -939,7 +1037,7 @@ final class ServerConnection {
                 typing[userId] = .now.addingTimeInterval(6)
                 if first, let u = snapshot?.users.first(where: { $0.id == userId }) {
                     sound(.typing)
-                    say(.typing, vars(u))
+                    say(focusedConversation == userId ? .typing : .typingAnywhere, vars(u))
                 }
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(6.5))
@@ -951,8 +1049,12 @@ final class ServerConnection {
         case .voiceActivated(let on):
             voiceActive = on
             sound(on ? .voiceActivationStarts : .voiceActivationStops)
-        case .kicked(_, let ch):
-            say(.connection, ["state": ch > 0 ? "you were kicked from the channel" : "you were kicked from the server"])
+        case .kicked(let by, let ch):
+            // The desktop's words.
+            let who = (known[by] ?? snapshot?.users.first { $0.id == by }).map { "by \($0.displayName)" } ?? "by unknown user"
+            let text = "Kicked from \(ch > 0 ? "channel" : "server") \(who)"
+            sayText(.connectivity, text)
+            status(nil, text)
         default: break
         }
         refresh()
@@ -964,15 +1066,29 @@ final class ServerConnection {
             sound(.questionMode)
             say(.questionMode, vars(u))
         }
+        // Theirs to me, as the desktop: intercepts from anyone (with their
+        // sound), the rest from people in my channel.
         let intercepts: [Subscription] = [.interceptUserMessages, .interceptChannelMessages, .interceptVoice, .interceptVideo, .interceptDesktop, .interceptMediaFile]
-        let was = Set(before.theirSubscriptions.on).intersection(intercepts), now = Set(u.theirSubscriptions.on).intersection(intercepts)
-        if now.count > was.count { sound(.intercepted) } else if now.count < was.count { sound(.interceptEnded) }
+        let theirsBefore = Set(before.theirSubscriptions.on), theirsNow = Set(u.theirSubscriptions.on)
+        if u.id != snapshot?.myUserId {
+            for sub in theirsNow.symmetricDifference(theirsBefore) {
+                let intercept = intercepts.contains(sub)
+                guard intercept || (u.channelId == myChannel && myChannel > 0) else { continue }
+                if intercept { sound(theirsNow.contains(sub) ? .intercepted : .interceptEnded) }
+                let text = "\(u.displayName) changed subscription \"\(Self.subscriptionMenuName(sub))\" to: \(theirsNow.contains(sub) ? "On" : "Off")"
+                sayText(Self.subscriptionType(sub).event, text)
+                status(StatusEvent(Self.subscriptionType(sub).event), text)
+            }
+        }
+        // Mine to them (I changed it): the desktop's message.
         let mineBefore = Set(before.mySubscriptions.on), mineNow = Set(u.mySubscriptions.on)
         for sub in mineNow.symmetricDifference(mineBefore) {
             var v = vars(u)
-            v["type"] = PersonView.label(sub)
-            v["state"] = mineNow.contains(sub) ? "on" : "off"
-            say(.subscriptionChange, v)
+            let t = Self.subscriptionType(sub)
+            v["type"] = t.name
+            v["state"] = mineNow.contains(sub) ? "Enabled" : "Disabled"
+            say(t.event, v)
+            status(StatusEvent(t.event), vars: v)
         }
         if u.sendingVideo && !before.sendingVideo { sound(.newVideo) }
         if u.sharingDesktop && !before.sharingDesktop { sound(.newDesktop) }
@@ -987,7 +1103,9 @@ final class ServerConnection {
             for user in people {
                 for st in PersonView.streams where allowed(before, user, st) != allowed(c, user, st) {
                     let name = user == 0 ? "everyone" : (snapshot?.users.first { $0.id == user }?.displayName ?? "someone")
-                    say(.classroomChange, ["type": PersonView.streamLabel(st), "state": allowed(c, user, st) ? "allowed" : "not allowed", "user": name, "username": name])
+                    let cv = ["type": PersonView.streamLabel(st), "state": allowed(c, user, st) ? "allowed" : "not allowed", "user": name, "username": name]
+                    say(Self.classroomEvent(st), cv)
+                    status(StatusEvent(Self.classroomEvent(st)), vars: cv)
                 }
             }
         }

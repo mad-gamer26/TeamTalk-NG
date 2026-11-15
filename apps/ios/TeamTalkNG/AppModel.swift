@@ -63,13 +63,15 @@ final class AppModel {
     /// iPhone is locked) this long, with its own message, maybe without
     /// voice activation.
     var statusMessage = "" { didSet { save() } }
-    var awayAfterMinutes = 0 { didSet { save() } }
+    /// The desktop's 180 seconds of inactivity (here: in the background or locked).
+    var awayAfterMinutes = 3 { didSet { save() } }
     var awayMessage = "" { didSet { save() } }
     var awayStopsVoiceActivation = false { didSet { save() } }
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
     let speech = SpeechStore()
     let chatTemplates = ChatTemplateStore()
+    let statusEvents = StatusEventStore()
 
     // MARK: Display (the desktop's Display tab)
 
@@ -86,7 +88,7 @@ final class AppModel {
     }
 
     var showUsernames = false { didSet { save() } }
-    var showTopics = true { didSet { save() } }
+    var showTopics = false { didSet { save() } }
     var sortChannelsByName = true { didSet { save() } }
     /// The desktop's default: join, or leave the channel you're in.
     var channelTap = ChannelTap.joinOrLeave { didSet { save() } }
@@ -94,7 +96,8 @@ final class AppModel {
     var autoExpandChannels = false { didSet { save() } }
     var showTimestamps = true { didSet { save() } }
     var showMOTD = true { didSet { save() } }
-    var eventsInChat = false { didSet { save() } }
+    /// The desktop's "Show statusbar events in chat-window", on by default.
+    var eventsInChat = true { didSet { save() } }
     var notifyInBackground = true { didSet { save() } }
 
     // MARK: Connection (the desktop's Connection tab)
@@ -130,7 +133,7 @@ final class AppModel {
         hearOwnStream = defaults.object(forKey: "hearOwnStream") as? Bool ?? true
         streamVideo = defaults.object(forKey: "streamVideo") as? Bool ?? true
         showUsernames = defaults.bool(forKey: "showUsernames")
-        showTopics = defaults.object(forKey: "showTopics") as? Bool ?? true
+        showTopics = defaults.object(forKey: "showTopics") as? Bool ?? false
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
         channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .joinOrLeave
         // "Joins it" was the default before the desktop's join-or-leave.
@@ -141,7 +144,7 @@ final class AppModel {
         autoExpandChannels = defaults.bool(forKey: "autoExpandChannels")
         showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
-        eventsInChat = defaults.bool(forKey: "eventsInChat")
+        eventsInChat = defaults.object(forKey: "eventsInChat") as? Bool ?? true
         notifyInBackground = defaults.object(forKey: "notifyInBackground") as? Bool ?? true
         reconnect = defaults.object(forKey: "reconnect") as? Bool ?? true
         joinRoot = defaults.object(forKey: "joinRoot") as? Bool ?? true
@@ -149,9 +152,17 @@ final class AppModel {
             PersonView.normal.first { "\($0)" == name }
         })
         statusMessage = defaults.string(forKey: "statusMessage") ?? ""
-        awayAfterMinutes = defaults.integer(forKey: "awayAfterMinutes")
+        awayAfterMinutes = defaults.object(forKey: "awayAfterMinutes") as? Int ?? 3
         awayMessage = defaults.string(forKey: "awayMessage") ?? ""
         awayStopsVoiceActivation = defaults.bool(forKey: "awayStopsVoiceActivation")
+        // Once: settings still at this app's earlier defaults take the
+        // desktop's (settings changed by hand stay).
+        if !defaults.bool(forKey: "desktopDefaults1") {
+            defaults.set(true, forKey: "desktopDefaults1")
+            if awayAfterMinutes == 0 { awayAfterMinutes = 3 }
+            if showTopics { showTopics = false }
+            if !eventsInChat { eventsInChat = true }
+        }
     }
 
     /// The desktop's "Reset preferences to default": every setting as it
@@ -166,16 +177,17 @@ final class AppModel {
         nickname = ""
         audio = defaultAudioSettings()
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
-        statusMessage = ""; awayAfterMinutes = 0; awayMessage = ""; awayStopsVoiceActivation = false
+        statusMessage = ""; awayAfterMinutes = 3; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = true; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false
-        showTimestamps = true; showMOTD = true; eventsInChat = false; notifyInBackground = true
+        showUsernames = false; showTopics = false; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false
+        showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
         sounds.volume = 0.8
         sounds.selectedId = InstalledPack.builtIn.id
         speech.revert()
         chatTemplates.revert()
+        statusEvents.revert()
         AudioSession.activate()
     }
 

@@ -56,6 +56,17 @@ struct ServerView: View {
                     StreamBar(connection: connection, stream: st)
                 }
                 TalkBar(connection: connection)
+                // The desktop's status bar: its latest message.
+                if !connection.statusLine.isEmpty {
+                    Text(connection.statusLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                        .accessibilityLabel("Status: \(connection.statusLine)")
+                }
             }
         }
         .navigationTitle(connection.snapshot?.server.name.nonEmpty ?? connection.server.title)
@@ -648,6 +659,9 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
+        // The conversation on screen (the desktop's "focused window").
+        .onAppear { if let p = privateWith { connection.focusedConversation = p.id } }
+        .onDisappear { if connection.focusedConversation == privateWith?.id { connection.focusedConversation = nil } }
     }
 
     private func stamp(_ t: Date) -> String {

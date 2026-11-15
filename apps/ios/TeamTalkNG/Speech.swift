@@ -2,48 +2,92 @@ import AVFoundation
 import Observation
 import SwiftUI
 
-/// What the desktop speaks (its Text to Speech events), each with a
-/// message to say, made of {variables}.
+/// What the desktop speaks: its Text to Speech events (qtTeamTalk's
+/// utiltts.h), each on or off by itself, in its order, with its names.
+/// Events of a group share one message, as on the desktop.
 enum SpeechEvent: String, CaseIterable, Identifiable, Codable {
     case loggedIn, loggedOut
     case joined, left, joinedMine, leftMine
-    case privateMessage, privateMessageSent, typing
-    case questionMode
+    case privateMessage, privateMessageSent, typing, typingAnywhere
     case channelMessage, channelMessageSent
     case broadcastMessage, broadcastMessageSent
-    case subscriptionChange, classroomChange
+    case questionMode
+    case subUserMessages, subChannelMessages, subBroadcastMessages, subVoice, subVideo
+    case subDesktop, subDesktopInput, subMediaFile
+    case subInterceptUserMessages, subInterceptChannelMessages, subInterceptVoice
+    case subInterceptVideo, subInterceptDesktop, subInterceptMediaFile
+    case classroomChat, classroomVoice, classroomVideo, classroomDesktop, classroomMediaFile
     case fileAdded, fileRemoved
-    case connection
-    case talking
+    case menuActions
+    case voiceTransmission, videoTransmission, desktopSharing
+    case connectivity
 
     var id: Self { self }
 
+    /// The desktop's names (Preferences → Text to Speech).
     var label: String {
         switch self {
-        case .loggedIn: "Someone logs in"
-        case .loggedOut: "Someone logs out"
-        case .joined: "Someone joins another channel"
-        case .left: "Someone leaves another channel"
-        case .joinedMine: "Someone joins your channel"
-        case .leftMine: "Someone leaves your channel"
-        case .privateMessage: "Private message"
+        case .loggedIn: "User logged in"
+        case .loggedOut: "User logged out"
+        case .joined: "User joined channel"
+        case .left: "User left channel"
+        case .joinedMine: "User joined current channel"
+        case .leftMine: "User left current channel"
+        case .privateMessage: "Private message received"
         case .privateMessageSent: "Private message sent"
-        case .typing: "Someone is typing to you"
-        case .questionMode: "Someone has a question"
-        case .channelMessage: "Channel message"
+        case .typing: "User is typing a private message in focused window"
+        case .typingAnywhere: "User is typing a private message"
+        case .channelMessage: "Channel message received"
         case .channelMessageSent: "Channel message sent"
-        case .broadcastMessage: "Broadcast message"
+        case .broadcastMessage: "Broadcast message received"
         case .broadcastMessageSent: "Broadcast message sent"
-        case .subscriptionChange: "A subscription changes"
-        case .classroomChange: "Classroom permission changes"
+        case .questionMode: "User enabled question mode"
+        case .subUserMessages: "Subscription private text message changed"
+        case .subChannelMessages: "Subscription channel text message changed"
+        case .subBroadcastMessages: "Subscription broadcast text message changed"
+        case .subVoice: "Subscription voice stream changed"
+        case .subVideo: "Subscription webcam stream changed"
+        case .subDesktop: "Subscription shared desktop stream changed"
+        case .subDesktopInput: "Subscription desktop access changed"
+        case .subMediaFile: "Subscription media file stream changed"
+        case .subInterceptUserMessages: "Subscription intercept private text message changed"
+        case .subInterceptChannelMessages: "Subscription intercept channel text message changed"
+        case .subInterceptVoice: "Subscription intercept voice stream changed"
+        case .subInterceptVideo: "Subscription intercept webcam stream changed"
+        case .subInterceptDesktop: "Subscription intercept desktop stream changed"
+        case .subInterceptMediaFile: "Subscription intercept media file stream changed"
+        case .classroomChat: "Classroom allow channel messages transmission changed"
+        case .classroomVoice: "Classroom allow voice transmission changed"
+        case .classroomVideo: "Classroom allow webcam transmission changed"
+        case .classroomDesktop: "Classroom allow desktop transmission changed"
+        case .classroomMediaFile: "Classroom allow media file transmission changed"
         case .fileAdded: "File added"
         case .fileRemoved: "File removed"
-        case .connection: "Connection lost, back, kicked"
-        case .talking: "Talking starts and stops"
+        case .menuActions: "Menu actions"
+        case .voiceTransmission: "Voice transmission mode toggled"
+        case .videoTransmission: "Video transmission toggled"
+        case .desktopSharing: "Desktop sharing toggled"
+        case .connectivity: "Server connectivity"
         }
     }
 
-    /// The desktop's message.
+    /// The message it's stored under: shared within a group, as the
+    /// desktop's (the keys are the ones this app used before, so changed
+    /// messages carry over). Nil: it says fixed words (the desktop's).
+    var templateKey: String? {
+        switch self {
+        case .subUserMessages, .subChannelMessages, .subBroadcastMessages, .subVoice, .subVideo,
+             .subDesktop, .subDesktopInput, .subMediaFile, .subInterceptUserMessages,
+             .subInterceptChannelMessages, .subInterceptVoice, .subInterceptVideo,
+             .subInterceptDesktop, .subInterceptMediaFile: "subscriptionChange"
+        case .classroomChat, .classroomVoice, .classroomVideo, .classroomDesktop, .classroomMediaFile: "classroomChange"
+        case .typingAnywhere: "typing"
+        case .menuActions, .voiceTransmission, .videoTransmission, .desktopSharing, .connectivity: nil
+        default: rawValue
+        }
+    }
+
+    /// The desktop's message (settings.h TTSMSG_*).
     var defaultTemplate: String {
         switch self {
         case .loggedIn: "{user} has logged in on {server}"
@@ -54,44 +98,62 @@ enum SpeechEvent: String, CaseIterable, Identifiable, Codable {
         case .leftMine: "{user} left channel"
         case .privateMessage: "Private message from {user}: {message}"
         case .privateMessageSent: "Private message sent: {message}"
-        case .typing: "{user} is typing..."
+        case .typing, .typingAnywhere: "{user} is typing..."
         case .questionMode: "{user} set question mode"
         case .channelMessage: "Channel message from {user}: {message}"
         case .channelMessageSent: "Channel message sent: {message}"
         case .broadcastMessage: "Broadcast message from {user}: {message}"
         case .broadcastMessageSent: "Broadcast message sent: {message}"
-        case .subscriptionChange: "Subscription \"{type}\" {state} for {user}"
-        case .classroomChange: "Transmission \"{type}\" {state} for {user}"
         case .fileAdded: "File {filename} added by {user}"
         case .fileRemoved: "File {file} removed by {user}"
-        case .connection: "{server}: {state}"
-        case .talking: "{state}"
+        default:
+            switch templateKey {
+            case "subscriptionChange": "Subscription \"{type}\" {state} for {user}"
+            case "classroomChange": "Transmission \"{type}\" {state} for {user}"
+            default: "{message}"
+            }
         }
     }
 
-    /// The {variables} it may use, and what each is.
+    /// The {variables} it may use, and what each is (the desktop's).
     var variables: [(String, String)] {
-        let user = [("{user}", "Their nickname"), ("{username}", "Their username")]
-        let server = ("{server}", "The server's name")
+        let user = [("{user}", "User's nickname"), ("{username}", "User's username")]
+        let server = ("{server}", "Server's name")
         switch self {
         case .loggedIn, .loggedOut, .questionMode: return user + [server]
-        case .joined, .left: return user + [("{channel}", "The channel")]
-        case .joinedMine, .leftMine, .typing: return user
-        case .privateMessage, .channelMessage, .broadcastMessage: return user + [("{message}", "The message"), server]
-        case .privateMessageSent, .channelMessageSent, .broadcastMessageSent: return [("{message}", "The message")]
-        case .subscriptionChange, .classroomChange: return user + [("{type}", "Which"), ("{state}", "On or off")]
-        case .fileAdded: return user + [("{filename}", "The file"), ("{filesize}", "Its size")]
-        case .fileRemoved: return user + [("{file}", "The file")]
-        case .connection: return [server, ("{state}", "What happened")]
-        case .talking: return [("{state}", "Talking, or stopped talking")]
+        case .joined, .left: return user + [("{channel}", "Channel's name")]
+        case .joinedMine, .leftMine, .typing, .typingAnywhere: return user
+        case .privateMessage, .channelMessage, .broadcastMessage: return user + [("{message}", "Message content"), server]
+        case .privateMessageSent, .channelMessageSent, .broadcastMessageSent: return [("{message}", "Message content")]
+        case .fileAdded: return [("{filename}", "File name")] + user + [("{filesize}", "File size")]
+        case .fileRemoved: return [("{file}", "File name")] + user
+        default:
+            switch templateKey {
+            case "subscriptionChange": return user + [("{type}", "Subscription type"), ("{state}", "Subscription state")]
+            case "classroomChange": return [("{type}", "Transmission type"), ("{state}", "Transmission state"), ("{user}", "User concerns by change")]
+            default: return []
+            }
         }
     }
 
-    /// As the desktop has it (and announcements this app always made).
+    /// On by default as on the desktop (TTS_ACTIVEEVENTS).
     var onByDefault: Bool {
         switch self {
-        case .joined, .left, .privateMessageSent, .channelMessageSent, .broadcastMessageSent, .typing: false
-        default: true
+        case .loggedIn, .loggedOut, .joinedMine, .leftMine, .privateMessage, .channelMessage,
+             .broadcastMessage, .fileAdded, .fileRemoved, .menuActions: true
+        default: false
+        }
+    }
+
+    /// The events an earlier version's event became (to keep its choice).
+    static func from(old: String) -> [SpeechEvent] {
+        if let e = SpeechEvent(rawValue: old) { return [e] }
+        switch old {
+        case "subscriptionChange": return allCases.filter { $0.templateKey == "subscriptionChange" }
+        case "classroomChange": return allCases.filter { $0.templateKey == "classroomChange" }
+        case "connection": return [.connectivity]
+        case "talking": return [.voiceTransmission]
+        default: return []
         }
     }
 }
@@ -124,7 +186,8 @@ final class SpeechStore {
     var rate = Double(AVSpeechUtteranceDefaultSpeechRate) { didSet { save() } }
     var volume = 1.0 { didSet { save() } }
     private(set) var disabled: Set<SpeechEvent> = []
-    private(set) var templates: [SpeechEvent: String] = [:]
+    /// Changed messages, by SpeechEvent.templateKey.
+    private(set) var templates: [String: String] = [:]
 
     private let defaults = UserDefaults.standard
     private let synth = AVSpeechSynthesizer()
@@ -136,12 +199,27 @@ final class SpeechStore {
         rate = defaults.object(forKey: "speechRate") as? Double ?? Double(AVSpeechUtteranceDefaultSpeechRate)
         volume = defaults.object(forKey: "speechVolume") as? Double ?? 1
         if let off = defaults.stringArray(forKey: "speechOff") {
-            disabled = Set(off.compactMap(SpeechEvent.init(rawValue:)))
+            // The earlier version's events: its defaults become the
+            // desktop's; choices made by hand carry over to the events
+            // they became.
+            let oldDefault: Set<String> = ["joined", "left", "privateMessageSent", "channelMessageSent", "broadcastMessageSent", "typing"]
+            if !defaults.bool(forKey: "speechEventsDesktop") {
+                if Set(off) == oldDefault {
+                    disabled = Set(SpeechEvent.allCases.filter { !$0.onByDefault })
+                } else {
+                    let known = Set(off.flatMap(SpeechEvent.from(old:)))
+                    disabled = known.union(SpeechEvent.allCases.filter { !$0.onByDefault && ["typingAnywhere", "menuActions", "videoTransmission", "desktopSharing"].contains($0.rawValue) })
+                }
+                defaults.set(true, forKey: "speechEventsDesktop")
+            } else {
+                disabled = Set(off.compactMap(SpeechEvent.init(rawValue:)))
+            }
         } else {
             disabled = Set(SpeechEvent.allCases.filter { !$0.onByDefault })
+            defaults.set(true, forKey: "speechEventsDesktop")
         }
         if let t = defaults.dictionary(forKey: "speechTemplates") as? [String: String] {
-            for (k, v) in t { if let e = SpeechEvent(rawValue: k) { templates[e] = v } }
+            templates = t
         }
     }
 
@@ -152,7 +230,7 @@ final class SpeechStore {
         defaults.set(rate, forKey: "speechRate")
         defaults.set(volume, forKey: "speechVolume")
         defaults.set(disabled.map(\.rawValue), forKey: "speechOff")
-        defaults.set(Dictionary(uniqueKeysWithValues: templates.map { ($0.key.rawValue, $0.value) }), forKey: "speechTemplates")
+        defaults.set(templates, forKey: "speechTemplates")
     }
 
     func isOn(_ e: SpeechEvent) -> Bool { !disabled.contains(e) }
@@ -165,9 +243,10 @@ final class SpeechStore {
         save()
     }
 
-    func template(_ e: SpeechEvent) -> String { templates[e] ?? e.defaultTemplate }
+    func template(_ e: SpeechEvent) -> String { e.templateKey.flatMap { templates[$0] } ?? e.defaultTemplate }
     func setTemplate(_ e: SpeechEvent, _ t: String) {
-        templates[e] = t == e.defaultTemplate || t.isEmpty ? nil : t
+        guard let key = e.templateKey else { return }
+        templates[key] = t == e.defaultTemplate || t.isEmpty ? nil : t
         save()
     }
     func resetTemplates() {
@@ -186,7 +265,8 @@ final class SpeechStore {
         voice = ""
     }
 
-    /// The message with its variables filled in.
+    /// The message with its variables filled in (fixed-words events say
+    /// their {message}).
     func text(_ e: SpeechEvent, _ vars: [String: String]) -> String {
         var t = template(e)
         for (k, v) in vars { t = t.replacingOccurrences(of: "{\(k)}", with: v) }
@@ -255,11 +335,13 @@ struct SpeechView: View {
                     Toggle(isOn: Binding(get: { speech.isOn(e) }, set: { speech.setOn(e, $0) })) {
                         VStack(alignment: .leading) {
                             Text(e.label)
-                            Text(speech.template(e)).font(.caption).foregroundStyle(.secondary)
+                            if e.templateKey != nil {
+                                Text(speech.template(e)).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .accessibilityActions { Button("Change what's said") { editing = e } }
-                    .contextMenu { Button("Change what's said") { editing = e } }
+                    .accessibilityActions { if e.templateKey != nil { Button("Change what's said") { editing = e } } }
+                    .contextMenu { if e.templateKey != nil { Button("Change what's said") { editing = e } } }
                 }
             } header: {
                 Text("Events")
