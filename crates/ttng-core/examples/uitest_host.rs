@@ -127,10 +127,8 @@ fn tone_wav(path: &std::path::Path, secs: u32) {
     let rate = 48000u32;
     let n = rate * secs;
     let mut w = Vec::new();
-    for (tag, v) in [(b"RIFF", 36 + n * 2)] {
-        w.extend_from_slice(tag);
-        w.extend_from_slice(&v.to_le_bytes());
-    }
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + n * 2).to_le_bytes());
     w.extend_from_slice(b"WAVEfmt ");
     w.extend_from_slice(&16u32.to_le_bytes());
     w.extend_from_slice(&1u16.to_le_bytes());
