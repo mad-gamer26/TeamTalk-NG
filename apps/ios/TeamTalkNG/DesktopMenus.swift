@@ -359,6 +359,27 @@ struct StreamMediaFileDialog: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("streamLoop") private var loop = false
     @State private var start = 0.0
+    // The desktop's audio preprocessor (none by default), remembered.
+    @AppStorage("streamPreprocessor") private var kind = 0
+    @AppStorage("streamTTGain") private var ttGain = 50
+    @AppStorage("streamTTMuteLeft") private var ttLeft = false
+    @AppStorage("streamTTMuteRight") private var ttRight = false
+    @AppStorage("streamSpeexAGC") private var spAGC = true
+    @AppStorage("streamSpeexGain") private var spGain = 8000
+    @AppStorage("streamSpeexMaxGain") private var spMaxGain = 30
+    @AppStorage("streamSpeexInc") private var spInc = 12
+    @AppStorage("streamSpeexDec") private var spDec = -40
+    @AppStorage("streamSpeexDenoise") private var spDenoise = true
+    @AppStorage("streamSpeexAtten") private var spAtten = -30
+
+    private var preprocessor: StreamPreprocessor {
+        switch kind {
+        case 1: .teamTalk(gain: Int32(ttGain), muteLeft: ttLeft, muteRight: ttRight)
+        case 2: .speex(agc: spAGC, gainLevel: Int32(spGain), maxIncDb: Int32(spInc), maxDecDb: Int32(spDec),
+                       maxGainDb: Int32(spMaxGain), denoise: spDenoise, maxNoiseSuppressDb: Int32(spAtten))
+        default: StreamPreprocessor.none
+        }
+    }
 
     private var info: MediaFileInfo { plan.info }
 
@@ -378,6 +399,32 @@ struct StreamMediaFileDialog: View {
                     Toggle("Continuously play media file", isOn: $loop)
                 }
                 Section("Playback Settings") {
+                    Picker("Audio preprocessor", selection: $kind) {
+                        Text("No Audio Preprocessor").tag(0)
+                        Text("TeamTalk Audio Preprocessor").tag(1)
+                        Text("Speex DSP Audio Preprocessor").tag(2)
+                    }
+                    if kind == 1 {
+                        Slider(value: Binding(get: { Double(ttGain) }, set: { ttGain = Int($0) }), in: 0...100, step: 1) { Text("Gain Level") }
+                            .accessibilityValue("\(ttGain) percent")
+                        Toggle("Mute left channel", isOn: $ttLeft)
+                        Toggle("Mute right channel", isOn: $ttRight)
+                    }
+                    if kind == 2 {
+                        Toggle("Enable AGC", isOn: $spAGC)
+                        Stepper("Gain Level: \(spGain)", value: $spGain, in: 0...32000, step: 500)
+                        Stepper("Max Gain dB: \(spMaxGain)", value: $spMaxGain, in: 0...100)
+                        Stepper("Max Gain Increase Per Sec (dB): \(spInc)", value: $spInc, in: 0...100)
+                        Stepper("Max Gain Decrease Per Sec (dB): \(spDec)", value: $spDec, in: -100...0)
+                        Toggle("Enable Denoising", isOn: $spDenoise)
+                        Stepper("Max Attenuation of noise (dB): \(spAtten)", value: $spAtten, in: -100...0)
+                    }
+                    if kind != 0 {
+                        Button("Default") {
+                            ttGain = 50; ttLeft = false; ttRight = false
+                            spAGC = true; spGain = 8000; spMaxGain = 30; spInc = 12; spDec = -40; spDenoise = true; spAtten = -30
+                        }
+                    }
                     if info.durationMs > 0 {
                         Slider(value: $start, in: 0...Double(info.durationMs), step: 1000) { Text("Start position") }
                             .accessibilityValue(time(start))
@@ -391,7 +438,7 @@ struct StreamMediaFileDialog: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("OK") {
-                        connection.startStream(plan, offsetMs: UInt32(start), looping: loop)
+                        connection.startStream(plan, offsetMs: UInt32(start), looping: loop, preprocessor: preprocessor)
                         dismiss()
                     }
                 }

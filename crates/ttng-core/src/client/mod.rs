@@ -679,6 +679,19 @@ impl Client {
     /// Streams a media file (audio or video) to my channel, from
     /// `offset_ms`; `looping` starts it again when it ends.
     pub fn stream_media_file(&self, path: &str, offset_ms: u32, paused: bool, looping: bool) -> Result<()> {
+        self.stream_media_file_with(path, offset_ms, paused, looping, StreamPreprocessor::None)
+    }
+
+    /// As `stream_media_file`, with an audio preprocessor for the file (the
+    /// desktop's Stream Media File dialog).
+    pub fn stream_media_file_with(
+        &self,
+        path: &str,
+        offset_ms: u32,
+        paused: bool,
+        looping: bool,
+        preprocessor: StreamPreprocessor,
+    ) -> Result<()> {
         self.ask(|r| {
             Request::Channels(
                 ChannelRequest::Stream {
@@ -686,6 +699,7 @@ impl Client {
                     offset_ms,
                     paused,
                     looping,
+                    preprocessor,
                 },
                 r,
             )
@@ -917,6 +931,8 @@ struct Worker {
     /// Play my own stream here too, and its local playback session.
     hear_own_stream: bool,
     local_playback: i32,
+    /// The streamed file's audio preprocessor (kept for looping).
+    stream_preprocessor: StreamPreprocessor,
     /// The latest picture of each video (shared with `Client::video_frame`),
     /// and when each was last announced.
     frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
@@ -960,6 +976,7 @@ impl Worker {
             recording_mp3: None,
             hear_own_stream: false,
             local_playback: 0,
+            stream_preprocessor: StreamPreprocessor::None,
             web_login: None,
             frames,
             last_frame_note: HashMap::new(),

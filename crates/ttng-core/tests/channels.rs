@@ -364,3 +364,106 @@ fn one_at_a_time_channels_queue_who_talks() {
     a.client.set_transmitting(false).unwrap();
     b.wait_until(|s| s.channel(ch).is_some_and(|c| c.transmit_queue == vec![bob]));
 }
+
+/// The desktop's Stream Media File audio preprocessor: TeamTalk's gain at 0
+/// silences the file for the others; Speex DSP's defaults let it through.
+#[test]
+fn a_streamed_files_audio_preprocessor() {
+    // Each on its own server, so one file's stream can't affect the next.
+    let heard = |pre: StreamPreprocessor| -> usize {
+        let server = Server::start();
+        let a = TestClient::logged_in(&server, "alice");
+        let b = TestClient::logged_in(&server, "bob");
+        for c in [&a, &b] {
+            c.client.init_audio(AudioDevices::Virtual).unwrap();
+            c.client.join_channel_path("/", "").unwrap();
+        }
+        let dir = std::env::temp_dir().join(format!("ttng-pre-{}-{}", std::process::id(), server.port));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("tone.wav");
+        tone_wav(&wav, 2);
+        let rec = dir.join("heard.wav");
+        b.client
+            .start_recording_with(rec.to_str().unwrap(), RecordingFormat::Wave, true)
+            .unwrap();
+        a.client
+            .stream_media_file_with(wav.to_str().unwrap(), 0, false, false, pre)
+            .unwrap();
+        a.wait_for("the end", |e| {
+            matches!(e, Event::StreamChanged(s) if s.status == StreamStatus::Finished).then_some(())
+        });
+        std::thread::sleep(Duration::from_millis(800));
+        b.client.stop_recording().unwrap();
+        let data = std::fs::read(&rec).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        data[44..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .filter(|c| i16::from_le_bytes(**c).unsigned_abs() > 1000)
+            .count()
+    };
+    let silent = heard(StreamPreprocessor::TeamTalk {
+        gain: 0,
+        mute_left: false,
+        mute_right: false,
+    });
+    assert!(silent < 100, "gain 0 silences it ({silent} loud samples)");
+    let speex = heard(StreamPreprocessor::speex_default());
+    // Its gain control evens the level out, so fewer samples are loud.
+    assert!(speex > 5_000, "Speex DSP lets it through ({speex} loud samples)");
+}
+
+/// A second stream after the first: the first's preprocessor doesn't stay.
+#[test]
+fn a_second_stream_is_heard_too() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let dir = std::env::temp_dir().join(format!("ttng-twice-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    tone_wav(&wav, 2);
+    let mut louds = vec![];
+    // The first silenced by the TeamTalk preprocessor's gain 0, the second
+    // with none: the SDK mustn't keep the first's.
+    for (n, pre) in [
+        StreamPreprocessor::TeamTalk {
+            gain: 0,
+            mute_left: false,
+            mute_right: false,
+        },
+        StreamPreprocessor::None,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let rec = dir.join(format!("heard{n}.wav"));
+        b.client
+            .start_recording_with(rec.to_str().unwrap(), RecordingFormat::Wave, true)
+            .unwrap();
+        a.client
+            .stream_media_file_with(wav.to_str().unwrap(), 0, false, false, pre)
+            .unwrap();
+        a.wait_for("the end", |e| {
+            matches!(e, Event::StreamChanged(s) if s.status == StreamStatus::Finished).then_some(())
+        });
+        std::thread::sleep(Duration::from_millis(800));
+        b.client.stop_recording().unwrap();
+        let data = std::fs::read(&rec).unwrap();
+        louds.push(
+            data[44..]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .filter(|c| i16::from_le_bytes(**c).unsigned_abs() > 1000)
+                .count(),
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(louds[0] < 100 && louds[1] > 20_000, "silenced, then heard: {louds:?}");
+}

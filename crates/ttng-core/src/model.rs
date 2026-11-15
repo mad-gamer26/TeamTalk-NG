@@ -1290,3 +1290,51 @@ pub enum Event {
         channel_id: i32,
     },
 }
+
+/// The audio preprocessor for a streamed file (the desktop's Stream Media
+/// File dialog: No Audio Preprocessor, TeamTalk, Speex DSP).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StreamPreprocessor {
+    #[default]
+    None,
+    /// Gain (the desktop's percent, 50 as it is) and muting either side.
+    TeamTalk {
+        gain: i32,
+        mute_left: bool,
+        mute_right: bool,
+    },
+    /// Speex DSP's gain control and denoising (the SDK's units).
+    Speex {
+        agc: bool,
+        gain_level: i32,
+        max_inc_db: i32,
+        max_dec_db: i32,
+        max_gain_db: i32,
+        denoise: bool,
+        max_noise_suppress_db: i32,
+    },
+}
+
+impl StreamPreprocessor {
+    /// The TeamTalk preprocessor as the SDK starts it.
+    pub fn teamtalk_default() -> Self {
+        StreamPreprocessor::TeamTalk {
+            gain: 50,
+            mute_left: false,
+            mute_right: false,
+        }
+    }
+
+    /// Speex DSP as the SDK starts it (DEFAULT_SPEEXDSP_*).
+    pub fn speex_default() -> Self {
+        StreamPreprocessor::Speex {
+            agc: true,
+            gain_level: 8000,
+            max_inc_db: 12,
+            max_dec_db: -40,
+            max_gain_db: 30,
+            denoise: true,
+            max_noise_suppress_db: -30,
+        }
+    }
+}

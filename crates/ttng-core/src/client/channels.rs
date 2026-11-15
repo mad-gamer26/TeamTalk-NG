@@ -14,6 +14,7 @@ pub(super) enum ChannelRequest {
         offset_ms: u32,
         paused: bool,
         looping: bool,
+        preprocessor: StreamPreprocessor,
     },
     UpdateStream {
         offset_ms: Option<u32>,
@@ -32,6 +33,63 @@ fn playback(offset_ms: Option<u32>, paused: bool) -> sys::MediaFilePlayback {
         uOffsetMSec: offset_ms.unwrap_or(u32::MAX),
         bPaused: paused as sys::TTBOOL,
         ..Default::default()
+    }
+}
+
+/// The SDK's preprocessor for a streamed file.
+fn stream_preprocessor(p: StreamPreprocessor) -> sys::AudioPreprocessor {
+    match p {
+        // TeamTalk's at its neutral settings: the SDK keeps an earlier
+        // stream's preprocessor (gain 0 stayed silent) when told "none".
+        StreamPreprocessor::None => sys::AudioPreprocessor {
+            nPreprocessor: sys::AudioPreprocessorType_TEAMTALK_AUDIOPREPROCESSOR,
+            __bindgen_anon_1: sys::AudioPreprocessor__bindgen_ty_1 {
+                ttpreprocessor: sys::TTAudioPreprocessor {
+                    nGainLevel: sys::SoundLevel_SOUND_GAIN_DEFAULT as i32,
+                    bMuteLeftSpeaker: 0,
+                    bMuteRightSpeaker: 0,
+                },
+            },
+        },
+        StreamPreprocessor::TeamTalk {
+            gain,
+            mute_left,
+            mute_right,
+        } => sys::AudioPreprocessor {
+            nPreprocessor: sys::AudioPreprocessorType_TEAMTALK_AUDIOPREPROCESSOR,
+            __bindgen_anon_1: sys::AudioPreprocessor__bindgen_ty_1 {
+                ttpreprocessor: sys::TTAudioPreprocessor {
+                    nGainLevel: crate::volume::level(gain).min(sys::SoundLevel_SOUND_GAIN_MAX as i32),
+                    bMuteLeftSpeaker: mute_left as sys::TTBOOL,
+                    bMuteRightSpeaker: mute_right as sys::TTBOOL,
+                },
+            },
+        },
+        StreamPreprocessor::Speex {
+            agc,
+            gain_level,
+            max_inc_db,
+            max_dec_db,
+            max_gain_db,
+            denoise,
+            max_noise_suppress_db,
+        } => sys::AudioPreprocessor {
+            nPreprocessor: sys::AudioPreprocessorType_SPEEXDSP_AUDIOPREPROCESSOR,
+            __bindgen_anon_1: sys::AudioPreprocessor__bindgen_ty_1 {
+                speexdsp: sys::SpeexDSP {
+                    bEnableAGC: agc as sys::TTBOOL,
+                    nGainLevel: gain_level,
+                    nMaxIncDBSec: max_inc_db,
+                    nMaxDecDBSec: max_dec_db,
+                    nMaxGainDB: max_gain_db,
+                    bEnableDenoise: denoise as sys::TTBOOL,
+                    nMaxNoiseSuppressDB: max_noise_suppress_db,
+                    bEnableEchoCancellation: 0,
+                    nEchoSuppress: -40,
+                    nEchoSuppressActive: -15,
+                },
+            },
+        },
     }
 }
 
@@ -71,7 +129,9 @@ impl Worker {
                 offset_ms,
                 paused,
                 looping,
+                preprocessor,
             } => {
+                self.stream_preprocessor = preprocessor;
                 let _ = reply.send(self.start_stream(&path, offset_ms, paused, looping));
             }
             ChannelRequest::UpdateStream { offset_ms, paused } => {
@@ -131,7 +191,8 @@ impl Worker {
             return Err(Error::Refused("That file has no sound TeamTalk can play.".into()));
         }
         let p = arg(path);
-        let pb = playback(Some(offset_ms), paused);
+        let mut pb = playback(Some(offset_ms), paused);
+        pb.audioPreprocessor = stream_preprocessor(self.stream_preprocessor);
         // Its video too when asked (and it has some), as VP8.
         let vc = sys::VideoCodec {
             nCodec: sys::Codec_WEBM_VP8_CODEC,

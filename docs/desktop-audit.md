@@ -70,10 +70,8 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [n/a] "Speak selected item in lists": the desktop speaks list items
       itself when no screen reader reads them; on iPhone VoiceOver always
       does.
-- [ ] "Use toast notification" (TTS_TOAST): a visible banner.
-
-## D. Menus → actions
-
+- [n/a] "Use toast notification": the desktop hides it on Apple systems
+      (preferencesdlg.cpp: Windows and Linux only).
 - [x] People: the whole Users menu as actions, desktop order: View / Speak
       user information, Messages, Op, Volume, Mute voice, Mute media file,
       Kick from channel, Kick and ban from channel, Kick from server,
@@ -129,12 +127,18 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] Server list: filter by name and user count; official/unofficial.
 - [x] Server list: export the list to a .tt file (core: several servers
       in one .tt, tested).
-- [ ] Server list: latest hosts.
+- [n/a] Server list: latest hosts: the desktop lists hosts it connected
+      to without saving; NG saves every server it connects to.
 - [x] Volume: "Default" buttons.
 - [x] Stream media file: the dialog with the file's properties,
       "Continuously play media file", start position.
-- [ ] Stream media file: audio preprocessor (none / TeamTalk / Speex /
-      WebRTC), test playback, video codec bitrate (core work).
+- [x] Stream media file: audio preprocessor (No / TeamTalk: gain, mute
+      left/right / Speex DSP: AGC, gain level, max gain, increase and
+      decrease per second, denoising, max attenuation; Default), core
+      StreamPreprocessor, tested with real audio (gain 0 silent, Speex heard,
+      and an earlier stream's preprocessor not kept). n/a: test playback
+      (NG plays your own stream as you send it: "Hear the files you
+      stream"), video codec bitrate (NG sends VP8 at the desktop's default).
 - [x] Online users: "Keep disconnected users" (off).
 - [n/a] File transfer: "Close when completed" and Open: NG has no transfer
       dialog; downloads go to the Files app.

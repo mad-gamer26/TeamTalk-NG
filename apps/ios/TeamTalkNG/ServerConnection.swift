@@ -423,9 +423,11 @@ final class ServerConnection {
         status(.transmissionBlocked, "\(what) blocked by channel operator")
     }
 
-    func startStream(_ plan: StreamPlan, offsetMs: UInt32, looping: Bool) {
+    func startStream(_ plan: StreamPlan, offsetMs: UInt32, looping: Bool, preprocessor: StreamPreprocessor = .none) {
         checkBlocked(.mediaFile)
-        run("Couldn't stream") { try $0.streamMediaFile(path: plan.path, offsetMs: offsetMs, paused: false, looping: looping) }
+        run("Couldn't stream") {
+            try $0.streamMediaFileWith(path: plan.path, offsetMs: offsetMs, paused: false, looping: looping, preprocessor: preprocessor)
+        }
     }
 
     func pauseStream(_ paused: Bool) {

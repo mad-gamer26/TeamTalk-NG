@@ -1435,6 +1435,20 @@ impl TtClient {
         Ok(self.inner.stream_media_file(&path, offset_ms, paused, looping)?)
     }
 
+    /// As stream_media_file, with the desktop's audio preprocessor choice.
+    pub fn stream_media_file_with(
+        &self,
+        path: String,
+        offset_ms: u32,
+        paused: bool,
+        looping: bool,
+        preprocessor: StreamPreprocessor,
+    ) -> Result<()> {
+        Ok(self
+            .inner
+            .stream_media_file_with(&path, offset_ms, paused, looping, preprocessor.into())?)
+    }
+
     /// Pauses, resumes, moves (`offset_ms`) the stream.
     pub fn update_stream(&self, offset_ms: Option<u32>, paused: bool) -> Result<()> {
         Ok(self.inner.update_stream(offset_ms, paused)?)
@@ -1534,5 +1548,60 @@ mod tests {
             web_login_token: String::new(),
         };
         assert_eq!(core::ConnectOptions::from(o).join_channel, None);
+    }
+}
+
+/// A streamed file's audio preprocessor (the desktop's Stream Media File
+/// dialog).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum StreamPreprocessor {
+    None,
+    TeamTalk {
+        gain: i32,
+        mute_left: bool,
+        mute_right: bool,
+    },
+    Speex {
+        agc: bool,
+        gain_level: i32,
+        max_inc_db: i32,
+        max_dec_db: i32,
+        max_gain_db: i32,
+        denoise: bool,
+        max_noise_suppress_db: i32,
+    },
+}
+
+impl From<StreamPreprocessor> for core::StreamPreprocessor {
+    fn from(p: StreamPreprocessor) -> Self {
+        match p {
+            StreamPreprocessor::None => core::StreamPreprocessor::None,
+            StreamPreprocessor::TeamTalk {
+                gain,
+                mute_left,
+                mute_right,
+            } => core::StreamPreprocessor::TeamTalk {
+                gain,
+                mute_left,
+                mute_right,
+            },
+            StreamPreprocessor::Speex {
+                agc,
+                gain_level,
+                max_inc_db,
+                max_dec_db,
+                max_gain_db,
+                denoise,
+                max_noise_suppress_db,
+            } => core::StreamPreprocessor::Speex {
+                agc,
+                gain_level,
+                max_inc_db,
+                max_dec_db,
+                max_gain_db,
+                denoise,
+                max_noise_suppress_db,
+            },
+        }
     }
 }
