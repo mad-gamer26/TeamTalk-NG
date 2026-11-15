@@ -89,7 +89,10 @@ final class ServerConnection {
             host: s.host, tcpPort: s.tcpPort, udpPort: s.udpPort, encrypted: s.encrypted,
             nickname: nickname.isEmpty ? s.username : nickname, username: s.username,
             password: Passwords.get(s.id), clientName: "TeamTalk NG",
-            joinChannelPath: s.joinChannel, joinChannelPassword: "", reconnect: app?.reconnect ?? true)
+            joinChannelPath: s.joinChannel, joinChannelPassword: s.channelPassword, reconnect: app?.reconnect ?? true,
+            caPem: s.encrypted ? s.caPem : "", certPem: s.encrypted ? s.certPem : "", keyPem: s.encrypted ? s.keyPem : "",
+            verifyPeer: s.encrypted && s.verifyPeer,
+            webLoginUsername: s.bearwareLogin ? BearWare.username : "", webLoginToken: s.bearwareLogin ? BearWare.token : "")
         let client = self.client
         let audio = app?.audio ?? defaultAudioSettings()
         let hearOwn = app?.hearOwnStream ?? true
@@ -122,8 +125,8 @@ final class ServerConnection {
                     run("Couldn't join the root channel") { try $0.joinChannelPath(path: "/", password: "") }
                 }
                 // The server's own status message, else the one in Settings.
-                let own = (try? JSONSerialization.jsonObject(with: Data((server.syncOther ?? "{}").utf8)) as? [String: Any])?["statusmsg"] as? String
-                let msg = (own?.isEmpty == false ? own : nil) ?? app?.statusMessage ?? ""
+                let own = server.statusMessage
+                let msg = own.isEmpty ? (app?.statusMessage ?? "") : own
                 if !msg.isEmpty { setStatus(.available, msg) }
             }
         }
@@ -287,6 +290,16 @@ final class ServerConnection {
     }
 
     // MARK: Channels: by path, and streaming files
+
+    /// A tt:// link to this server and a channel (the desktop's
+    /// "Generate tt:// URL"); with the account only when asked.
+    func link(to channel: Channel?, withAccount: Bool, channelPassword: String) -> String {
+        var e = server.entry(password: withAccount ? Passwords.get(server.id) : "")
+        if !withAccount { e.username = "" }
+        e.channel = channel.map { $0.parentId == 0 ? "/" : client.channelPath(channelId: $0.id) } ?? ""
+        e.channelPassword = channelPassword
+        return ttLink(entry: e)
+    }
 
     func joinByPath(_ path: String, password: String) {
         var p = path.trimmingCharacters(in: .whitespaces)

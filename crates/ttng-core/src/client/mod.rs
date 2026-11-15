@@ -54,6 +54,30 @@ pub struct ConnectOptions {
     pub join_channel: Option<(String, String)>,
     /// Reconnect (and rejoin the channel) when the connection drops.
     pub reconnect: bool,
+    /// For encrypted servers: certificates to trust and present (PEM).
+    pub encryption: Option<Encryption>,
+    /// Log in with a BearWare.dk account (servers that take them).
+    pub web_login: Option<WebLogin>,
+}
+
+/// An encrypted connection's certificates, as the desktop's Encryption
+/// Setup has them (PEM text; empty for none).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Encryption {
+    /// The authority whose certificates are trusted.
+    pub ca_pem: String,
+    /// This client's certificate and key, for servers that ask for one.
+    pub cert_pem: String,
+    pub key_pem: String,
+    /// Refuse a server whose certificate the authority didn't sign.
+    pub verify_peer: bool,
+}
+
+/// A BearWare.dk account signed in (`crate::bearware::bearware_sign_in`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WebLogin {
+    pub username: String,
+    pub token: String,
 }
 
 /// Which sound devices to use.
@@ -832,6 +856,8 @@ struct Worker {
     /// Play my own stream here too, and its local playback session.
     hear_own_stream: bool,
     local_playback: i32,
+    /// BearWare's answer to a web login, when it comes.
+    web_login: Option<Receiver<std::result::Result<String, String>>>,
 }
 
 impl Worker {
@@ -865,6 +891,7 @@ impl Worker {
             record_each: None,
             hear_own_stream: false,
             local_playback: 0,
+            web_login: None,
         }
     }
 
@@ -894,6 +921,17 @@ impl Worker {
                 self.start_connect(n);
             }
             self.expire_pending();
+            if let Some(answer) = self.web_login.as_ref().and_then(|rx| rx.try_recv().ok()) {
+                self.web_login = None;
+                match answer {
+                    Ok(name) => self.log_in(&name),
+                    Err(why) => {
+                        // Not retried: the account needs signing in again.
+                        self.no_reconnect = true;
+                        self.connect_failed(why);
+                    }
+                }
+            }
             if self.audio_open && self.last_level.elapsed() >= Duration::from_millis(50) {
                 self.last_level = Instant::now();
                 // SAFETY: inst is live.
@@ -1533,6 +1571,56 @@ impl Worker {
         (id > 0).then_some(id)
     }
 
+    /// Logs in (after connecting, or after BearWare's answer).
+    fn log_in(&mut self, username: &str) {
+        let Some(o) = self.options.clone() else { return };
+        let (n, u, p, c) = (arg(&o.nickname), arg(username), arg(&o.password), arg(&o.client_name));
+        // SAFETY: inst is live; the strings are NUL-terminated and outlive the call.
+        let cmd = unsafe { sys::TT_DoLoginEx(self.inst, n.as_ptr(), u.as_ptr(), p.as_ptr(), c.as_ptr()) };
+        if cmd > 0 {
+            self.pending.insert(cmd, (Pending::Login, Instant::now()));
+        } else {
+            self.connect_failed("Couldn't log in.".into());
+        }
+    }
+
+    /// The certificates for an encrypted connection (written to files, as
+    /// the SDK takes them).
+    fn set_encryption(&mut self, e: Option<&Encryption>) -> std::result::Result<(), String> {
+        let mut ctx = sys::EncryptionContext {
+            nVerifyDepth: -1,
+            ..Default::default()
+        };
+        if let Some(e) = e {
+            let dir = std::env::temp_dir().join(format!("ttng-tls-{}-{:p}", std::process::id(), self.inst));
+            std::fs::create_dir_all(&dir).map_err(|e| format!("The certificates couldn't be saved ({e})."))?;
+            let put = |pem: &str, name: &str| -> std::result::Result<Option<String>, String> {
+                if pem.trim().is_empty() {
+                    return Ok(None);
+                }
+                let f = dir.join(name);
+                std::fs::write(&f, pem).map_err(|e| format!("The certificates couldn't be saved ({e})."))?;
+                Ok(Some(f.to_string_lossy().into_owned()))
+            };
+            if let Some(f) = put(&e.ca_pem, "ca.pem")? {
+                ctx.szCAFile = to_tt(&f);
+            }
+            if let Some(f) = put(&e.cert_pem, "cert.pem")? {
+                ctx.szCertificateFile = to_tt(&f);
+            }
+            if let Some(f) = put(&e.key_pem, "key.pem")? {
+                ctx.szPrivateKeyFile = to_tt(&f);
+            }
+            ctx.bVerifyPeer = e.verify_peer as sys::TTBOOL;
+            ctx.bVerifyClientOnce = 1;
+        }
+        // SAFETY: inst is live; ctx is valid.
+        if unsafe { sys::TT_SetEncryptionContext(self.inst, &ctx) } == 0 {
+            return Err("The encryption settings couldn't be used.".into());
+        }
+        Ok(())
+    }
+
     fn start_connect(&mut self, attempt: u32) {
         let Some(o) = self.options.clone() else { return };
         self.set_state(if attempt == 0 {
@@ -1540,6 +1628,12 @@ impl Worker {
         } else {
             ConnectionState::Reconnecting { attempt }
         });
+        if o.encrypted
+            && let Err(why) = self.set_encryption(o.encryption.as_ref())
+        {
+            self.connect_failed(why);
+            return;
+        }
         let host = arg(&o.host);
         // SAFETY: inst is live; host is NUL-terminated and outlives the call.
         let ok = unsafe {
@@ -1647,18 +1741,21 @@ impl Worker {
             sys::ClientEvent_CLIENTEVENT_CON_SUCCESS => {
                 self.set_state(ConnectionState::LoggingIn);
                 let Some(o) = self.options.clone() else { return };
-                let (n, u, p, c) = (
-                    arg(&o.nickname),
-                    arg(&o.username),
-                    arg(&o.password),
-                    arg(&o.client_name),
-                );
-                // SAFETY: inst is live; the strings are NUL-terminated and outlive the call.
-                let cmd = unsafe { sys::TT_DoLoginEx(self.inst, n.as_ptr(), u.as_ptr(), p.as_ptr(), c.as_ptr()) };
-                if cmd > 0 {
-                    self.pending.insert(cmd, (Pending::Login, Instant::now()));
-                } else {
-                    self.connect_failed("Couldn't log in.".into());
+                match o.web_login {
+                    // A BearWare.dk account: BearWare says (with the server's
+                    // access token) which username the server should see.
+                    Some(w) => {
+                        let mut p = sys::ServerProperties::default();
+                        // SAFETY: inst is live; p is valid for the SDK to fill.
+                        unsafe { sys::TT_GetServerProperties(self.inst, &mut p) };
+                        let access = from_tt(&p.szAccessToken);
+                        let (tx, rx) = mpsc::channel();
+                        self.web_login = Some(rx);
+                        thread::spawn(move || {
+                            let _ = tx.send(crate::bearware::bearware_client_auth(&w.username, &w.token, &access));
+                        });
+                    }
+                    None => self.log_in(&o.username),
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CON_FAILED => {
@@ -1670,9 +1767,17 @@ impl Worker {
                 self.connect_failed(format!("Couldn't connect to {host}."));
             }
             sys::ClientEvent_CLIENTEVENT_CON_CRYPT_ERROR => {
-                self.connect_failed(
-                    "The encrypted connection failed (the server's encryption settings don't match).".into(),
-                );
+                let detail = if msg.ttType == sys::TTType___CLIENTERRORMSG {
+                    // SAFETY: ttType says the union holds the error message.
+                    from_tt(unsafe { &union.clienterrormsg.szErrorMsg })
+                } else {
+                    String::new()
+                };
+                self.connect_failed(if detail.is_empty() {
+                    "The secure connection failed (the server's certificate or encryption settings don't match).".into()
+                } else {
+                    format!("The secure connection failed: {detail}.")
+                });
             }
             sys::ClientEvent_CLIENTEVENT_CON_LOST => self.connection_lost(),
             sys::ClientEvent_CLIENTEVENT_CMD_SUCCESS => self.command_done(msg.nSource, Ok(())),

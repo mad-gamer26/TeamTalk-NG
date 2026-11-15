@@ -66,7 +66,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | View/speak channel info and state | done (Channel information: everything, in words) |
 | Stream media file to channel, pause/resume | done (from Files: pause, resume, 10 s back and forward, stop; looping in the core) |
 | Join, leave | done |
-| tt:// URL | todo (7): make one, open one |
+| tt:// URL | done: copy one for any channel, and tt:// links open the app |
 | Create, update, delete | done: every setting (operator password, disk quota, Opus codec settings, fixed volume, time limits, every type), and joining hidden channels by path |
 | Channel bans | done (list and remove) |
 | Upload, download, delete file | done |
@@ -97,7 +97,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop tab | NG |
 |---|---|
-| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; todo (7): web login; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
+| General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; n/a: global hotkeys (iOS; hardware keyboard shortcuts todo (10)) |
 | Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | done: timestamps, events in chat, usernames or nicknames, topics, sorting, the double-tap action, the MOTD in the chat, notifications for private messages in the background (the popup); chat is always a list; n/a: language (the system's), window title, tray, always on top, updates (the App Store) |
 | Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | done: connect on start (per server), reconnect, join root, default subscriptions; n/a: local ports, max payload (the SDK handles it) |
 | Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
@@ -110,12 +110,12 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Name, host, ports, encrypted, username, password, nickname, status message, channel and its password | partial: status message and channel password todo (7) |
-| Encryption setup: CA, client certificate and key, verify server | todo (7) |
-| BearWare.dk web login | todo (7) |
-| Join code, last joined channel | todo (7) |
-| .tt files and tt:// links: open, generate | todo (7) |
-| Public server list | todo (7) |
+| Name, host, ports, encrypted, username, password, nickname, status message, channel and its password | done (kept in the old app's NG Account fields, so they sync) |
+| Encryption setup: CA, client certificate and key, verify server | done (imported from Files; certificate checking tested against a TLS server; BearWare's standard SDK server doesn't encrypt, so a whole encrypted session isn't tested here) |
+| BearWare.dk web login | done (sign in once; servers with the username "bearware" log in with it; tested against a stand-in for bearware.dk) |
+| Join code, last joined channel | done: join codes; todo: last joined channel |
+| .tt files and tt:// links: open, generate | done (import and share .tt files; open and copy links) |
+| Public server list | done (official, public, and unofficial when asked) |
 
 ## Text messages
 
@@ -147,7 +147,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
    media vs voice volume, client statistics, recording options, text logs.
 6. **Preferences** (done): every desktop sound event, spoken events with templates,
    display and connection options, reset.
-7. **Connecting**: encryption certificates, web login, join codes, tt:// and
+7. **Connecting** (done): encryption certificates, web login, join codes, tt:// and
    .tt files, public server list, status message and channel password per
    server.
 8. **Typing indicators.**

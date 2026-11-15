@@ -231,6 +231,10 @@ struct ServerView: View {
                            delete: { deletingChannel = c },
                            moderate: connection.canModerate(channel: c.id),
                            bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c },
+                           copyLink: {
+                               UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
+                               announce("Link to \(c.parentId == 0 ? "the root channel" : c.name) copied")
+                           },
                            showTopic: model.showTopics, tap: model.channelTap) {
                     let here = c.id == snap?.myChannelId
                     switch model.channelTap {
@@ -301,6 +305,7 @@ private struct ChannelRow: View {
     let bans: () -> Void
     let classroom: () -> Void
     let info: () -> Void
+    let copyLink: () -> Void
     let showTopic: Bool
     let tap: AppModel.ChannelTap
     let join: () -> Void
@@ -348,6 +353,7 @@ private struct ChannelRow: View {
 
     @ViewBuilder private var actions: some View {
         Button("Channel information", action: info)
+        Button("Copy a tt:// link to it", action: copyLink)
         if rights.modifyChannels || rights.createTemporaryChannels {
             Button("New channel inside", action: newSub)
         }

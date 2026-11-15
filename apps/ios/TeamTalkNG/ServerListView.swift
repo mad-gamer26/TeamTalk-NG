@@ -5,6 +5,10 @@ struct ServerListView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: SavedServer?
     @State private var showSettings = false
+    @State private var showPublic = false
+    @State private var importing = false
+    @State private var linking = false
+    @State private var link = ""
 
     var body: some View {
         NavigationStack {
@@ -46,7 +50,12 @@ struct ServerListView: View {
                     Button("Settings", systemImage: "gearshape") { showSettings = true }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add server", systemImage: "plus") { editing = SavedServer() }
+                    Menu("Add server", systemImage: "plus") {
+                        Button("Type its details") { editing = SavedServer() }
+                        Button("Public servers and join codes") { showPublic = true }
+                        Button("Import a .tt file") { importing = true }
+                        Button("Open a tt:// link") { linking = true }
+                    }
                 }
             }
             .sheet(item: $editing) { server in
@@ -54,6 +63,18 @@ struct ServerListView: View {
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showPublic) { PublicServersView() }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.teamTalkFile, .xml, .data]) { r in
+                if case .success(let url) = r { model.open(url) }
+            }
+            .alert("Open a tt:// link", isPresented: $linking) {
+                TextField("tt://", text: $link).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Open") {
+                    if let u = URL(string: link.trimmingCharacters(in: .whitespaces)), u.scheme?.lowercased() == "tt" { model.open(u) } else { announce("That isn't a tt:// link") }
+                    link = ""
+                }
+                Button("Cancel", role: .cancel) { link = "" }
             }
         }
     }
@@ -81,6 +102,11 @@ private struct ServerRow: View {
         }
         .contextMenu {
             Button("Edit", action: edit)
+            ShareLink(item: ttFileURL(for: server, withPassword: false)) { Text("Share as a .tt file") }
+            Button("Copy its tt:// link") {
+                UIPasteboard.general.string = ttLink(entry: server.entry(password: ""))
+                announce("Link copied")
+            }
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
@@ -88,6 +114,10 @@ private struct ServerRow: View {
         }
         .accessibilityActions {
             Button("Edit", action: edit)
+            Button("Copy its tt:// link") {
+                UIPasteboard.general.string = ttLink(entry: server.entry(password: ""))
+                announce("Link copied")
+            }
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
@@ -101,6 +131,29 @@ struct ServerEditView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State var server: SavedServer
+    @State private var importingCert: CertKind?
+
+    enum CertKind { case ca, cert, key }
+
+    @ViewBuilder
+    private func cert(_ label: String, _ path: WritableKeyPath<SavedServer, String>, _ kind: CertKind) -> some View {
+        let has = !server[keyPath: path].isEmpty
+        HStack {
+            Text(label)
+            Spacer()
+            Text(has ? "Imported" : "None").foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityActions {
+            Button("Import from Files") { importingCert = kind }
+            if has { Button("Remove") { server[keyPath: path] = "" } }
+        }
+        .contextMenu {
+            Button("Import from Files") { importingCert = kind }
+            if has { Button("Remove", role: .destructive) { server[keyPath: path] = "" } }
+        }
+        .onTapGesture { importingCert = kind }
+    }
     @State private var password = ""
     @State private var tcp = ""
     @State private var udp = ""
@@ -118,18 +171,37 @@ struct ServerEditView: View {
                     TextField("UDP port", text: $udp).keyboardType(.numberPad)
                     Toggle("Encrypted", isOn: $server.encrypted)
                 }
+                if server.encrypted {
+                    Section {
+                        cert("Certificate authority", \.caPem, .ca)
+                        cert("Client certificate", \.certPem, .cert)
+                        cert("Client private key", \.keyPem, .key)
+                        Toggle("Check the server's certificate", isOn: $server.verifyPeer)
+                    } header: {
+                        Text("Certificates (optional)")
+                    } footer: {
+                        Text("As the desktop's Encryption Setup: the authority whose certificate the server must have (with checking on), and a certificate of yours for servers that ask for one. Import each from Files (a .pem file).")
+                    }
+                }
                 Section("Account") {
+                    Toggle("Log in with my BearWare.dk account", isOn: Binding(
+                        get: { server.bearwareLogin },
+                        set: { server.username = $0 ? "bearware" : "" }))
                     TextField("Username", text: $server.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     SecureField("Password", text: $password)
                     TextField("Nickname (optional)", text: $server.nickname)
+                    TextField("Status message (optional)", text: $server.statusMessage)
                 }
                 Section {
                     Toggle("Connect when the app starts", isOn: Binding(get: { server.connectOnStart ?? false }, set: { server.connectOnStart = $0 }))
                     TextField("Channel to join (optional), like /Lobby/", text: $server.joinChannel)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    if !server.joinChannel.isEmpty {
+                        SecureField("Its password (optional)", text: $server.channelPassword)
+                    }
                 }
             }
             .navigationTitle(model.servers.contains { $0.id == server.id } ? "Edit server" : "Add server")
@@ -146,6 +218,23 @@ struct ServerEditView: View {
                     }
                     .disabled(server.host.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            .fileImporter(isPresented: Binding(get: { importingCert != nil }, set: { if !$0 { importingCert = nil } }),
+                          allowedContentTypes: [.data, .text]) { r in
+                guard case .success(let url) = r, let kind = importingCert else { return }
+                let reading = url.startAccessingSecurityScopedResource()
+                defer { if reading { url.stopAccessingSecurityScopedResource() } }
+                guard let pem = try? String(contentsOf: url, encoding: .utf8), pem.contains("-----BEGIN") else {
+                    announce("That isn't a PEM certificate or key")
+                    return
+                }
+                switch kind {
+                case .ca: server.caPem = pem
+                case .cert: server.certPem = pem
+                case .key: server.keyPem = pem
+                }
+                announce("Imported \(url.lastPathComponent)")
+                importingCert = nil
             }
             .onAppear {
                 password = Passwords.get(server.id)
@@ -198,6 +287,7 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    NavigationLink("BearWare.dk account") { BearWareView() }
                     NavigationLink("Sound system") { SoundSystemView() }
                     NavigationLink("Sounds") { SoundsView() }
                     NavigationLink("Spoken events") { SpeechView() }

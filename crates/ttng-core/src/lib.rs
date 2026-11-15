@@ -1,12 +1,14 @@
 //! TeamTalk NG's core: a safe client for BearWare's TeamTalk 5 SDK. One
 //! `Client` per server connection; see `client.rs` for how it works.
 
+pub mod bearware;
 mod client;
 mod error;
 mod model;
 pub mod text;
+pub mod ttfile;
 
-pub use client::{AudioDevices, Client, ConnectOptions, EventListener, media_file_info};
+pub use client::{AudioDevices, Client, ConnectOptions, Encryption, EventListener, WebLogin, media_file_info};
 pub use error::{Error, Result};
 pub use model::*;
 

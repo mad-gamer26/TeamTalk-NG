@@ -156,6 +156,43 @@ final class AppModel {
         AudioSession.activate()
     }
 
+    /// A server from a .tt file, tt:// link, join code or the public list
+    /// (the same server already saved is updated instead).
+    @discardableResult
+    func addFromEntry(_ e: HostEntry, connect: Bool = false) -> SavedServer {
+        var s = SavedServer(e)
+        if let same = servers.first(where: { $0.host.caseInsensitiveCompare(e.host) == .orderedSame && $0.tcpPort == e.tcpPort && $0.username == e.username }) {
+            let id = same.id
+            s.id = id
+            s.syncKey = same.syncKey
+        }
+        upsert(s, password: e.password.isEmpty ? Passwords.get(s.id) : e.password)
+        if connect { connection(for: s).connect() }
+        return s
+    }
+
+    /// Opens what iOS hands the app: tt:// links (connect) and .tt files.
+    func open(_ url: URL) {
+        if url.scheme?.lowercased() == "tt", let e = parseTtLink(link: url.absoluteString) {
+            addFromEntry(e, connect: true)
+            announce("Connecting to \(e.host)")
+            return
+        }
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
+            announce("That file couldn't be read")
+            return
+        }
+        do {
+            let list = try parseTtFile(xml: xml)
+            for e in list { addFromEntry(e) }
+            announce(list.count == 1 ? "Added \(list[0].name)" : "Added \(list.count) servers")
+        } catch {
+            announce(words(error))
+        }
+    }
+
     /// Servers marked to connect when the app starts.
     func connectOnStart() {
         for s in servers where s.connectOnStart == true { connection(for: s).connect() }

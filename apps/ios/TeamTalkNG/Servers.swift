@@ -24,7 +24,70 @@ struct SavedServer: Codable, Identifiable, Hashable {
 
     var key: String { syncKey ?? id.uuidString }
 
+    /// The extra fields the old app and NG Account keep (in `syncOther`,
+    /// in their field names, so they sync): status message, channel
+    /// password, certificates.
+    private var extras: [String: Any] {
+        get {
+            guard let d = syncOther?.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
+            return o
+        }
+        set {
+            let clean = newValue.filter { !(($0.value as? String)?.isEmpty ?? false) }
+            syncOther = clean.isEmpty ? nil : (try? JSONSerialization.data(withJSONObject: clean, options: [.sortedKeys])).map { String(decoding: $0, as: UTF8.self) }
+        }
+    }
+
+    private func extra(_ k: String) -> String { extras[k] as? String ?? "" }
+    private mutating func setExtra(_ k: String, _ v: String) { var e = extras; e[k] = v; extras = e }
+
+    var statusMessage: String { get { extra("statusmsg") } set { setExtra("statusmsg", newValue) } }
+    var channelPassword: String { get { extra("chanpasswd") } set { setExtra("chanpasswd", newValue) } }
+    var caPem: String { get { extra("cacertdata") } set { setExtra("cacertdata", newValue) } }
+    var certPem: String { get { extra("certdata") } set { setExtra("certdata", newValue) } }
+    var keyPem: String { get { extra("certprivkeydata") } set { setExtra("certprivkeydata", newValue) } }
+    var verifyPeer: Bool {
+        get { extras["certverifypeer"] as? Bool ?? false }
+        set { var e = extras; e["certverifypeer"] = newValue ? true : nil; extras = e }
+    }
+
+    /// Logs in with the BearWare.dk account (the desktop's web login).
+    var bearwareLogin: Bool {
+        username.caseInsensitiveCompare("bearware") == .orderedSame || username.lowercased().hasSuffix("@bearware.dk")
+    }
+
+    /// As a .tt file or tt:// link has it (`password`: its password, or none).
+    func entry(password: String) -> HostEntry {
+        HostEntry(name: title, host: host, tcpPort: tcpPort, udpPort: udpPort, encrypted: encrypted,
+                  username: username, password: password, nickname: nickname, statusMessage: statusMessage,
+                  channel: joinChannel, channelPassword: channelPassword, caPem: caPem, certPem: certPem,
+                  keyPem: keyPem, verifyPeer: verifyPeer, joinCode: "", listing: "", userCount: 0,
+                  country: "", serverName: "", motd: "")
+    }
+
     var title: String { name.isEmpty ? host : name }
+}
+
+extension SavedServer {
+    /// From a .tt file, a tt:// link or the public list.
+    init(_ e: HostEntry) {
+        self.init()
+        name = e.name
+        host = e.host
+        tcpPort = e.tcpPort
+        udpPort = e.udpPort
+        encrypted = e.encrypted
+        username = e.username
+        nickname = e.nickname
+        joinChannel = e.channel
+        statusMessage = e.statusMessage
+        channelPassword = e.channelPassword
+        caPem = e.caPem
+        certPem = e.certPem
+        keyPem = e.keyPem
+        verifyPeer = e.verifyPeer
+    }
+
 }
 
 /// How talking works, for every server.

@@ -50,6 +50,11 @@ impl Server {
     /// A server with accounts admin, alice, bob and carol (password:
     /// "<name>-pw"), running until dropped.
     pub fn start() -> Server {
+        Server::start_with("")
+    }
+
+    /// A server with more `<general>` settings (encryption, say).
+    pub fn start_with(general: &str) -> Server {
         let port = free_port();
         let dir = std::env::temp_dir().join(format!("ttng-test-{}-{port}", std::process::id()));
         std::fs::create_dir_all(dir.join("files")).unwrap();
@@ -66,6 +71,7 @@ impl Server {
     <tcpport>{port}</tcpport><udpport>{port}</udpport><upnp>false</upnp>
     <login-attempts>0</login-attempts><max-logins-per-ipaddr>0</max-logins-per-ipaddr>
     <user-timeout>10</user-timeout><login-delay-msec>0</login-delay-msec>
+    {general}
   </general>
   <file-storage><files-root>files</files-root><max-diskusage>1000000000</max-diskusage><channel-diskquota>100000000</channel-diskquota></file-storage>
   <logging><server-log-maxsize>-1</server-log-maxsize></logging>
@@ -108,6 +114,11 @@ impl Server {
         self.run();
     }
 
+    /// The folder the server runs in (for its certificates).
+    pub fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
     pub fn options(&self, user: &str) -> ConnectOptions {
         ConnectOptions {
             host: "127.0.0.1".into(),
@@ -120,6 +131,8 @@ impl Server {
             client_name: "TeamTalk NG".into(),
             join_channel: None,
             reconnect: false,
+            encryption: None,
+            web_login: None,
         }
     }
 }

@@ -38,6 +38,21 @@ targets:
         # Downloads go to the app's documents, shown in the Files app.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # tt:// links and .tt files open in the app, as on the desktop.
+        CFBundleURLTypes:
+          - CFBundleURLName: TeamTalk link
+            CFBundleURLSchemes: [tt]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dk.bearware.teamtalk.tt
+            UTTypeDescription: TeamTalk server
+            UTTypeConformsTo: [public.xml, public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [tt]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: TeamTalk server
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [dk.bearware.teamtalk.tt]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
     settings:
       base:

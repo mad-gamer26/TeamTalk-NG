@@ -13,10 +13,12 @@ use ttng_core as core;
 uniffi::setup_scaffolding!();
 
 mod admin;
+mod hosts;
 mod monitor;
 mod services;
 mod sound;
 pub use admin::*;
+pub use hosts::*;
 pub use monitor::*;
 pub use services::*;
 pub use sound::*;
@@ -91,6 +93,15 @@ pub struct ConnectOptions {
     pub join_channel_password: String,
     /// Reconnect (and rejoin the channel) when the connection drops.
     pub reconnect: bool,
+    /// Encrypted servers: certificates (PEM; empty for none), and whether
+    /// to refuse a server the authority didn't sign.
+    pub ca_pem: String,
+    pub cert_pem: String,
+    pub key_pem: String,
+    pub verify_peer: bool,
+    /// A BearWare.dk web login (empty for none).
+    pub web_login_username: String,
+    pub web_login_token: String,
 }
 
 impl From<ConnectOptions> for core::ConnectOptions {
@@ -106,6 +117,17 @@ impl From<ConnectOptions> for core::ConnectOptions {
             client_name: o.client_name,
             join_channel: (!o.join_channel_path.is_empty()).then_some((o.join_channel_path, o.join_channel_password)),
             reconnect: o.reconnect,
+            encryption: (!(o.ca_pem.is_empty() && o.cert_pem.is_empty() && o.key_pem.is_empty()) || o.verify_peer)
+                .then_some(core::Encryption {
+                    ca_pem: o.ca_pem,
+                    cert_pem: o.cert_pem,
+                    key_pem: o.key_pem,
+                    verify_peer: o.verify_peer,
+                }),
+            web_login: (!o.web_login_username.is_empty()).then_some(core::WebLogin {
+                username: o.web_login_username,
+                token: o.web_login_token,
+            }),
         }
     }
 }
@@ -1413,6 +1435,12 @@ mod tests {
             join_channel_path: String::new(),
             join_channel_password: String::new(),
             reconnect: true,
+            ca_pem: String::new(),
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            verify_peer: false,
+            web_login_username: String::new(),
+            web_login_token: String::new(),
         };
         assert_eq!(core::ConnectOptions::from(o).join_channel, None);
     }

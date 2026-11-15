@@ -10,6 +10,7 @@ struct TeamTalkNGApp: App {
         WindowGroup {
             ServerListView()
                 .environment(model)
+                .onOpenURL { model.open($0) }
                 .task {
                     model.connectOnStart()
                     if model.notifyInBackground { requestNotifications() }

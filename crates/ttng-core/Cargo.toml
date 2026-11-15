@@ -7,6 +7,10 @@ license.workspace = true
 
 [dependencies]
 ttng-sys = { path = "../ttng-sys" }
+# .tt files and BearWare's server list (XML); BearWare's web services.
+roxmltree = "0.20"
+ureq = "3"
+
 
 [lints]
 workspace = true
