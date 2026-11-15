@@ -102,6 +102,23 @@ class NGTestCase: XCTestCase {
         waitFor(any("Lobby"), "the channels")
     }
 
+    /// Dismisses a confirmation dialog without choosing (its Cancel, or a
+    /// tap outside, as iOS shows it).
+    func cancelDialog() {
+        let cancel = button("Cancel")
+        if cancel.exists { cancel.tap(); return }
+        let outside = app.otherElements["PopoverDismissRegion"]
+        if outside.exists { outside.tap(); return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+    }
+
+    /// Replaces a text field's text.
+    func replace(_ field: XCUIElement, with text: String) {
+        field.tap()
+        let old = (field.value as? String) ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count + 2) + text)
+    }
+
     /// The server screen's More menu, then one of its items.
     @MainActor
     func more(_ item: String) {

@@ -61,6 +61,32 @@ fn nobody_listening_is_a_connection_error() {
     );
 }
 
+/// As the desktop with Reconnect on: a first connection that fails is
+/// said once and tried again every 5 seconds, until the server is there.
+#[test]
+fn a_failed_first_connection_is_tried_again_until_it_works() {
+    let mut server = Server::start();
+    server.stop();
+    let a = TestClient::new();
+    let mut o = server.options("alice");
+    o.reconnect = true;
+    let err = a.client.connect(o).unwrap_err();
+    assert!(
+        matches!(err, Error::Connection(ref m) if m.starts_with("Failed to connect to")),
+        "{err:?}"
+    );
+    a.wait_for("trying again", |e| {
+        matches!(e, Event::ConnectionChanged(ConnectionState::Reconnecting { .. })).then_some(())
+    });
+    server.restart();
+    a.wait_for("logged in by a retry", |e| {
+        matches!(e, Event::ConnectionChanged(ConnectionState::LoggedIn)).then_some(())
+    });
+    // Disconnecting stops the trying.
+    a.client.disconnect().unwrap();
+    assert_eq!(a.client.snapshot().state, Some(ConnectionState::Disconnected));
+}
+
 #[test]
 fn people_join_talk_and_message_each_other() {
     let server = Server::start();

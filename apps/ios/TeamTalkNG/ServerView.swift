@@ -231,6 +231,9 @@ struct ServerView: View {
                 Button(connection.busy ? "Connecting…" : "Connect") { connection.connect() }
                     .buttonStyle(.borderedProminent)
                     .disabled(connection.busy)
+            } else if case .reconnecting = connection.state {
+                Button("Stop trying", role: .destructive) { connection.disconnect() }
+                    .buttonStyle(.bordered)
             }
             Spacer()
         }

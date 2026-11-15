@@ -9,7 +9,12 @@ struct TeamTalkNGApp: App {
     init() {
         #if DEBUG
         // UI tests (apps/ios/UITests): every test starts as a fresh install.
-        if ProcessInfo.processInfo.arguments.contains("-UITestReset") { UITestReset.wipe() }
+        if ProcessInfo.processInfo.arguments.contains("-UITestReset") {
+            UITestReset.wipe()
+            // No animations to wait for (a context menu's never settles for
+            // the UI tests' idle check).
+            UIView.setAnimationsEnabled(false)
+        }
         #endif
         // The old app's servers and settings (once, when this app replaced
         // it), then iCloud's newer settings, before anything reads them.

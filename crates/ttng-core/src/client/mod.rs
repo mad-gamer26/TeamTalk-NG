@@ -38,6 +38,8 @@ const PUMP_MS: i32 = 20;
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 /// The longest wait between reconnection attempts.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// The desktop's reconnect timer, for a first connection that failed.
+const FIRST_CONNECT_RETRY: Duration = Duration::from_secs(5);
 
 /// Where to connect, and as whom.
 #[derive(Clone, Debug)]
@@ -918,6 +920,8 @@ struct Worker {
     partial: HashMap<(u32, i32, i32), String>,
     /// Set when the server kicked or logged us out (don't reconnect).
     no_reconnect: bool,
+    /// Logged in at least once since connect() (a retry then is a reconnect).
+    logged_in_once: bool,
     /// The microphone's level, refreshed while the sound devices are open.
     level: Arc<std::sync::atomic::AtomicI32>,
     audio_open: bool,
@@ -966,6 +970,7 @@ impl Worker {
             retry: None,
             partial: HashMap::new(),
             no_reconnect: false,
+            logged_in_once: false,
             level,
             audio_open: false,
             last_level: Instant::now(),
@@ -1105,6 +1110,7 @@ impl Worker {
                 unsafe { sys::TT_Disconnect(self.inst) };
                 self.clear_model();
                 self.no_reconnect = false;
+                self.logged_in_once = false;
                 self.retry = None;
                 self.rejoin = opts.join_channel.clone();
                 self.options = Some(*opts);
@@ -1819,12 +1825,19 @@ impl Worker {
         {
             let _ = r.send(Err(Error::Connection(why.clone())));
         }
-        if reconnecting && self.options.as_ref().is_some_and(|o| o.reconnect) && !self.no_reconnect {
+        let retry = self.options.as_ref().is_some_and(|o| o.reconnect) && !self.no_reconnect;
+        if reconnecting && retry {
             let n = match self.model.lock().map(|m| m.state.clone()).ok().flatten() {
                 Some(ConnectionState::Reconnecting { attempt }) => attempt + 1,
                 _ => 1,
             };
             self.schedule_retry(n);
+        } else if retry {
+            // The first attempt failed: as the desktop (with Reconnect on),
+            // said once, then tried again every 5 seconds.
+            self.clear_model();
+            self.emit(Event::ConnectionFailed(why));
+            self.schedule_retry(1);
         } else {
             self.options = None;
             self.clear_model();
@@ -1834,7 +1847,13 @@ impl Worker {
     }
 
     fn schedule_retry(&mut self, attempt: u32) {
-        let wait = Duration::from_secs(1u64 << attempt.min(5).saturating_sub(1)).min(MAX_BACKOFF);
+        // Never logged in yet: every 5 seconds, as the desktop; a dropped
+        // connection backs off.
+        let wait = if self.logged_in_once {
+            Duration::from_secs(1u64 << attempt.min(5).saturating_sub(1)).min(MAX_BACKOFF)
+        } else {
+            FIRST_CONNECT_RETRY
+        };
         self.retry = Some((Instant::now() + wait, attempt));
         self.set_state(ConnectionState::Reconnecting { attempt });
     }
@@ -2255,6 +2274,7 @@ impl Worker {
                     if let Ok(mut m) = self.model.lock() {
                         m.my_account = mine.clone();
                     }
+                    self.logged_in_once = true;
                     self.set_state(ConnectionState::LoggedIn);
                     // The server's entry says which channel; else the
                     // account's initial channel (the client joins it, as

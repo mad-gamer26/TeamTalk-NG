@@ -150,7 +150,8 @@ final class ServerConnection {
         case .connecting: "Connecting"
         case .loggingIn: "Logging in"
         case .loggedIn: "Connected"
-        case .reconnecting(let n): "Connection lost, reconnecting (attempt \(n))"
+        case .reconnecting(let n):
+            loggedInOnce ? "Connection lost, reconnecting (attempt \(n))" : "\(problem ?? "Couldn't connect"). Trying again (attempt \(n))"
         }
     }
 
@@ -197,21 +198,33 @@ final class ServerConnection {
             refresh()
             if let result {
                 announce("Couldn't connect: \(result)")
+                // With Reconnect on, the core tries again (as the desktop):
+                // the setup below happens when a retry logs in.
+                firstLoginPending = true
             } else {
-                applyTalkMode()
-                app?.monitor.appConnected(server, true)
-                // Settings → Connection: the root channel, when the server
-                // entry and the account didn't say where.
-                if app?.joinRoot == true, (snapshot?.myChannelId ?? 0) == 0 {
-                    run("Couldn't join the root channel") { try $0.joinChannelPath(path: "/", password: "") }
-                }
-                // The server's own status message, else the one in Settings.
-                let own = server.statusMessage
-                let msg = own.isEmpty ? (app?.statusMessage ?? "") : own
-                if !msg.isEmpty { setStatus(.available, msg) }
-                if let g = app?.gender, g != .male { setGender(g) }
+                afterFirstLogin()
             }
         }
+    }
+
+    /// A first connection that failed, being tried again (its setup waits).
+    @ObservationIgnored private var firstLoginPending = false
+
+    /// What follows logging in: talking as set, the root channel, my
+    /// status and gender.
+    private func afterFirstLogin() {
+        applyTalkMode()
+        app?.monitor.appConnected(server, true)
+        // Settings → Connection: the root channel, when the server
+        // entry and the account didn't say where.
+        if app?.joinRoot == true, (snapshot?.myChannelId ?? 0) == 0 {
+            run("Couldn't join the root channel") { try $0.joinChannelPath(path: "/", password: "") }
+        }
+        // The server's own status message, else the one in Settings.
+        let own = server.statusMessage
+        let msg = own.isEmpty ? (app?.statusMessage ?? "") : own
+        if !msg.isEmpty { setStatus(.available, msg) }
+        if let g = app?.gender, g != .male { setGender(g) }
     }
 
     func disconnect() {
@@ -1213,6 +1226,10 @@ final class ServerConnection {
             live = s == .loggedIn
             switch s {
             case .loggedIn:
+                if firstLoginPending {
+                    firstLoginPending = false
+                    afterFirstLogin()
+                }
                 if dropped {
                     dropped = false
                     applyTalkMode()

@@ -13,12 +13,8 @@ final class ServersUITests: NGTestCase {
         name.tap(); name.typeText("Typed")
         let address = app.textFields["Address"]
         address.tap(); address.typeText("127.0.0.1")
-        let tcp = app.textFields["TCP port"]
-        tcp.tap(); tcp.press(forDuration: 1); if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
-        tcp.typeText(Host.ttPort)
-        let udp = app.textFields["UDP port"]
-        udp.tap(); udp.press(forDuration: 1); if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
-        udp.typeText(Host.ttPort)
+        replace(app.textFields["TCP port"], with: Host.ttPort)
+        replace(app.textFields["UDP port"], with: Host.ttPort)
         XCTAssertTrue(save.isEnabled)
         save.tap()
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Typed'")).firstMatch
@@ -28,8 +24,7 @@ final class ServersUITests: NGTestCase {
         action("Edit", on: row)
         let n = app.textFields["Name"]
         waitFor(n, "the editor again")
-        n.tap(); n.press(forDuration: 1); if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
-        n.typeText("Renamed")
+        replace(n, with: "Renamed")
         button("Save").tap()
         let renamed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch
         waitFor(renamed, "the renamed server")
@@ -39,8 +34,14 @@ final class ServersUITests: NGTestCase {
         waitFor(any("Incorrect username or password"), "the server refusing a login without an account")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // Delete.
+        // Delete: asked first; Cancel keeps it.
         action("Delete", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch)
+        waitFor(any("Delete Renamed?"), "the confirmation", timeout: 5)
+        cancelDialog()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch.exists, "still there")
+        action("Delete", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch)
+        waitFor(any("Delete Renamed?"), "the confirmation", timeout: 5)
+        app.buttons.matching(NSPredicate(format: "label == 'Delete'")).allElementsBoundByIndex.last!.tap()
         Host.until("the server gone") { !app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch.exists }
     }
 
@@ -77,13 +78,30 @@ final class ServersUITests: NGTestCase {
     }
 
     @MainActor
-    func testNothingListeningSaysItFailed() {
+    func testNothingListeningSaysItFailedAndKeepsTrying() {
         app.open(Host.link("alice", port: "9"))
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
         waitFor(row, "the server")
         row.tap()
         waitFor(any("Failed to connect to 127.0.0.1 TCP port 9 UDP port 9"), "the desktop's words for it", timeout: 30)
-        waitFor(button("Connect"), "a Connect button to try again")
+        // As the desktop: tried again every 5 seconds, until stopped.
+        waitFor(any("Trying again (attempt 2)"), "a second try", timeout: 20)
+        button("Stop trying").tap()
+        waitFor(button("Connect"), "stopped, with Connect")
+    }
+
+    @MainActor
+    func testAServerThatComesUpLaterIsConnectedByARetry() {
+        Host.call("/server", ["do": "stop"])
+        app.open(Host.link("alice"))
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(row, "the server")
+        row.tap()
+        waitFor(any("Trying again"), "trying again", timeout: 30)
+        Host.call("/server", ["do": "start"])
+        waitFor(any("Lobby"), "connected by a retry", timeout: 30)
+        // Its setup happened too: in the root channel (Settings: join the root channel).
+        Host.until("Bob seeing Alice in the root channel", timeout: 20) { (Host.user("alice")?["channel"] as? String) == "/" }
     }
 
     @MainActor

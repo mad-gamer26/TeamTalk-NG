@@ -119,6 +119,7 @@ private struct ServerRow: View {
     let server: SavedServer
     let connection: ServerConnection?
     let edit: () -> Void
+    @State private var deleting = false
 
     var body: some View {
         NavigationLink(value: server) {
@@ -131,7 +132,7 @@ private struct ServerRow: View {
             .accessibilityElement(children: .combine)
         }
         .swipeActions {
-            Button("Delete", role: .destructive) { model.delete(server) }
+            Button("Delete", role: .destructive) { deleting = true }
             Button("Edit", action: edit).tint(.blue)
         }
         .contextMenu {
@@ -144,11 +145,11 @@ private struct ServerRow: View {
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
-            Button("Delete", role: .destructive) { model.delete(server) }
+            Button("Delete", role: .destructive) { deleting = true }
         }
         // Reversed for VoiceOver (the touch-and-hold menu's order, backwards).
         .accessibilityActions {
-            Button("Delete") { model.delete(server) }
+            Button("Delete") { deleting = true }
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
@@ -157,6 +158,10 @@ private struct ServerRow: View {
                 announce("Link copied")
             }
             Button("Edit", action: edit)
+        }
+        .confirmationDialog("Delete \(server.title)?", isPresented: $deleting, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { model.delete(server) }
+            Button("Cancel", role: .cancel) {}
         }
     }
 }
