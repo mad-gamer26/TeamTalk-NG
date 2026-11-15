@@ -679,8 +679,8 @@ final class ServerConnection {
             snapshot = client.snapshot()
             state = snapshot?.state ?? .disconnected
             // Channels new to me: collapsed, or expanded with the setting.
-            if app?.autoExpandChannels == true {
-                for c in snapshot?.channels ?? [] where knownChannels[c.id] == nil { expanded.insert(c.id) }
+            for c in snapshot?.channels ?? [] where seenChannels.insert(c.id).inserted {
+                if app?.autoExpandChannels == true { expanded.insert(c.id) }
             }
             known = Dictionary(snapshot?.users.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
             knownChannels = Dictionary(snapshot?.channels.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
@@ -738,6 +738,10 @@ final class ServerConnection {
     /// the one I join expanded with every channel above it, the one I
     /// leave collapsed.
     private(set) var expanded: Set<Int32> = []
+    /// The channels the tree has shown since it was last built (to know
+    /// which are new). The desktop builds the tree again after a dropped
+    /// connection, so this starts over then.
+    private var seenChannels: Set<Int32> = []
 
     func isExpanded(_ c: Channel) -> Bool { expanded.contains(c.id) }
 
@@ -780,6 +784,10 @@ final class ServerConnection {
                 }
             case .reconnecting(let n):
                 transmitting = false
+                // As the desktop: the tree starts over (my channel opens
+                // again when I'm back in it).
+                expanded = []
+                seenChannels = []
                 if !dropped {
                     sound(.serverLost)
                     say(.connection, ["state": "connection lost, reconnecting"])
@@ -789,6 +797,7 @@ final class ServerConnection {
                 transmitting = false
                 voiceActive = false
                 expanded = []
+                seenChannels = []
             default: break
             }
         case .connectionFailed(let m):
