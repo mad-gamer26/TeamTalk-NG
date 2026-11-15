@@ -190,7 +190,11 @@ impl Worker {
         // mix): opened once, by the SDK; probing it would take its header.
         let live = is_live(path);
         let info = if live {
-            MediaFileInfo { sample_rate: 48000, channels: 1, ..Default::default() }
+            MediaFileInfo {
+                sample_rate: 48000,
+                channels: 1,
+                ..Default::default()
+            }
         } else {
             media_file_info(path).ok_or_else(|| Error::Refused("That file can't be played.".into()))?
         };
@@ -333,7 +337,9 @@ fn is_live(path: &str) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::FileTypeExt;
-        std::fs::metadata(path).map(|m| m.file_type().is_fifo()).unwrap_or(false)
+        std::fs::metadata(path)
+            .map(|m| m.file_type().is_fifo())
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
