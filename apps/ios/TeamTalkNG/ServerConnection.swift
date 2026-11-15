@@ -1133,7 +1133,8 @@ final class ServerConnection {
                 if !t.inbound { try? FileManager.default.removeItem(atPath: (t.localPath as NSString).deletingLastPathComponent) }
             case .failed:
                 transfers[t.id] = nil
-                announce("\(t.inbound ? "Download" : "Upload") of \(t.remoteName) failed")
+                // The desktop's words.
+                announce("Failed to \(t.inbound ? "download" : "upload") file \(t.remoteName)")
             case .cancelled:
                 transfers[t.id] = nil
                 note("Cancelled \(t.remoteName)")

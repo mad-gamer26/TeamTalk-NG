@@ -158,5 +158,6 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       and going ("New sound device available: …", "Sound device removed:
       …"), the microphone menu kept current, and the audio session set up
       when Sound system opens (so the iPhone's microphone is listed).
-- [ ] Still to read: file transfer done, desktop access requests (n/a
-      without desktop sharing).
+- [x] File transfers: done plays the desktop's sound; a failure says its
+      words ("Failed to download file …", "Failed to upload file …").
+      n/a: desktop access requests (no desktop sharing on phones).
