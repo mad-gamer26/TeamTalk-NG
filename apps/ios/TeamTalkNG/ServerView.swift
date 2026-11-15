@@ -32,6 +32,7 @@ struct ServerView: View {
     @State private var showOnline = false
     @State private var showAudioNet = false
     @State private var showServerVolume = false
+    @State private var showMoveUsers = false
     @State private var showClientStats = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
@@ -167,7 +168,6 @@ struct ServerView: View {
             switch d.kind {
             case .subscriptions: SubscriptionsDialog(connection: connection, user: d.user)
             case .transmit: TransmitDialog(connection: connection, user: d.user)
-            case .advanced: AdvancedDialog(connection: connection, user: d.user) { movingUser = d.user }
             default: UserVolumeDialog(connection: connection, user: d.user)
             }
         }
@@ -194,6 +194,7 @@ struct ServerView: View {
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
         .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
+        .sheet(isPresented: $showMoveUsers) { MoveUsersView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
         .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
         .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }
@@ -1072,6 +1073,7 @@ extension ServerView {
             m.append(.init("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) })
         }
         if connection.rights.broadcast { m.append(.init("Broadcast message") { broadcasting = true }) }
+        if connection.rights.moveUsers { m.append(.init("Move users") { showMoveUsers = true }) }
         m.append(.init("Online users") { showOnline = true })
         if audio { m.append(.init(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }) }
         m.append(.init("Connection statistics") { showClientStats = true })
@@ -1138,7 +1140,7 @@ extension ServerView {
         case .mediaDown: if let u { connection.stepVolume(u, media: true, by: -1) }
         case .storeForMove: if let u { connection.togglePicked(u) }
         case .moveUsers: if let c { connection.movePicked(to: c) }
-        case .moveDialog: if let u { movingUser = u }
+        case .moveDialog: if connection.rights.moveUsers { showMoveUsers = true }
         case .muteAll: connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false))
         case .join: if let c, c.id != connection.snapshot?.myChannelId { if c.hasPassword { passwordFor = c } else { connection.join(c) } }
         case .leave: connection.leaveChannel()

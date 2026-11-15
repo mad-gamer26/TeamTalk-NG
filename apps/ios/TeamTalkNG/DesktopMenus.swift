@@ -110,7 +110,7 @@ struct UserMenu: View {
     /// For VoiceOver: one flat list, reversed; submenus open a list.
     var flatReversed = false
 
-    enum UserSheet { case info, messages, volume, move, subscriptions, transmit, advanced, banServer, banChannel }
+    enum UserSheet { case info, messages, volume, move, subscriptions, transmit, banServer, banChannel }
 
     private var rights: MyRights { connection.rights }
 
@@ -124,11 +124,9 @@ struct UserMenu: View {
             m.append(.init(user.operator ? "Remove Op" : "Op") { connection.setOperator(user, !user.operator) })
         }
         let audio = connection.hasAudio
-        if audio {
-            m.append(.init("Volume") { open(.volume) })
-            m.append(.init(user.voiceMuted ? "Unmute Voice" : "Mute Voice") { connection.toggleMuteVoice(user) })
-            m.append(.init(user.mediaMuted ? "Unmute Media File" : "Mute Media File") { connection.toggleMuteMedia(user) })
-        }
+        // Muting their voice or media files: in Volume and their details
+        // (the owner's choice: not in this menu).
+        if audio { m.append(.init("Volume") { open(.volume) }) }
         if rights.kick || connection.canModerate(channel: user.channelId) {
             if user.channelId > 0 {
                 m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
@@ -142,8 +140,16 @@ struct UserMenu: View {
         if user.channelId > 0 && connection.canControlTransmit(channel: user.channelId) {
             m.append(.init("Transmit Control") { open(.transmit) })
         }
-        // Through the Monitor, Advanced has only moving people (no volumes, no relay).
-        if audio || rights.moveUsers { m.append(.init("Advanced") { open(.advanced) }) }
+        // The desktop's Advanced submenu's relay items, here instead of it
+        // (moving people is the More menu's "Move users"; the volume steps
+        // are keyboard shortcuts and the Volume screen).
+        if audio && user.id != connection.snapshot?.myUserId {
+            let relaying = connection.snapshot?.relaying
+            let voice = relaying?.userId == user.id && relaying?.stream == .voice
+            let media = relaying?.userId == user.id && relaying?.stream == .mediaFile
+            m.append(.init(voice ? "Stop Relaying Voice Stream" : "Relay Voice Stream") { connection.setRelay(voice ? nil : user, .voice) })
+            m.append(.init(media ? "Stop Relaying Media File Stream" : "Relay Media File Stream") { connection.setRelay(media ? nil : user, .mediaFile) })
+        }
         // Mute All is in the server screen's More menu (the owner's choice).
         return m
     }
@@ -229,49 +235,6 @@ struct TransmitDialog: View {
                 }
             }
             .navigationTitle("Transmit Control")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }
-    }
-}
-
-/// The desktop's Advanced submenu.
-struct AdvancedDialog: View {
-    let connection: ServerConnection
-    let user: User
-    let moveDialog: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if connection.hasAudio {
-                    Button("Increase Voice Volume") { connection.stepVolume(user, media: false, by: 1) }
-                    Button("Lower Voice Volume") { connection.stepVolume(user, media: false, by: -1) }
-                    Button("Increase Media File Volume") { connection.stepVolume(user, media: true, by: 1) }
-                    Button("Lower Media File Volume") { connection.stepVolume(user, media: true, by: -1) }
-                }
-                if connection.rights.moveUsers {
-                    Button(connection.pickedToMove.contains(user.id) ? "Don't Store User for Move" : "Store User for Move") {
-                        connection.togglePicked(user)
-                    }
-                    Button("Move Users Dialog") { dismiss(); moveDialog() }
-                }
-                if connection.hasAudio {
-                    Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
-                           ? "Stop Relaying Voice Stream" : "Relay Voice Stream") {
-                        let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
-                        connection.setRelay(on ? nil : user, .voice)
-                    }
-                    Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
-                           ? "Stop Relaying Media File Stream" : "Relay Media File Stream") {
-                        let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
-                        connection.setRelay(on ? nil : user, .mediaFile)
-                    }
-                }
-            }
-            .foregroundStyle(.primary)
-            .navigationTitle("Advanced: \(user.displayName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
@@ -500,6 +463,68 @@ struct ServerVolumeView: View {
             .navigationTitle("Volume for this server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// The More menu's "Move users" (the desktop's Move Users dialog): pick
+/// people, then the channel they all go to.
+struct MoveUsersView: View {
+    @Environment(\.dismiss) private var dismiss
+    let connection: ServerConnection
+    @State private var picked: Set<Int32> = []
+    @State private var choosingChannel = false
+
+    private var people: [User] {
+        (connection.snapshot?.users ?? []).sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+
+    private func channelName(_ id: Int32) -> String {
+        guard let c = connection.snapshot?.channels.first(where: { $0.id == id }) else { return "not in a channel" }
+        return c.parentId == 0 ? "in the root channel" : "in \(c.name)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(people, id: \.id) { u in
+                        Toggle(isOn: Binding(get: { picked.contains(u.id) },
+                                             set: { if $0 { picked.insert(u.id) } else { picked.remove(u.id) } })) {
+                            Text("\(u.displayName), \(channelName(u.channelId))")
+                        }
+                    }
+                } footer: {
+                    Text("Pick who moves, then Next to choose the channel.")
+                }
+            }
+            .navigationTitle(picked.isEmpty ? "Move users" : "Move users, \(picked.count) picked")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Next") { choosingChannel = true }.disabled(picked.isEmpty)
+                }
+            }
+            .navigationDestination(isPresented: $choosingChannel) {
+                List {
+                    ForEach(ChannelTree.rows(connection.snapshot!).compactMap { row -> (Channel, Int)? in
+                        if case .channel(let c, let d) = row { (c, d) } else { nil }
+                    }, id: \.0.id) { c, depth in
+                        let name = c.parentId == 0 ? "Root channel" : c.name
+                        Button {
+                            for u in people where picked.contains(u.id) && u.channelId != c.id { connection.move(u, to: c) }
+                            connection.noteMenu("Selected users has been moved to channel \(c.parentId == 0 ? "root" : c.name)")
+                            dismiss()
+                        } label: {
+                            Text(name).padding(.leading, CGFloat(depth) * 16)
+                        }
+                    }
+                }
+                .navigationTitle("Move to")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            .onAppear { picked = connection.pickedToMove }
         }
     }
 }

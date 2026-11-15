@@ -209,3 +209,9 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       classroom channels only. Outside a classroom the channel's list
       blocks (the core turns "allowed" into not listed there; tested:
       Bob silenced, then heard again). Also in the person's details.
+- [x] People menu (the owner's choices): no Mute Voice / Mute Media File
+      (in Volume and the person's details) and no Advanced submenu: its
+      Relay Voice Stream / Relay Media File Stream are items of their own
+      ("Stop Relaying …" when on); moving people is the More menu's "Move
+      users" (pick people, then the channel; the desktop's Move Users
+      dialog, also its shortcut); the volume steps stay keyboard shortcuts.
