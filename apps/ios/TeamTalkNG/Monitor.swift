@@ -37,14 +37,16 @@ final class MonitorStore {
 
     /// A client with the right token, registering this iPhone if needed.
     private func client(registering: Bool) async -> MonitorClient? {
-        if let t = app.account.sessionToken { return MonitorClient(baseUrl: "", token: t) }
-        if !ownToken.isEmpty { return MonitorClient(baseUrl: "", token: ownToken) }
+        if let t = app.account.sessionToken { return MonitorClient(baseUrl: Service.base, token: t) }
+        if !ownToken.isEmpty { return MonitorClient(baseUrl: Service.base, token: ownToken) }
         guard registering else { return nil }
-        let c = MonitorClient(baseUrl: "", token: nil)
+        let c = MonitorClient(baseUrl: Service.base, token: nil)
         let name = UIDevice.current.name
-        switch await Task.detached(operation: { Result { try c.register(deviceName: name) } }).value {
-        case .success(let token):
-            Passwords.setSecret(token, Self.keychainService, "token")
+        switch await Task.detached(operation: { Result { try c.registerWithKey(deviceName: name) } }).value {
+        case .success(let r):
+            Passwords.setSecret(r.token, Self.keychainService, "token")
+            Service.savePushKey(r.pushKey)
+            if let t = pushToken { await sendPushToken(t, via: c) }
             return c
         case .failure(let e):
             problem = NGAccountStore.words(e)
@@ -65,6 +67,26 @@ final class MonitorStore {
             problem = NGAccountStore.words(e)
         }
         return r
+    }
+
+    // MARK: Notifications
+
+    /// The device's APNs token, once Apple gives it.
+    private var pushToken: String?
+
+    /// Apple gave a device token: the Monitor sends notifications to it (to
+    /// Apple's sandbox from a development build).
+    func setPushToken(_ token: String) async {
+        pushToken = token
+        guard let c = await client(registering: true) else { return }
+        await sendPushToken(token, via: c)
+    }
+
+    private func sendPushToken(_ token: String, via c: MonitorClient) async {
+        let id = NGAccountStore.installId
+        let sandbox = Service.sandbox
+        let r = await Task.detached { Result { try c.setPush(apnsToken: token, sandbox: sandbox, appRef: id, installId: id) } }.value
+        if case .failure(let e) = r { problem = NGAccountStore.words(e) }
     }
 
     func refresh() async {

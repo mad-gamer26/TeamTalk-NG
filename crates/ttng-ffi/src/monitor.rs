@@ -91,6 +91,9 @@ pub struct MonitorUser {
     pub admin: bool,
     /// 0 when not in a channel.
     pub channel_id: i64,
+    /// TeamTalk's status bits (mode, gender, streaming, video, desktop).
+    pub status_mode: i64,
+    pub nickname: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -125,6 +128,10 @@ pub struct MonitorEvent {
     pub message_kind: String,
     pub user_id: i64,
     pub user_name: String,
+    pub channel_id: i64,
+    pub body: String,
+    pub outgoing: bool,
+    pub to_user_id: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -221,6 +228,25 @@ impl MonitorClient {
         self.with(|m| m.register(&device_name)).map(|r| r.token)
     }
 
+    /// As register, with the key that opens its notifications (secret too).
+    pub fn register_with_key(&self, device_name: String) -> Result<MonitorRegistration> {
+        self.with(|m| m.register(&device_name)).map(|r| MonitorRegistration {
+            token: r.token,
+            push_key: r.push_key,
+        })
+    }
+
+    /// Where this install's notifications go (see the services crate).
+    pub fn set_push(
+        &self,
+        apns_token: Option<String>,
+        sandbox: bool,
+        app_ref: String,
+        install_id: String,
+    ) -> Result<()> {
+        self.with(|m| m.set_push(apns_token.as_deref(), sandbox, &app_ref, &install_id))
+    }
+
     pub fn servers(&self) -> Result<Vec<MonitorServer>> {
         self.with(|m| m.servers())
             .map(|v| v.into_iter().map(Into::into).collect())
@@ -254,6 +280,8 @@ impl MonitorClient {
                     client_name: u.client_name,
                     admin: u.user_type == 2,
                     channel_id: u.channel_id.unwrap_or(0),
+                    status_mode: u.status_mode,
+                    nickname: u.nickname,
                 })
                 .collect(),
             my_user_id: v.my_user_id,
@@ -295,6 +323,10 @@ impl MonitorClient {
                     message_kind: e.message_kind,
                     user_id: e.user_id,
                     user_name: e.user_name,
+                    channel_id: e.channel_id,
+                    body: e.body,
+                    outgoing: e.outgoing,
+                    to_user_id: e.to_user_id,
                 })
                 .collect(),
             last_seq: e.last_seq,
@@ -369,4 +401,11 @@ impl MonitorClient {
     pub fn delete_conversation(&self, server_id: i64, conversation_id: i64) -> Result<()> {
         self.with(|m| m.delete_conversation(server_id, conversation_id))
     }
+}
+
+/// A new registration: its token and the key that opens its notifications.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct MonitorRegistration {
+    pub token: String,
+    pub push_key: String,
 }

@@ -15,7 +15,8 @@ struct MonitorListView: View {
                 }
                 ForEach(monitor.servers, id: \.id) { s in
                     NavigationLink {
-                        MonitorServerView(serverId: s.id)
+                        // As if connected: the server screen, from the Monitor.
+                        ServerView(connection: model.monitorConnection(for: s))
                     } label: {
                         VStack(alignment: .leading) {
                             Text(s.name).font(.headline)

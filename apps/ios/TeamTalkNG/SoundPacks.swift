@@ -94,7 +94,7 @@ struct InstalledPack: Codable, Identifiable, Hashable {
 /// Sound packs, the chosen one, volume and which events sound; plays them.
 @MainActor @Observable
 final class SoundStore {
-    static let catalogBase = URL(string: "https://ttmonitor.mad-gamer.com")!
+    static var catalogBase: URL { Service.baseURL }
 
     private(set) var installed: [InstalledPack] = []
     var selectedId: String = InstalledPack.builtIn.id { didSet { save() } }

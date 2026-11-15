@@ -40,7 +40,7 @@ final class NGAccountStore {
         if signedIn { Task { await sync() } }
     }
 
-    private static var installId: String {
+    static var installId: String {
         if let id = UserDefaults.standard.string(forKey: "installId") { return id }
         let id = UUID().uuidString
         UserDefaults.standard.set(id, forKey: "installId")
@@ -48,7 +48,7 @@ final class NGAccountStore {
     }
 
     private static func makeClient(token: String?) -> NgAccountClient {
-        NgAccountClient(baseUrl: "", installId: installId, deviceName: UIDevice.current.name, token: token)
+        NgAccountClient(baseUrl: Service.base, installId: installId, deviceName: UIDevice.current.name, token: token)
     }
 
     private func saveState() {
@@ -122,6 +122,8 @@ final class NGAccountStore {
 
     private func signedIn(_ s: NgSession) async {
         Passwords.setSecret(s.token, Self.keychainService, "token")
+        // The account's session gets its own notifications key.
+        Service.savePushKey(s.pushKey)
         email = s.email
         defaults.set(s.email, forKey: "ngEmail")
         // A different account (or a first sign-in): everything here is new

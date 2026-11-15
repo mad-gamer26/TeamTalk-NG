@@ -142,6 +142,14 @@ pub struct MonitorEvent {
     /// Who it's about (or who sent it), when someone.
     pub user_id: i64,
     pub user_name: String,
+    /// The channel it's about (joined, left, a channel message, the
+    /// monitor's channel, kicked from a channel), else 0.
+    pub channel_id: i64,
+    /// A message's own text, whether the monitor sent it, and (private
+    /// messages) who it went to: for showing it as a live connection would.
+    pub body: String,
+    pub outgoing: bool,
+    pub to_user_id: i64,
 }
 
 /// Events since a number, and whether some were missed.
@@ -268,6 +276,18 @@ impl Monitor {
             decode(self.call("POST", "/v1/register", Some(json!({ "device_name": device_name })))?)?;
         self.token = Some(r.token.clone());
         Ok(r)
+    }
+
+    /// Where this install's notifications go: its APNs device token (None
+    /// turns them off), from a development build or not (Apple's sandbox),
+    /// with the app's own reference returned in every push.
+    pub fn set_push(&self, apns_token: Option<&str>, sandbox: bool, app_ref: &str, install_id: &str) -> Result<()> {
+        self.call(
+            "PUT",
+            "/v1/me/push",
+            Some(json!({ "apns_token": apns_token, "sandbox": sandbox, "app_ref": app_ref, "install_id": install_id })),
+        )
+        .map(|_| ())
     }
 
     pub fn servers(&self) -> Result<Vec<MonitorServer>> {
@@ -559,6 +579,13 @@ fn event(e: &Value) -> MonitorEvent {
         },
         other => other.replace('_', " "),
     };
+    let msg = ev.get("message");
+    let channel_id = ev
+        .get("channel_id")
+        .and_then(Value::as_i64)
+        .or_else(|| msg.and_then(|m| m.get("channel_id")).and_then(Value::as_i64))
+        .or_else(|| ev.pointer("/channel/id").and_then(Value::as_i64))
+        .unwrap_or(0);
     MonitorEvent {
         seq: e.get("seq").and_then(Value::as_i64).unwrap_or(0),
         server_id: e.get("server_id").and_then(Value::as_i64).unwrap_or(0),
@@ -568,5 +595,19 @@ fn event(e: &Value) -> MonitorEvent {
         message_kind,
         user_id,
         user_name,
+        channel_id,
+        body: msg
+            .and_then(|m| m.get("text"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        outgoing: msg
+            .and_then(|m| m.get("outgoing"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        to_user_id: msg
+            .and_then(|m| m.pointer("/to/id"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
     }
 }

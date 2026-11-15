@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct TeamTalkNGApp: App {
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
 
@@ -12,6 +13,8 @@ struct TeamTalkNGApp: App {
                 .environment(model)
                 .onOpenURL { model.open($0) }
                 .task {
+                    // The Monitor's notifications: the device token to it.
+                    PushDelegate.tokenArrived = { token in Task { await model.monitor.setPushToken(token) } }
                     model.connectOnStart()
                     if model.notifyInBackground { requestNotifications() }
                 }

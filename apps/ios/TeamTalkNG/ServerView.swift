@@ -78,6 +78,12 @@ struct ServerView: View {
         .navigationTitle(connection.snapshot?.server.name.nonEmpty ?? connection.server.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Monitor mode: the Monitor's own settings and conversations.
+            if let id = connection.monitorId {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink("Monitor") { MonitorServerView(serverId: id) }
+                }
+            }
             if connection.isConnected {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu("More", systemImage: "ellipsis.circle") {
@@ -134,6 +140,8 @@ struct ServerView: View {
         // A hardware keyboard: the desktop's shortcuts (Help lists them).
         .background { DesktopShortcuts(run: perform) }
         .onAppear { connection.connect() }
+        // The Monitor's view is followed while it's on screen.
+        .onDisappear { if connection.isMonitor { connection.disconnect() } }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
             SecureField("Password", text: $channelPassword).accessibilityLabel("Password")
             Button("Join") {

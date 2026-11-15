@@ -465,6 +465,16 @@ final class AppModel {
     }
 
     /// The server's connection, made (not connected) on first use.
+    /// The Monitor's connections, shown as server screens (monitor mode).
+    @ObservationIgnored private var monitorConnections: [Int64: ServerConnection] = [:]
+
+    func monitorConnection(for m: MonitorServer) -> ServerConnection {
+        if let c = monitorConnections[m.id] { return c }
+        let c = ServerConnection(monitorServer: m, app: self)
+        monitorConnections[m.id] = c
+        return c
+    }
+
     func connection(for server: SavedServer) -> ServerConnection {
         if let c = connections[server.id] {
             c.server = server

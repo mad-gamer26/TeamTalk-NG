@@ -16,6 +16,12 @@ settings:
     DEVELOPMENT_TEAM: 5NJK4F832Z
     TTNG_BUNDLE_ID: com.matthewdovi.TeamTalk-NG.dev
     TTNG_DISPLAY_NAME: TTNG Dev
+    # The Monitor and NG Account service. TEMPORARY for the dev app: the
+    # development ngmon on the owner's Mac (Tailscale only, its own empty
+    # database; ~/ngmon-dev there). Empty means the live service. The
+    # real app must use the live service (and lose the HTTP exception).
+    TTNG_SERVICE_URL: "http://100.118.202.104:8650"
+    TTNG_APP_GROUP: "group.$(TTNG_BUNDLE_ID)"
 targets:
   TeamTalkNG:
     type: application
@@ -30,6 +36,12 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
+        TTNGServiceURL: "$(TTNG_SERVICE_URL)"
+        TTNGAppGroup: "$(TTNG_APP_GROUP)"
+        # DEV ONLY: the development Monitor is plain HTTP on a Tailscale
+        # address. Remove with TTNG_SERVICE_URL for the real app.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         # Stays connected, and keeps talking and listening, when locked.
         UIBackgroundModes: [audio]
         NSMicrophoneUsageDescription: "TeamTalk NG sends your voice to the channel you're in when you talk."
@@ -65,7 +77,15 @@ targets:
         # The SDK inside the core is C++ and uses zlib (and FFmpeg in the
         # SDK built from source, iconv).
         OTHER_LDFLAGS: ["-lc++", "-lz", "-liconv"]
+    entitlements:
+      path: Generated/TeamTalkNG.entitlements
+      properties:
+        # Monitor notifications (development builds: Apple's sandbox).
+        aps-environment: development
+        com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
     dependencies:
+      - target: TeamTalkNGNotifications
+        embed: true
       - framework: Generated/TeamTalkCore.xcframework
         embed: false
       - sdk: AVFoundation.framework
@@ -75,3 +95,31 @@ targets:
       - sdk: CoreVideo.framework
       - sdk: Security.framework
       - sdk: SystemConfiguration.framework
+
+  # Opens the Monitor's sealed notifications with this install's key (from
+  # the shared App Group), so Apple only ever sees a placeholder.
+  TeamTalkNGNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Notifications
+    info:
+      path: Generated/NotificationsInfo.plist
+      properties:
+        CFBundleDisplayName: "$(TTNG_DISPLAY_NAME) Notifications"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        TTNGAppGroup: "$(TTNG_APP_GROUP)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).NotificationService"
+    entitlements:
+      path: Generated/Notifications.entitlements
+      properties:
+        com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID).Notifications"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"

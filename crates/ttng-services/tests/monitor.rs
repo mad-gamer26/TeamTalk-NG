@@ -27,7 +27,16 @@ fn the_monitor_watches_and_carries_private_messages() {
     let Some(ng) = Ngmon::start() else { return };
     let server = tt::Server::start();
     let mut mon = Monitor::new(&ng.url, None);
-    mon.register("Test iPhone").expect("registered");
+    let reg = mon.register("Test iPhone").expect("registered");
+    assert_eq!(reg.push_key.len(), 44, "a 32-byte key in base64");
+    // Notifications: a development build's APNs token, then off.
+    mon.set_push(Some(&"ab".repeat(32)), true, "ref-1", "install-1")
+        .expect("push token set");
+    assert!(
+        mon.set_push(Some("not hex"), true, "ref-1", "install-1").is_err(),
+        "a bad token is refused"
+    );
+    mon.set_push(None, true, "ref-1", "install-1").expect("push off");
 
     let id = mon
         .add_server(&MonitorServerInput {
@@ -63,6 +72,7 @@ fn the_monitor_watches_and_carries_private_messages() {
             .find(|e| e.kind == "logged_in")
     });
     assert_eq!(e.text, "Bob logged in");
+    assert!(e.user_id > 0, "who logged in: {e:?}");
     assert!(mon.view(id).unwrap().users.iter().any(|u| u.username == "bob"));
 
     // Bob writes to the monitor privately: a conversation.
@@ -87,6 +97,9 @@ fn the_monitor_watches_and_carries_private_messages() {
         (e.text.as_str(), e.message_kind.as_str()),
         ("Bob, privately: Are you there?", "user")
     );
+    // Its parts, for showing it as a live connection would.
+    assert_eq!((e.body.as_str(), e.outgoing), ("Are you there?", false));
+    assert!(e.user_id > 0 && e.user_name == "Bob", "{e:?}");
 
     // A reply from the app, through the monitor, reaches Bob.
     mon.send_message(

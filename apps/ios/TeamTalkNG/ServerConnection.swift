@@ -105,6 +105,33 @@ final class ServerConnection {
         bridge.connection = self
     }
 
+    // MARK: Monitor mode
+    //
+    // A server the Monitor is logged in to, shown and behaving as if this
+    // app were: the same screen, channel tree, chat, sounds and spoken and
+    // status-bar events, from the Monitor's view and events; what the
+    // Monitor can do (messages, join, leave, move, kick, ban, nickname,
+    // status) goes through it.
+
+    /// The Monitor's server ID, in monitor mode.
+    private(set) var monitorId: Int64?
+    var isMonitor: Bool { monitorId != nil }
+    fileprivate var monitorSnapshot: Snapshot?
+    fileprivate var monitorTask: Task<Void, Never>?
+
+    /// The Monitor's connection to `id`, as a server screen.
+    convenience init(monitorServer m: MonitorServer, app: AppModel) {
+        var saved = SavedServer()
+        saved.name = m.name
+        saved.host = m.host
+        saved.tcpPort = m.tcpPort
+        saved.udpPort = m.tcpPort
+        saved.username = m.username
+        saved.nickname = m.nickname
+        self.init(server: saved, app: app)
+        monitorId = m.id
+    }
+
     var isConnected: Bool { state == .loggedIn }
 
     var stateText: String {
@@ -120,6 +147,7 @@ final class ServerConnection {
     // MARK: Connecting
 
     func connect() {
+        if monitorId != nil { startMonitor(); return }
         guard !busy, state == .disconnected else { return }
         busy = true
         problem = nil
@@ -178,6 +206,7 @@ final class ServerConnection {
     }
 
     func disconnect() {
+        if monitorId != nil { stopMonitor(); return }
         let client = self.client
         transmitting = false
         app?.monitor.appConnected(server, false)
@@ -187,6 +216,10 @@ final class ServerConnection {
     // MARK: Channels and messages
 
     func join(_ channel: Channel, password: String = "") {
+        if monitorId != nil {
+            let path = monitorChannelPath(channel.id)
+            monitorAct(.join(channelPath: path, password: password)); return
+        }
         let path = channel.parentId == 0 ? "/" : client.channelPath(channelId: channel.id)
         run("Couldn't join", onFail: { [weak self] why in
             self?.status(nil, "Cannot join channel \(path)")
@@ -198,6 +231,7 @@ final class ServerConnection {
     }
 
     func leaveChannel() {
+        if monitorId != nil { monitorAct(.leave); return }
         run("Couldn't leave") { try $0.leaveChannel() }
     }
 
@@ -205,6 +239,7 @@ final class ServerConnection {
     func send(_ text: String, to user: User? = nil) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let snap = snapshot else { return }
+        if monitorId != nil { monitorSend(text, to: user); return }
         let target: MessageTarget
         if let user {
             target = .user(userId: user.id)
@@ -224,6 +259,10 @@ final class ServerConnection {
 
     func setStatus(_ mode: StatusMode, _ message: String) {
         autoAway = nil
+        if monitorId != nil {
+            let bits: Int64 = mode == .away ? 1 : mode == .question ? 2 : 0
+            monitorAct(.status(mode: bits, message: message)); return
+        }
         run("Couldn't change the status") { try $0.setStatus(mode: mode, message: message) }
     }
 
@@ -605,11 +644,13 @@ final class ServerConnection {
     var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false) }
 
     func kick(_ user: User, fromChannel: Bool) {
+        if monitorId != nil { monitorAct(.kick(userId: Int64(user.id), channelId: fromChannel ? Int64(user.channelId) : nil)); return }
         run("Couldn't kick") { try $0.kickUser(userId: user.id, fromChannel: fromChannel) }
     }
 
     /// Bans, then kicks them off the server.
     func ban(_ user: User, by kind: BanKind) {
+        if monitorId != nil { monitorAct(.ban(userId: Int64(user.id))); return }
         run("Couldn't ban") { c in
             try c.banUser(userId: user.id, kind: kind)
             try c.kickUser(userId: user.id, fromChannel: false)
@@ -617,6 +658,7 @@ final class ServerConnection {
     }
 
     func move(_ user: User, to channel: Channel) {
+        if monitorId != nil { monitorAct(.move(userId: Int64(user.id), channelId: Int64(channel.id))); return }
         run("Couldn't move") { try $0.moveUser(userId: user.id, channelId: channel.id) }
     }
 
@@ -685,6 +727,8 @@ final class ServerConnection {
 
     /// Runs a core call off the main thread; failures are announced.
     private func run(_ what: String, onFail: ((String) -> Void)? = nil, _ call: @escaping @Sendable (TtClient) throws -> Void) {
+        // The Monitor can't do this (only what it routes above).
+        if monitorId != nil { announce("\(what): the Monitor can't do that."); return }
         let client = self.client
         Task {
             let failed: String? = await Task.detached {
@@ -762,7 +806,7 @@ final class ServerConnection {
         refreshPending = true
         Task { @MainActor in
             refreshPending = false
-            snapshot = client.snapshot()
+            snapshot = monitorId == nil ? client.snapshot() : monitorSnapshot
             state = snapshot?.state ?? .disconnected
             // Channels new to me: collapsed, or expanded with the setting.
             for c in snapshot?.channels ?? [] where seenChannels.insert(c.id).inserted {
@@ -867,6 +911,10 @@ final class ServerConnection {
     /// Why I was excluded, for the desktop's dialog box.
     var excludedMessage: String?
 
+    /// Logins, joins and leaves are announced (the login has finished,
+    /// set in event order: the refreshed snapshot runs ahead of the events).
+    private var live = false
+
     /// Who talked last (the desktop's "Show last to talk").
     private(set) var lastTalker: Int32 = 0
     /// People whose private messages aren't read yet (the desktop's ✉).
@@ -965,6 +1013,10 @@ final class ServerConnection {
         switch event {
         case .connectionChanged(let s):
             state = s
+            // As the desktop: people already there when I log in aren't
+            // announced, only those who come or go after (this event comes
+            // after the server has listed everyone).
+            live = s == .loggedIn
             switch s {
             case .loggedIn:
                 if dropped {
@@ -1059,11 +1111,11 @@ final class ServerConnection {
             }
             if u.id == snapshot?.myUserId { expandWithParents(ch) }
             guard u.id != snapshot?.myUserId else { break }
-            if ch == myChannel {
+            if ch == myChannel && live {
                 sound(.userJoined)
                 say(.joinedMine, vars(u))
                 status(.joinedMine, vars: vars(u))
-            } else if state == .loggedIn {
+            } else if live {
                 var v = vars(u)
                 v["channel"] = channelName(ch)
                 say(.joined, v)
@@ -1072,11 +1124,11 @@ final class ServerConnection {
         case .userLeft(let u, let ch):
             if u.id == snapshot?.myUserId { expanded.remove(ch) }
             guard u.id != snapshot?.myUserId else { break }
-            if ch == myChannel {
+            if ch == myChannel && live {
                 sound(.userLeft)
                 say(.leftMine, vars(u))
                 status(.leftMine, vars: vars(u))
-            } else if state == .loggedIn {
+            } else if live {
                 var v = vars(u)
                 v["channel"] = channelName(ch)
                 say(.left, v)
@@ -1086,14 +1138,14 @@ final class ServerConnection {
             applyDefaultSubscriptions(u)
             restoreUser(u)
             // Not for those already there when I log in (the server lists them).
-            if state == .loggedIn, u.id != snapshot?.myUserId {
+            if live, u.id != snapshot?.myUserId {
                 sound(.loggedIn)
                 say(.loggedIn, vars(u))
                 status(.loggedIn, vars: serverVars(u))
             }
         case .userLoggedOut(let u):
             cacheUser(known[u.id] ?? u)
-            if state == .loggedIn, u.id != snapshot?.myUserId {
+            if live, u.id != snapshot?.myUserId {
                 sound(.loggedOut)
                 say(.loggedOut, vars(u))
                 status(.loggedOut, vars: serverVars(u))
@@ -1309,5 +1361,169 @@ enum History {
 
     static func delete(for id: UUID) {
         try? FileManager.default.removeItem(at: url(id))
+    }
+}
+
+
+// MARK: Monitor mode: the Monitor's view and events as a live connection
+
+extension ServerConnection {
+    private var monitorStore: MonitorStore? { app?.monitor }
+
+    fileprivate func startMonitor() {
+        guard monitorTask == nil, let id = monitorId else { return }
+        state = .connecting
+        monitorTask = Task { [weak self] in
+            var seq: Int64?
+            var first = true
+            while !Task.isCancelled {
+                guard let self, let store = self.monitorStore else { return }
+                if first || seq == nil {
+                    guard case .success(let v)? = await store.call({ try $0.view(serverId: id) }) else {
+                        try? await Task.sleep(for: .seconds(3)); continue
+                    }
+                    seq = v.seq
+                    self.applyMonitorView(v, announce: false)
+                    if first {
+                        first = false
+                        // Already there: listed, not announced (as on login).
+                        self.handle(.connectionChanged(state: .loggedIn))
+                    }
+                }
+                let since = seq
+                if case .success(let batch)? = await store.call({ try $0.events(since: since, serverId: id) }) {
+                    if batch.gap { seq = nil; continue }
+                    if !batch.events.isEmpty {
+                        let before = self.monitorSnapshot
+                        if case .success(let v)? = await store.call({ try $0.view(serverId: id) }) {
+                            self.applyMonitorView(v, announce: true)
+                        }
+                        for e in batch.events { self.monitorEvent(e, before: before) }
+                    }
+                    seq = batch.lastSeq
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    fileprivate func stopMonitor() {
+        monitorTask?.cancel()
+        monitorTask = nil
+    }
+
+    /// The Monitor's view as the core's snapshot.
+    private func applyMonitorView(_ v: MonitorView, announce: Bool) {
+        let users = v.users.map(Self.user(from:))
+        let channels = v.channels.map(Self.channel(from:))
+        let me = users.first { Int64($0.id) == v.myUserId }
+        monitorSnapshot = Snapshot(
+            state: .loggedIn,
+            server: ServerInfo(name: v.serverName, motd: v.motd, version: "", maxUsers: 0),
+            myUserId: Int32(v.myUserId), myChannelId: me?.channelId ?? 0,
+            myRights: MyRights(admin: me?.admin ?? false, createTemporaryChannels: false, modifyChannels: false, broadcast: false,
+                               kick: true, ban: true, moveUsers: true, uploadFiles: false, downloadFiles: false, updateServer: false),
+            channels: channels, users: users, files: [], transfers: [], recordingPath: "",
+            mutedAll: false, relaying: nil, streaming: nil)
+        // As a live connection: events are handled against what was known,
+        // then the snapshot refreshes (handle() refreshes after each).
+        if !announce { refresh() }
+    }
+
+    /// One Monitor event, as the live connection's event.
+    private func monitorEvent(_ e: MonitorEvent, before: Snapshot?) {
+        let now = monitorSnapshot
+        let find = { (s: Snapshot?) in s?.users.first { Int64($0.id) == e.userId } }
+        guard let u = find(now) ?? find(before) else {
+            switch e.kind {
+            case "kicked": handle(.kicked(byUserId: Int32(e.userId), channelId: Int32(e.channelId)))
+            case "connection": status(nil, e.text); sayText(.connectivity, e.text)
+            default: break
+            }
+            return
+        }
+        switch e.kind {
+        case "logged_in": handle(.userLoggedIn(user: u))
+        case "logged_out": handle(.userLoggedOut(user: u))
+        case "joined": handle(.userJoined(user: u, channelId: Int32(e.channelId)))
+        case "left": handle(.userLeft(user: u, channelId: Int32(e.channelId)))
+        case "user_updated": handle(.userUpdated(user: u))
+        case "message":
+            // The Monitor's own private messages are shown when sent.
+            if e.outgoing && e.messageKind == "user" { return }
+            let target: MessageTarget = switch e.messageKind {
+            case "user": .user(userId: Int32(e.outgoing ? e.toUserId : Int64(snapshot?.myUserId ?? 0)))
+            case "broadcast": .broadcast
+            default: .channel(channelId: Int32(e.channelId))
+            }
+            let from = e.outgoing ? (snapshot?.myUserId ?? u.id) : u.id
+            handle(.messageReceived(message: TextMessage(target: target, fromUserId: from, fromUsername: u.username,
+                                                         text: e.body, receivedAt: UInt64(max(0, e.time)))))
+        default: break
+        }
+    }
+
+
+    /// A channel's path ("/" for the root), from the Monitor's view.
+    func monitorChannelPath(_ id: Int32) -> String {
+        guard let c = snapshot?.channels.first(where: { $0.id == id }) else { return "/" }
+        if c.parentId == 0 { return "/" }
+        var parts: [String] = []
+        var at: Channel? = c
+        while let x = at, x.parentId != 0 {
+            parts.insert(x.name, at: 0)
+            at = snapshot?.channels.first { $0.id == x.parentId }
+        }
+        return "/" + parts.joined(separator: "/") + "/"
+    }
+
+    private func monitorAct(_ a: MonitorAction) {
+        guard let id = monitorId, let store = monitorStore else { return }
+        Task {
+            if case .failure(let e)? = await store.call({ try $0.act(serverId: id, action: a) }) {
+                announce(NGAccountStore.words(e))
+            }
+        }
+    }
+
+    private func monitorSend(_ text: String, to user: User?) {
+        guard let id = monitorId, let store = monitorStore else { return }
+        if let user {
+            lines.append(ChatLine(from: "Me", text: text, privateWith: user.displayName, time: .now, kind: .privateMessage, vars: ["user": myName, "content": text]))
+            sound(.privateMessageSent)
+            say(.privateMessageSent, ["message": text])
+        }
+        let to: MonitorTarget = user.map { .user(userId: Int64($0.id), conversationId: nil) } ?? .channel(channelId: nil)
+        Task {
+            if case .failure(let e)? = await store.call({ try $0.sendMessage(serverId: id, to: to, text: text) }) {
+                announce("Couldn't send: \(NGAccountStore.words(e))")
+            }
+        }
+    }
+
+    // MARK: The Monitor's records as the core's
+
+    static func user(from m: MonitorUser) -> User {
+        let bits = m.statusMode
+        let mode: StatusMode = switch bits & 0xff { case 1: .away; case 2: .question; default: .available }
+        let gender: Gender = bits & 0x1000 != 0 ? .neutral : bits & 0x100 != 0 ? .female : .male
+        return User(id: Int32(m.id), displayName: m.displayName, nickname: m.nickname, username: m.username,
+                    channelId: Int32(m.channelId), status: mode, statusMessage: m.statusMsg, admin: m.admin,
+                    clientName: m.clientName, ipAddress: "", talking: false, version: "", gender: gender,
+                    sendingVideo: bits & 0x200 != 0, sharingDesktop: bits & 0x400 != 0,
+                    streamingMedia: bits & 0x800 != 0, streamPaused: bits & 0x2000 != 0, playingMedia: false,
+                    mySubscriptions: Subscriptions(on: []), theirSubscriptions: Subscriptions(on: []),
+                    voiceMuted: false, mediaMuted: false, voiceVolume: 50, mediaVolume: 50,
+                    voiceLeft: true, voiceRight: true, mediaLeft: true, mediaRight: true, operator: false)
+    }
+
+    static func channel(from m: MonitorChannel) -> Channel {
+        Channel(id: Int32(m.id), parentId: Int32(m.parentId), name: m.name, topic: m.topic, hasPassword: m.passwordProtected,
+                maxUsers: 0, permanent: true, soloTransmit: false, classroom: false, operatorReceiveOnly: false,
+                noVoiceActivation: false, noRecording: false, hidden: false, transmit: [], transmitQueue: [],
+                operatorPassword: "", diskQuota: 0,
+                codec: AudioCodec(kind: .noAudio, sampleRate: 0, channels: 0, bitrate: 0, vbr: false, dtx: false, music: false,
+                                  frameSizeMs: 0, transmitIntervalMs: 0, quality: 0),
+                fixedVolume: false, fixedVolumeLevel: 0, voiceTimeoutMs: 0, mediaTimeoutMs: 0)
     }
 }
