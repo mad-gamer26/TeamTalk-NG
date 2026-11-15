@@ -1609,6 +1609,9 @@ extension ServerConnection {
                         first = false
                         // Already there: listed, not announced (as on login).
                         self.handle(.connectionChanged(state: .loggedIn))
+                        // The root channel open, as a live connection's (it
+                        // joins the root; the Monitor's login sits in none).
+                        if let root = v.channels.first(where: { $0.parentId == 0 }) { self.expanded.insert(Int32(root.id)) }
                     }
                 }
                 let since = seq

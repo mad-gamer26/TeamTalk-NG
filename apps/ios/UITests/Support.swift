@@ -76,7 +76,9 @@ class NGTestCase: XCTestCase {
             return false
         }
         app = XCUIApplication()
-        app.launchArguments = ["-UITestReset"]
+        // A small text size: long menus (an admin's More) fit without
+        // scrolling (a swipe in a menu would choose an item).
+        app.launchArguments = ["-UITestReset", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXS"]
         app.launch()
     }
 
@@ -95,7 +97,8 @@ class NGTestCase: XCTestCase {
     @MainActor
     func waitFor(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 15, file: StaticString = #filePath, line: UInt = #line) {
         if !e.waitForExistence(timeout: timeout) {
-            XCTFail("never: \(what). On screen: " + app.staticTexts.allElementsBoundByIndex.prefix(40).map { $0.label }.joined(separator: " | "),
+            XCTFail("never: \(what). On screen: " + app.staticTexts.allElementsBoundByIndex.prefix(40).map { $0.label }.joined(separator: " | ")
+                    + " || buttons: " + app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label }.joined(separator: " | "),
                     file: file, line: line)
         }
     }
