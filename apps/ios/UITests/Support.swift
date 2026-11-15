@@ -67,6 +67,14 @@ class NGTestCase: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(Host.available, "run through scripts/test-ios-ui.sh")
         Host.call("/reset")
+        // iOS's own permission questions (microphone, notifications): allowed.
+        addUIInterruptionMonitor(withDescription: "permissions") { alert in
+            for label in ["Allow", "OK", "Allow While Using App"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
         app = XCUIApplication()
         app.launchArguments = ["-UITestReset"]
         app.launch()
@@ -112,11 +120,38 @@ class NGTestCase: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
     }
 
+    /// A keyboard shortcut (a hardware keyboard's). XCUITest loses the first
+    /// key after its keyboard (re)connects (after launch, after a menu): a
+    /// harmless Shift goes first.
+    func shortcut(_ key: String, _ modifiers: XCUIElement.KeyModifierFlags) {
+        app.typeKey(XCUIKeyboardKey.shift.rawValue, modifierFlags: [])
+        Thread.sleep(forTimeInterval: 0.5)
+        app.typeKey(key, modifierFlags: modifiers)
+    }
+
+    /// A shortcut until it shows (XCUITest's synthetic keys are sometimes
+    /// lost, not the app's doing): up to three tries.
+    func shortcut(_ key: String, _ modifiers: XCUIElement.KeyModifierFlags, until shown: XCUIElement, _ what: String) {
+        for _ in 0..<3 {
+            shortcut(key, modifiers)
+            if shown.waitForExistence(timeout: 3) { return }
+        }
+        waitFor(shown, what, timeout: 1)
+    }
+
     /// Replaces a text field's text.
     func replace(_ field: XCUIElement, with text: String) {
         field.tap()
         let old = (field.value as? String) ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count + 2) + text)
+    }
+
+    /// Closes the open More menu without choosing: a tap on the screen's
+    /// title (harmless) outside it.
+    func closeMenu() {
+        let title = app.navigationBars.firstMatch.staticTexts.firstMatch
+        if title.exists { title.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap() }
+        Host.until("the menu closed", timeout: 5) { !self.button("Disconnect").exists }
     }
 
     /// The server screen's More menu, then one of its items.

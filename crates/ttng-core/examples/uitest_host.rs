@@ -229,7 +229,7 @@ fn main() {
         let (path, q) = target.split_once('?').unwrap_or((&target, ""));
         let q = query(q);
         let who = q.get("bot").cloned().unwrap_or_else(|| "bob".into());
-        let result: std::result::Result<Value, String> = (|| {
+        let result: std::result::Result<Value, String> = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let c = || bots.get(&who).ok_or(format!("no bot {who}"));
             let ok = |r: ttng_core::Result<()>| r.map(|_| json!({ "ok": true })).map_err(|e| format!("{e:?}"));
             match path {
@@ -242,7 +242,15 @@ fn main() {
                     ok(c()?.client.send_message(MessageTarget::Channel(id), &q["text"]))
                 }
                 "/pm" => {
-                    let to = c()?.user_named(&q["to"]).id;
+                    // By nickname or username (the app's is "NoName" by default).
+                    let to = c()?
+                        .client
+                        .snapshot()
+                        .users
+                        .into_iter()
+                        .find(|u| u.nickname == q["to"] || u.username == q["to"])
+                        .ok_or(format!("nobody called {}", q["to"]))?
+                        .id;
                     ok(c()?.client.send_message(MessageTarget::User(to), &q["text"]))
                 }
                 "/broadcast" => ok(bots["admin"].client.send_message(MessageTarget::Broadcast, &q["text"])),
@@ -309,7 +317,9 @@ fn main() {
                 "/quit" => std::process::exit(0),
                 _ => Err(format!("unknown command {path}")),
             }
-        })();
+        }))
+        // A bad command (a missing parameter, say) never takes the server down.
+        .unwrap_or_else(|_| Err(format!("{path} failed (a missing parameter?)")));
         let (status, body) = match result {
             Ok(v) => ("200 OK", v),
             Err(e) => ("400 Bad Request", json!({ "error": e })),

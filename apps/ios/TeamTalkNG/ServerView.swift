@@ -731,6 +731,12 @@ struct ChatView: View {
                     .accessibilityLabel(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)")
                     .textFieldStyle(.roundedBorder)
                     .focused($typing)
+                    // Escape leaves the box (a keyboard's; the desktop's
+                    // shortcuts work again outside it).
+                    .onKeyPress(.escape) {
+                        typing = false
+                        return .handled
+                    }
                     .submitLabel(model.sendOnReturn ? .send : .return)
                     .onSubmit { if model.sendOnReturn { send(); typing = true } }
                     .onChange(of: draft) {

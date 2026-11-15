@@ -91,26 +91,22 @@ struct DesktopShortcuts: View {
     }()
 
     var body: some View {
-        // Nothing on screen: the server screen's keys while it's open.
-        Color.clear
+        // Nothing on screen: the server screen's keys while it's open (a
+        // responder of its own, so they work when nothing else has focus).
+        KeyResponder()
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .onAppear {
-                KeyCommands.install()
-                KeyCommands.handler = run
-            }
+            .onAppear { KeyCommands.handler = run }
             .onDisappear { KeyCommands.handler = nil }
     }
 }
 
-/// The shortcuts as UIKit key commands on the window's root view
-/// controller, which is in every responder chain; any view controller on
-/// the way handles them (the extension below) by passing them to the open
-/// server screen.
+/// The shortcuts as UIKit key commands, offered by an invisible responder
+/// on the server screen (SwiftUI's hosting controller ignores commands
+/// added to it from outside).
 @MainActor
 enum KeyCommands {
     static var handler: ((DesktopCommand) -> Void)?
-    private static var installed = false
 
     private static func flags(_ m: EventModifiers) -> UIKeyModifierFlags {
         var f: UIKeyModifierFlags = []
@@ -129,17 +125,11 @@ enum KeyCommands {
         }
     }
 
-    static func install() {
-        guard !installed,
-              let root = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController
-        else { return }
-        installed = true
-        for (i, k) in DesktopShortcuts.keys.enumerated() {
-            let c = UIKeyCommand(title: k.0, action: #selector(UIViewController.ttngDesktopShortcut(_:)),
-                                 input: input(k.1), modifierFlags: flags(k.2), propertyList: i)
-            c.wantsPriorityOverSystemBehavior = true
-            root.addKeyCommand(c)
-        }
+    static let all: [UIKeyCommand] = DesktopShortcuts.keys.enumerated().map { i, k in
+        let c = UIKeyCommand(title: k.0, action: #selector(UIWindow.ttngDesktopShortcut(_:)),
+                             input: input(k.1), modifierFlags: flags(k.2), propertyList: i)
+        c.wantsPriorityOverSystemBehavior = true
+        return c
     }
 
     static func run(_ c: UIKeyCommand) {
@@ -148,7 +138,69 @@ enum KeyCommands {
     }
 }
 
-extension UIViewController {
+/// An invisible view that holds the keyboard focus on the server screen
+/// and offers the shortcuts as key commands. While a text field is being
+/// typed in it has the focus (and its own keys); when typing ends, this
+/// takes it back.
+struct KeyResponder: UIViewRepresentable {
+    final class View: UIView {
+        override var canBecomeFirstResponder: Bool { true }
+        // (The window offers them: see the UIWindow extension.)
+        @objc func ttngDesktopShortcut(_ sender: UIKeyCommand) { KeyCommands.run(sender) }
+        private var observers: [NSObjectProtocol] = []
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            isAccessibilityElement = false
+            accessibilityElementsHidden = true
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard window != nil else { return }
+            takeFocus()
+            for name in [UITextField.textDidEndEditingNotification, UITextView.textDidEndEditingNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.takeFocus() }
+                })
+            }
+        }
+
+        /// Takes the focus, never from something being typed in.
+        private func takeFocus() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window != nil, !(FirstResponder.current is UITextInput) else { return }
+                self.becomeFirstResponder()
+            }
+        }
+    }
+    func makeUIView(context: Context) -> View { View() }
+    func updateUIView(_ v: View, context: Context) {}
+}
+
+/// Whatever has the keyboard focus now (nil: nothing).
+@MainActor
+enum FirstResponder {
+    fileprivate static weak var found: UIResponder?
+    static var current: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.ttngReportFirstResponder), to: nil, from: nil, for: nil)
+        return found
+    }
+}
+
+extension UIResponder {
+    @objc fileprivate func ttngReportFirstResponder() {
+        MainActor.assumeIsolated { FirstResponder.found = self }
+    }
+}
+
+/// The window offers the shortcuts while a server screen is open: it's in
+/// every responder chain, so they work while typing in a text field too.
+extension UIWindow {
+    override open var keyCommands: [UIKeyCommand]? {
+        let mine = super.keyCommands ?? []
+        return MainActor.assumeIsolated { KeyCommands.handler == nil ? mine : mine + KeyCommands.all }
+    }
+
     @objc func ttngDesktopShortcut(_ sender: UIKeyCommand) {
         MainActor.assumeIsolated { KeyCommands.run(sender) }
     }

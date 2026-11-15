@@ -80,6 +80,8 @@ fi
 cd "$root/apps/ios"
 xcodegen -q
 xcrun simctl boot "$sim" 2>/dev/null || true
+# The microphone without asking (the Simulator's; the tests talk).
+xcrun simctl privacy "$sim" grant microphone com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
 set +e
 env TEST_RUNNER_TT_PORT="$tt_port" TEST_RUNNER_CONTROL_PORT="$control_port" \
     TEST_RUNNER_NG_EMAIL="$ng_email" TEST_RUNNER_NG_PASSWORD="$ng_password" \
