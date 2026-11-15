@@ -16,6 +16,8 @@ final class AudioNetStore {
     enum Connection: Equatable {
         case signedOut, connecting, connected
         case disconnected(String)
+        /// Signed in, not connected (nothing being sent, the screen closed).
+        case idle
     }
 
     struct Sending {
@@ -58,6 +60,7 @@ final class AudioNetStore {
         case .connecting: "connecting"
         case .connected: "connected"
         case .disconnected: "reconnecting"
+        case .idle: "not connected"
         }
     }
 
@@ -118,10 +121,34 @@ final class AudioNetStore {
         return tap
     }
 
+    /// The AudioNet screen is open (it needs the device list).
+    var screenOpen = false {
+        didSet {
+            if screenOpen { connectIfSignedIn() } else if sending == nil { closeSession() }
+        }
+    }
+
+    /// Stops sending, and closes the session completely: the stream, the
+    /// tap, the connection to AudioNet (the sign-in stays; it connects
+    /// again when the AudioNet screen is open).
     func stopSending() {
-        guard let s = sending else { return }
+        closeSession()
+        if screenOpen { connectIfSignedIn() }
+    }
+
+    private func closeSession() {
+        let c = client, session = sending?.sessionId
         sending = nil
-        client?.stopStream(sessionId: s.sessionId)
+        guard c != nil || session != nil else { return }
+        // Late events of this session don't count.
+        generation += 1
+        client = nil
+        devices = []
+        if login != nil { connection = .idle }
+        Task.detached {
+            if let session { c?.stopStream(sessionId: session) }
+            c?.stop()
+        }
     }
 
     static func words(_ e: Error) -> String {
@@ -131,8 +158,9 @@ final class AudioNetStore {
 
     private func ended(_ session: String, reason: String) {
         guard sending?.sessionId == session else { return }
-        sending = nil
         onEnded?(reason)
+        // Ended by AudioNet: closed completely too.
+        stopSending()
     }
 
     fileprivate func handle(_ event: AudioNetKit.Event, generation g: Int) {
@@ -299,7 +327,8 @@ struct AudioNetView: View {
             .navigationTitle("AudioNet")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .onAppear { net.connectIfSignedIn() }
+            .onAppear { net.screenOpen = true }
+            .onDisappear { net.screenOpen = false }
             .sheet(isPresented: $signingIn) { AudioNetSignIn() }
             .confirmationDialog(choosing.map { "Send from \($0.name)" } ?? "", isPresented: Binding(get: { choosing != nil }, set: { if !$0 { choosing = nil } }), titleVisibility: .visible) {
                 if let d = choosing {
