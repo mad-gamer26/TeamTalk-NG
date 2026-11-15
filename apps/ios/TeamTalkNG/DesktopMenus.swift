@@ -124,9 +124,11 @@ struct UserMenu: View {
             m.append(.init(user.operator ? "Remove Op" : "Op") { connection.setOperator(user, !user.operator) })
         }
         let audio = connection.hasAudio
-        // Muting their voice or media files: in Volume and their details
-        // (the owner's choice: not in this menu).
-        if audio { m.append(.init("Volume") { open(.volume) }) }
+        if audio {
+            m.append(.init("Volume") { open(.volume) })
+            m.append(.init(user.voiceMuted ? "Unmute Voice" : "Mute Voice") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.mediaMuted ? "Unmute Media File" : "Mute Media File") { connection.toggleMuteMedia(user) })
+        }
         if rights.kick || connection.canModerate(channel: user.channelId) {
             if user.channelId > 0 {
                 m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })

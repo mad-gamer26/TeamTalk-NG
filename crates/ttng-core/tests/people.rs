@@ -224,6 +224,24 @@ fn in_a_classroom_only_those_allowed_talk() {
     assert!(refused.is_err(), "only operators and admins");
 }
 
+/// Muting someone's voice or media files shows at once (a menu that says
+/// Mute again straight after would mute twice).
+#[test]
+fn muting_someone_shows_at_once() {
+    let server = Server::start();
+    let v = in_root(&server, &["alice", "bob"]);
+    let (a, b) = (&v[0], &v[1]);
+    let bob = me(b);
+    a.client.set_user_muted(bob, true).unwrap();
+    assert!(person(a, bob).voice_muted, "voice muted at once");
+    a.client.set_user_media_muted(bob, true).unwrap();
+    assert!(person(a, bob).media_muted, "media files muted at once");
+    a.client.set_user_muted(bob, false).unwrap();
+    a.client.set_user_media_muted(bob, false).unwrap();
+    let p = person(a, bob);
+    assert!(!p.voice_muted && !p.media_muted, "and unmuted at once");
+}
+
 /// Outside a classroom the channel's list blocks (the desktop's Transmit
 /// Control in any channel): stopping Bob's voice lists him; allowing it
 /// again takes him off; "everyone" is for classrooms only.

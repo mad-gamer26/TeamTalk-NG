@@ -1212,6 +1212,8 @@ impl Worker {
                         muted as sys::TTBOOL,
                     )
                 } != 0;
+                // At once, as for media files: the next look shows it muted.
+                self.refresh_user(user_id);
                 let _ = reply.send(if ok {
                     Ok(())
                 } else {

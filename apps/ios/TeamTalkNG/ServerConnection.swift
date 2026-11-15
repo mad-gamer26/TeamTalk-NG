@@ -358,7 +358,19 @@ final class ServerConnection {
     }
 
     func setMediaMuted(_ user: User, _ muted: Bool) {
-        run("Couldn't mute") { try $0.setUserMediaMuted(userId: user.id, muted: muted) }
+        mute(user) { try $0.setUserMediaMuted(userId: user.id, muted: muted) }
+    }
+
+    /// Muting someone for me, shown at once (so the menu says Unmute next).
+    private func mute(_ user: User, _ call: @escaping @Sendable (TtClient) throws -> Void) {
+        let client = self.client
+        Task {
+            let failed: String? = await Task.detached {
+                do { try call(client); return nil } catch { return words(error) }
+            }.value
+            if let failed { announce("Couldn't mute: \(failed)") }
+            refresh()
+        }
     }
 
     func setStereo(_ user: User, _ stream: AudioStream, left: Bool, right: Bool) {
@@ -617,7 +629,7 @@ final class ServerConnection {
     }
 
     func setMuted(_ user: User, _ muted: Bool) {
-        run("Couldn't mute") { try $0.setUserMuted(userId: user.id, muted: muted) }
+        mute(user) { try $0.setUserMuted(userId: user.id, muted: muted) }
     }
 
     // MARK: Files
