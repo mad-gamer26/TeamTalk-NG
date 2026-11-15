@@ -94,7 +94,8 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 
 ## E. Preferences (preferences.ui)
 
-- [x] General: push-to-talk lock (a tap starts, the next stops);
+- [x] General: push-to-talk lock — replaced (the owner's choice): the
+      Talk button toggles on a tap and talks while held;
       "Restore volume settings and subscriptions on login for Web Login
       users" (on; …@bearware.dk users, by username and client); voice
       activation level 0–20, 2 by default (passed to the SDK as is).

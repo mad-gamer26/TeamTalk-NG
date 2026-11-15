@@ -128,9 +128,6 @@ struct GeneralSettingsView: View {
                 Picker("Talk mode", selection: $model.talkMode) {
                     ForEach(TalkMode.allCases) { Text($0.label).tag($0) }
                 }
-                if model.talkMode == .pushToTalk {
-                    Toggle("Push To Talk Lock", isOn: $model.pttLock)
-                }
                 if model.talkMode == .voiceActivation {
                     NamedSlider("Voice activation level", value: $model.voiceLevel, in: 0...20, step: 1,
                                 spoken: "\(Int(model.voiceLevel))")

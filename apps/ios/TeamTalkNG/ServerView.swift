@@ -602,29 +602,43 @@ private struct TalkBar: View {
     @Environment(AppModel.self) private var model
     let connection: ServerConnection
     @GestureState private var holding = false
+    /// When the press began, and whether I was talking then.
+    @State private var pressStart: Date?
+    @State private var wasTalking = false
 
     var body: some View {
         Group {
             switch model.talkMode {
             case .pushToTalk:
-                Text(connection.transmitting ? "Talking" : (model.pttLock ? "Tap to talk" : "Hold to talk"))
+                Text(connection.transmitting ? "Talking" : "Tap or hold to talk")
                     .font(.title3.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 64)
                     .background(connection.transmitting ? Color.green : Color.accentColor, in: .rect(cornerRadius: 14))
                     .foregroundStyle(.white)
-                    // The desktop's "Push To Talk Lock": a tap starts and the
-                    // next stops; without it, talk while held.
+                    // A tap turns talking on or off; pressing and holding
+                    // talks while held (the owner's choice, instead of the
+                    // desktop's Push To Talk Lock setting).
                     .gesture(
                         DragGesture(minimumDistance: 0)
-                            .updating($holding) { _, s, _ in s = true },
-                        isEnabled: !model.pttLock
+                            .updating($holding) { _, s, _ in s = true }
                     )
-                    .onTapGesture { if model.pttLock { connection.setTransmitting(!connection.transmitting) } }
-                    .onChange(of: holding) { _, on in connection.setTransmitting(on) }
+                    .onChange(of: holding) { _, on in
+                        if on {
+                            pressStart = .now
+                            wasTalking = connection.transmitting
+                            // Talking at once, for a hold.
+                            if !wasTalking { connection.setTransmitting(true) }
+                        } else {
+                            let held = Date.now.timeIntervalSince(pressStart ?? .now)
+                            pressStart = nil
+                            // A tap: on stays on, or off if it was on. A hold: off.
+                            if held >= 0.4 || wasTalking { connection.setTransmitting(false) }
+                        }
+                    }
                     .accessibilityElement()
                     .accessibilityLabel("Talk")
                     .accessibilityValue(connection.transmitting ? "Talking" : "Not talking")
-                    .accessibilityHint("Double-tap to start or stop talking. Magic Tap does the same anywhere.")
+                    .accessibilityHint("Double-tap to start or stop talking, or double-tap and hold to talk while held. Magic Tap starts or stops anywhere.")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { connection.setTransmitting(!connection.transmitting) }
             case .voiceActivation:

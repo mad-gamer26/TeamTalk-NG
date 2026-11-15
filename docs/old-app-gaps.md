@@ -32,7 +32,7 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
       its servers (NSKeyedArchiver "ServerList": passwords to the keychain,
       channel, channel password, status message, certificates, NG Account
       sync key), the settings both apps have (nickname, gender, status
-      message, PTT lock, return sends, join root, usernames, message popup,
+      message, return sends, join root, usernames, message popup,
       text length, record media files) and its NG Account sign-in (its
       keychain item in the App Group, same service only). Tested in the
       Simulator with the old app's archive format. The old app's data stays.

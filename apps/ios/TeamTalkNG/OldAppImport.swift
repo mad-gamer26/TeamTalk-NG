@@ -97,7 +97,6 @@ enum OldAppImport {
         }
         copy("nickname_preference", "nickname")
         copy("statusmsg_preference", "statusMessage")
-        copy("general_pttlock_preference", "pttLock")
         copy("general_sendonreturn_preference", "sendOnReturn")
         copy("joinroot_preference", "joinRoot")
         copy("display_showusername_preference", "showUsernames")
