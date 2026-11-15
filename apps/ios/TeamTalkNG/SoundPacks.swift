@@ -109,6 +109,8 @@ final class SoundStore {
     private let defaults = UserDefaults.standard
     private var players: [AVAudioPlayer] = []
 
+    @ObservationIgnored private var loading = true
+
     init() {
         if let d = defaults.data(forKey: "soundPacks"), let p = try? JSONDecoder().decode([InstalledPack].self, from: d) {
             installed = p
@@ -124,12 +126,16 @@ final class SoundStore {
         let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
+        loading = false
+        save()
     }
 
     var packs: [InstalledPack] { [InstalledPack.builtIn] + installed }
     var selected: InstalledPack { packs.first { $0.id == selectedId } ?? .builtIn }
 
     private func save() {
+        // Not while loading (see AppModel.save).
+        guard !loading else { return }
         defaults.set(try? JSONEncoder().encode(installed), forKey: "soundPacks")
         defaults.set(selectedId, forKey: "soundPack")
         defaults.set(volume, forKey: "soundVolume")

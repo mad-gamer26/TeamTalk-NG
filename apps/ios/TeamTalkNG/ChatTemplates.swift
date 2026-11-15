@@ -66,14 +66,19 @@ final class ChatTemplateStore {
     private(set) var templates: [ChatTemplate: String] = [:]
     private let defaults = UserDefaults.standard
 
+    @ObservationIgnored private var loading = true
+
     init() {
         enabled = defaults.bool(forKey: "chatTemplatesOn")
         if let t = defaults.dictionary(forKey: "chatTemplates") as? [String: String] {
             for (k, v) in t { if let e = ChatTemplate(rawValue: k) { templates[e] = v } }
         }
+        loading = false
     }
 
     private func save() {
+        // Not while loading (see AppModel.save).
+        guard !loading else { return }
         defaults.set(enabled, forKey: "chatTemplatesOn")
         defaults.set(Dictionary(uniqueKeysWithValues: templates.map { ($0.key.rawValue, $0.value) }), forKey: "chatTemplates")
     }

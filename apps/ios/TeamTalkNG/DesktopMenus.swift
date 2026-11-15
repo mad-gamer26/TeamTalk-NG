@@ -304,3 +304,49 @@ struct UserVolumeDialog: View {
             .accessibilityValue("\(value) percent")
     }
 }
+
+// MARK: Restore volume settings and subscriptions on login (web logins)
+
+/// What the desktop remembers about a BearWare.dk web-login user between
+/// their logins (common.cpp UserCached).
+struct CachedUser {
+    let subscriptions: Set<Subscription>
+    let voiceMuted: Bool, mediaMuted: Bool
+    let voiceVolume: Int32, mediaVolume: Int32
+    let voiceLeft: Bool, voiceRight: Bool, mediaLeft: Bool, mediaRight: Bool
+
+    init(_ u: User) {
+        subscriptions = Set(u.mySubscriptions.on)
+        voiceMuted = u.voiceMuted; mediaMuted = u.mediaMuted
+        voiceVolume = u.voiceVolume; mediaVolume = u.mediaVolume
+        voiceLeft = u.voiceLeft; voiceRight = u.voiceRight; mediaLeft = u.mediaLeft; mediaRight = u.mediaRight
+    }
+
+    /// The desktop's userCacheID: web logins only ("…@bearware.dk"), by
+    /// username and client; nil when not remembered.
+    static func key(_ u: User, restore: Bool) -> String? {
+        guard restore, u.username.lowercased().hasSuffix("@bearware.dk") else { return nil }
+        return "\(u.username)|\(u.clientName)"
+    }
+}
+
+extension ServerConnection {
+    /// Remembers someone (logging out, or before I disconnect).
+    func cacheUser(_ u: User) {
+        guard let key = CachedUser.key(u, restore: appModel?.restoreUserSettings ?? true) else { return }
+        userCache[key] = CachedUser(u)
+    }
+
+    /// Puts back what was remembered about someone logging in.
+    func restoreUser(_ u: User) {
+        guard let key = CachedUser.key(u, restore: appModel?.restoreUserSettings ?? true), let c = userCache[key] else { return }
+        if c.voiceMuted != u.voiceMuted { setMuted(u, c.voiceMuted) }
+        if c.mediaMuted != u.mediaMuted { setMediaMuted(u, c.mediaMuted) }
+        if c.voiceVolume != u.voiceVolume { setVolume(u, percent: Int(c.voiceVolume)) }
+        if c.mediaVolume != u.mediaVolume { setMediaVolume(u, percent: Int(c.mediaVolume)) }
+        if (c.voiceLeft, c.voiceRight) != (u.voiceLeft, u.voiceRight) { setStereo(u, .voice, left: c.voiceLeft, right: c.voiceRight) }
+        if (c.mediaLeft, c.mediaRight) != (u.mediaLeft, u.mediaRight) { setStereo(u, .mediaFile, left: c.mediaLeft, right: c.mediaRight) }
+        let now = Set(u.mySubscriptions.on)
+        for sub in now.symmetricDifference(c.subscriptions) { setSubscription(u, sub, c.subscriptions.contains(sub)) }
+    }
+}

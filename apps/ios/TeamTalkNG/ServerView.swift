@@ -555,15 +555,19 @@ private struct TalkBar: View {
         Group {
             switch model.talkMode {
             case .pushToTalk:
-                Text(connection.transmitting ? "Talking" : "Hold to talk")
+                Text(connection.transmitting ? "Talking" : (model.pttLock ? "Tap to talk" : "Hold to talk"))
                     .font(.title3.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 64)
                     .background(connection.transmitting ? Color.green : Color.accentColor, in: .rect(cornerRadius: 14))
                     .foregroundStyle(.white)
+                    // The desktop's "Push To Talk Lock": a tap starts and the
+                    // next stops; without it, talk while held.
                     .gesture(
                         DragGesture(minimumDistance: 0)
-                            .updating($holding) { _, s, _ in s = true }
+                            .updating($holding) { _, s, _ in s = true },
+                        isEnabled: !model.pttLock
                     )
+                    .onTapGesture { if model.pttLock { connection.setTransmitting(!connection.transmitting) } }
                     .onChange(of: holding) { _, on in connection.setTransmitting(on) }
                     .accessibilityElement()
                     .accessibilityLabel("Talk")

@@ -93,10 +93,11 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 
 ## E. Preferences (preferences.ui)
 
-- [ ] General: away after N seconds (0 = off), "Disable voice activation
-      during inactivity", away message; push-to-talk lock (PTT button
-      toggles instead of hold); "Restore volume settings and subscriptions
-      on login" (per username, on by default).
+- [x] General: push-to-talk lock (a tap starts, the next stops);
+      "Restore volume settings and subscriptions on login for Web Login
+      users" (on; …@bearware.dk users, by username and client); voice
+      activation level 0–20, 2 by default (passed to the SDK as is).
+- [ ] General: away after N seconds (NG counts minutes in the background).
 - [ ] Display: timestamp format; "Show number of users in channel" (on);
       "Show last to talk" (on; said with the person); "Show user and
       channel icons"; maximum text length in the channel list; style of

@@ -766,6 +766,10 @@ final class ServerConnection {
         }
     }
 
+    /// Web-login users' settings between their logins (the desktop's
+    /// "Restore volume settings and subscriptions on login").
+    var userCache: [String: CachedUser] = [:]
+
     /// The private conversation on screen (for "typing in focused window").
     var focusedConversation: Int32?
 
@@ -872,6 +876,7 @@ final class ServerConnection {
                     Task { @MainActor in self.showMOTD() }
                 }
             case .reconnecting(let n):
+                for u in known.values { cacheUser(u) }
                 transmitting = false
                 // As the desktop: the tree starts over (my channel opens
                 // again when I'm back in it).
@@ -885,6 +890,7 @@ final class ServerConnection {
                 sayText(.connectivity, "Trying to reconnect to \(server.host) port \(server.tcpPort)")
                 dropped = n > 0
             case .disconnected:
+                for u in known.values { cacheUser(u) }
                 if loggedInOnce {
                     sayText(.connectivity, "Disconnected from \(snapshot?.server.name.nonEmpty ?? server.title)")
                     status(nil, "Disconnected from \(snapshot?.server.name.nonEmpty ?? server.title)")
@@ -964,6 +970,7 @@ final class ServerConnection {
             }
         case .userLoggedIn(let u):
             applyDefaultSubscriptions(u)
+            restoreUser(u)
             // Not for those already there when I log in (the server lists them).
             if state == .loggedIn, u.id != snapshot?.myUserId {
                 sound(.loggedIn)
@@ -971,6 +978,7 @@ final class ServerConnection {
                 status(.loggedIn, vars: serverVars(u))
             }
         case .userLoggedOut(let u):
+            cacheUser(known[u.id] ?? u)
             if state == .loggedIn, u.id != snapshot?.myUserId {
                 sound(.loggedOut)
                 say(.loggedOut, vars(u))

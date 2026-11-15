@@ -192,38 +192,49 @@ final class SpeechStore {
     private let defaults = UserDefaults.standard
     private let synth = AVSpeechSynthesizer()
 
+    @ObservationIgnored private var loading = true
+
     init() {
         output = Output(rawValue: defaults.string(forKey: "speechOutput") ?? "") ?? .voiceOver
         interrupt = defaults.bool(forKey: "speechInterrupt")
         voice = defaults.string(forKey: "speechVoice") ?? ""
         rate = defaults.object(forKey: "speechRate") as? Double ?? Double(AVSpeechUtteranceDefaultSpeechRate)
         volume = defaults.object(forKey: "speechVolume") as? Double ?? 1
+        var converted = false
         if let off = defaults.stringArray(forKey: "speechOff") {
             // The earlier version's events: its defaults become the
             // desktop's; choices made by hand carry over to the events
             // they became.
             let oldDefault: Set<String> = ["joined", "left", "privateMessageSent", "channelMessageSent", "broadcastMessageSent", "typing"]
-            if !defaults.bool(forKey: "speechEventsDesktop") {
+            // (Version 2: the first didn't save, so the earlier events'
+            // names may still be what's stored.)
+            if !defaults.bool(forKey: "speechEventsDesktop2") {
                 if Set(off) == oldDefault {
                     disabled = Set(SpeechEvent.allCases.filter { !$0.onByDefault })
                 } else {
                     let known = Set(off.flatMap(SpeechEvent.from(old:)))
                     disabled = known.union(SpeechEvent.allCases.filter { !$0.onByDefault && ["typingAnywhere", "menuActions", "videoTransmission", "desktopSharing"].contains($0.rawValue) })
                 }
-                defaults.set(true, forKey: "speechEventsDesktop")
+                defaults.set(true, forKey: "speechEventsDesktop2")
+                converted = true
             } else {
                 disabled = Set(off.compactMap(SpeechEvent.init(rawValue:)))
             }
         } else {
             disabled = Set(SpeechEvent.allCases.filter { !$0.onByDefault })
-            defaults.set(true, forKey: "speechEventsDesktop")
+            defaults.set(true, forKey: "speechEventsDesktop2")
         }
         if let t = defaults.dictionary(forKey: "speechTemplates") as? [String: String] {
             templates = t
         }
+        // Saved once everything's loaded (saving writes every setting).
+        loading = false
+        if converted { save() }
     }
 
     private func save() {
+        // Not while loading (see AppModel.save).
+        guard !loading else { return }
         defaults.set(output.rawValue, forKey: "speechOutput")
         defaults.set(interrupt, forKey: "speechInterrupt")
         defaults.set(voice, forKey: "speechVoice")

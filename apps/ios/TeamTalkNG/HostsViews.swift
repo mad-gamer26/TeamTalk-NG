@@ -26,6 +26,7 @@ enum BearWare {
 
 /// Settings → BearWare.dk account.
 struct BearWareView: View {
+    @Environment(AppModel.self) private var model
     @State private var username = ""
     @State private var password = ""
     @State private var busy = false
@@ -50,6 +51,12 @@ struct BearWareView: View {
                     LabeledContent("Signed in as", value: who)
                     Button("Sign out", role: .destructive) { BearWare.signOut(); who = ""; announce("Signed out") }
                 }
+            }
+            Section {
+                @Bindable var model = model
+                Toggle("Restore volume settings and subscriptions on login for Web Login users", isOn: $model.restoreUserSettings)
+            } footer: {
+                Text("People logged in with a BearWare.dk account (…@bearware.dk) get back the volume, mute, stereo and subscriptions you gave them, when they log in again while you're connected.")
             }
         }
         .navigationTitle("BearWare.dk account")

@@ -16,8 +16,8 @@ final class AppModel {
             }
         }
     }
-    /// Voice activation: the level that starts it (0–100).
-    var voiceLevel: Double = 20 {
+    /// The desktop's voice activation level: 0–20, 2 by default.
+    var voiceLevel: Double = 2 {
         didSet { save(); connections.values.forEach { $0.applyTalkMode() } }
     }
     var nickname = "" { didSet { save() } }
@@ -94,6 +94,11 @@ final class AppModel {
     var channelTap = ChannelTap.joinOrLeave { didSet { save() } }
     /// The desktop's "Auto expand channels": channels appear expanded.
     var autoExpandChannels = false { didSet { save() } }
+    /// The desktop's "Restore volume settings and subscriptions on login
+    /// for Web Login users" (on by default).
+    var restoreUserSettings = true { didSet { save() } }
+    /// The desktop's "Push To Talk Lock" (off by default).
+    var pttLock = false { didSet { save() } }
     var showTimestamps = true { didSet { save() } }
     var showMOTD = true { didSet { save() } }
     /// The desktop's "Show statusbar events in chat-window", on by default.
@@ -112,12 +117,23 @@ final class AppModel {
 
     private let defaults = UserDefaults.standard
 
+    @ObservationIgnored private var loading = true
+
     init() {
+        /// Settings converted to the desktop's ways while loading.
+        var convertedSettings = false
         if let d = defaults.data(forKey: "servers"), let s = try? JSONDecoder().decode([SavedServer].self, from: d) {
             servers = s
         }
         talkMode = TalkMode(rawValue: defaults.string(forKey: "talkMode") ?? "") ?? .pushToTalk
-        voiceLevel = defaults.object(forKey: "voiceLevel") as? Double ?? 20
+        voiceLevel = defaults.object(forKey: "voiceLevel") as? Double ?? 2
+        // Once: this app's earlier default (20 of 100) becomes the
+        // desktop's (2 of 20).
+        if !defaults.bool(forKey: "desktopVoiceLevel") {
+            defaults.set(true, forKey: "desktopVoiceLevel")
+            voiceLevel = voiceLevel == 20 ? 2 : min(voiceLevel, 20)
+            convertedSettings = true
+        }
         nickname = defaults.string(forKey: "nickname") ?? ""
         gender = ["male": Gender.male, "female": .female][defaults.string(forKey: "gender") ?? ""] ?? .neutral
         if let a = defaults.dictionary(forKey: "audio") as? [String: Int] {
@@ -152,11 +168,15 @@ final class AppModel {
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
         channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .joinOrLeave
         // "Joins it" was the default before the desktop's join-or-leave.
-        if !defaults.bool(forKey: "channelTapDesktopDefault") {
-            defaults.set(true, forKey: "channelTapDesktopDefault")
+        // (Version 2: the first didn't save its change.)
+        if !defaults.bool(forKey: "channelTapDesktopDefault2") {
+            defaults.set(true, forKey: "channelTapDesktopDefault2")
             if channelTap == .join { channelTap = .joinOrLeave }
+            convertedSettings = true
         }
         autoExpandChannels = defaults.bool(forKey: "autoExpandChannels")
+        restoreUserSettings = defaults.object(forKey: "restoreUserSettings") as? Bool ?? true
+        pttLock = defaults.bool(forKey: "pttLock")
         showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
         eventsInChat = defaults.object(forKey: "eventsInChat") as? Bool ?? true
@@ -172,12 +192,17 @@ final class AppModel {
         awayStopsVoiceActivation = defaults.bool(forKey: "awayStopsVoiceActivation")
         // Once: settings still at this app's earlier defaults take the
         // desktop's (settings changed by hand stay).
-        if !defaults.bool(forKey: "desktopDefaults1") {
-            defaults.set(true, forKey: "desktopDefaults1")
+        // (Version 2: the first didn't save its changes.)
+        if !defaults.bool(forKey: "desktopDefaults2") {
+            defaults.set(true, forKey: "desktopDefaults2")
             if awayAfterMinutes == 0 { awayAfterMinutes = 3 }
             if showTopics { showTopics = false }
             if !eventsInChat { eventsInChat = true }
+            convertedSettings = true
         }
+        // Saved once everything's loaded (saving writes every setting).
+        loading = false
+        if convertedSettings { save() }
     }
 
     /// The desktop's "Reset preferences to default": every setting as it
@@ -188,13 +213,13 @@ final class AppModel {
             defaults.removeObject(forKey: k)
         }
         talkMode = .pushToTalk
-        voiceLevel = 20
+        voiceLevel = 2
         nickname = ""
         audio = defaultAudioSettings()
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterMinutes = 3; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = false; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false
+        showUsernames = false; showTopics = false; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
@@ -272,6 +297,10 @@ final class AppModel {
     }
 
     private func save() {
+        // Not while loading: with @Observable, setting a property in init
+        // runs its didSet, and saving then would write the settings not
+        // loaded yet back to their defaults.
+        guard !loading else { return }
         defaults.set(try? JSONEncoder().encode(servers), forKey: "servers")
         defaults.set(talkMode.rawValue, forKey: "talkMode")
         defaults.set(voiceLevel, forKey: "voiceLevel")
@@ -289,6 +318,8 @@ final class AppModel {
         defaults.set(sortChannelsByName, forKey: "sortChannelsByName")
         defaults.set(channelTap.rawValue, forKey: "channelTap")
         defaults.set(autoExpandChannels, forKey: "autoExpandChannels")
+        defaults.set(restoreUserSettings, forKey: "restoreUserSettings")
+        defaults.set(pttLock, forKey: "pttLock")
         defaults.set(showTimestamps, forKey: "showTimestamps")
         defaults.set(showMOTD, forKey: "showMOTD")
         defaults.set(eventsInChat, forKey: "eventsInChat")

@@ -289,8 +289,11 @@ struct SettingsView: View {
                     Picker("Talk mode", selection: $model.talkMode) {
                         ForEach(TalkMode.allCases) { Text($0.label).tag($0) }
                     }
+                    if model.talkMode == .pushToTalk {
+                        Toggle("Push To Talk Lock", isOn: $model.pttLock)
+                    }
                     if model.talkMode == .voiceActivation {
-                        Slider(value: $model.voiceLevel, in: 0...100, step: 1) {
+                        Slider(value: $model.voiceLevel, in: 0...20, step: 1) {
                             Text("Voice activation level")
                         }
                         .accessibilityValue("\(Int(model.voiceLevel))")
