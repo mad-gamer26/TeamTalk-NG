@@ -1540,7 +1540,7 @@ extension ServerConnection {
                         if case .success(let v)? = await store.call({ try $0.view(serverId: id) }) {
                             self.applyMonitorView(v, announce: true)
                         }
-                        for e in batch.events { self.monitorEvent(e, before: before) }
+                        for e in batch.events where self.monitorTask != nil { self.monitorEvent(e, before: before) }
                     }
                     seq = batch.lastSeq
                 }
@@ -1549,9 +1549,25 @@ extension ServerConnection {
         }
     }
 
-    fileprivate func stopMonitor() {
+    /// Leaves the server as a live connection disconnects: no longer
+    /// followed, the server screen shows "Disconnected" with Connect (the
+    /// Monitor itself keeps watching). `quietly`: the screen was closed.
+    fileprivate func stopMonitor(quietly: Bool = false) {
         monitorTask?.cancel()
         monitorTask = nil
+        if quietly {
+            state = .disconnected
+            live = false
+        } else if state != .disconnected {
+            handle(.connectionChanged(state: .disconnected))
+        }
+        monitorSnapshot = nil
+        refresh()
+    }
+
+    /// The screen closed: stop following without announcing anything.
+    func leaveMonitorView() {
+        if monitorId != nil { stopMonitor(quietly: true) }
     }
 
     /// The Monitor's account's rights (TeamTalk's UserRight bits; an admin
@@ -1566,6 +1582,8 @@ extension ServerConnection {
 
     /// The Monitor's view as the core's snapshot.
     private func applyMonitorView(_ v: MonitorView, announce: Bool) {
+        // Disconnected meanwhile: a late answer doesn't bring it back.
+        guard monitorTask != nil else { return }
         let users = v.users.map(Self.user(from:))
         let channels = v.channels.map(Self.channel(from:))
         let me = users.first { Int64($0.id) == v.myUserId }

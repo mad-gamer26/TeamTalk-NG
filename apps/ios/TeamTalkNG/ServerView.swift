@@ -149,7 +149,7 @@ struct ServerView: View {
         .background { DesktopShortcuts(run: perform) }
         .onAppear { connection.connect() }
         // The Monitor's view is followed while it's on screen.
-        .onDisappear { if connection.isMonitor { connection.disconnect() } }
+        .onDisappear { connection.leaveMonitorView() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
             SecureField("Password", text: $channelPassword).accessibilityLabel("Password")
             Button("Join") {
