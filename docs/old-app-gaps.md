@@ -14,7 +14,9 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
       choose one's sound and send it to the channel, stop, sign out. The
       engine comes from an AudioNet checkout (scripts/build-audionet.sh,
       pre-linked so its libopus and Rust stay private), in its own Swift
-      module (AudioNetKit). Needs the owner's AudioNet account to try.
+      module (AudioNetKit), from ~/audionet-ttng on the Mac (its own
+      checkout on origin/main: the server refuses engines older than its
+      minimum version). Needs the owner's AudioNet account to try.
 - [x] Audio mixing (LiveMix.swift): the AudioNet sound and an audio file
       together, with the microphone still on, as the media file stream —
       without patching BearWare's SDK (the old app patched in a live

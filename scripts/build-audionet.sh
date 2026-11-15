@@ -1,7 +1,9 @@
 #!/bin/sh
 # Builds AudioNet's engine for TeamTalk NG from an AudioNet source checkout
-# (default: ../AudioNet next to this repository), for iPhones and the Apple
-# silicon Simulator:
+# (default: ~/audionet-ttng, a checkout of its own kept on origin/main, so
+# the owner's working copy is never touched; it must be as new as the
+# server, which refuses older clients), for iPhones and the Apple silicon
+# Simulator:
 #   scripts/build-audionet.sh [/path/to/AudioNet]
 # Produces apps/ios/AudioNet/AudioNetCore.xcframework and
 # audionet_ffi.swift (compiled into the AudioNetKit framework, a Swift
@@ -14,7 +16,7 @@
 # core); kept apart from apps/ios/Generated, which build-core.sh clears.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-src=${1:-$root/../AudioNet}
+src=${1:-$HOME/audionet-ttng}
 src=$(cd "$src" && pwd)
 out="$root/apps/ios/AudioNet"
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"

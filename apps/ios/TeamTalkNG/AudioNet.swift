@@ -45,9 +45,10 @@ final class AudioNetStore {
     var lastServer: String { login?.serverUrl ?? UserDefaults.standard.string(forKey: "audioNetServer") ?? "" }
     var lastUsername: String { login?.username ?? UserDefaults.standard.string(forKey: "audioNetUsername") ?? "" }
 
-    /// Devices that can be listened to: running, sharing, with sounds.
+    /// Devices that can be listened to (AudioNet lists only visible ones:
+    /// running with visibility on), with sounds.
     var listenable: [Device] {
-        devices.filter { $0.online && $0.sharing && !$0.sources.isEmpty }
+        devices.filter { !$0.sources.isEmpty }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
@@ -148,6 +149,9 @@ final class AudioNetStore {
             devices = list
         case .deviceChanged(let d):
             if let i = devices.firstIndex(where: { $0.nodeId == d.nodeId }) { devices[i] = d } else { devices.append(d) }
+        case .deviceGone(let nodeId):
+            // No longer visible (visibility off, or AudioNet stopped there).
+            devices.removeAll { $0.nodeId == nodeId }
         case .stream(let session, let state, let detail):
             switch state {
             case .active:
@@ -272,7 +276,7 @@ struct AudioNetView: View {
                         let devices = net.listenable
                         if devices.isEmpty {
                             Text(net.connection == .connected
-                                 ? "None of your devices shares its sound. A device appears here while AudioNet runs on it with sharing on."
+                                 ? "None of your devices is visible. A device appears here while AudioNet runs on it with visibility on."
                                  : "Connecting to AudioNet…")
                         }
                         ForEach(devices, id: \.nodeId) { d in
