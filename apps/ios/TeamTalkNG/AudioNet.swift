@@ -114,7 +114,12 @@ final class AudioNetStore {
         guard let client, connection == .connected else {
             throw AudioNetError.Failed(message: "AudioNet isn't connected yet. Try again in a moment.")
         }
-        stopSending()
+        // Another sound chosen while sending: only that stream ends (not
+        // the connection, which this listen needs).
+        if let s = sending {
+            client.stopStream(sessionId: s.sessionId)
+            sending = nil
+        }
         let tap = AudioTap(name: "TeamTalk channel", sampleRate: UInt32(ChannelMix.sampleRate), channels: UInt32(ChannelMix.channels))
         let session = try client.listen(nodeId: device.nodeId, sourceId: source.id, outputId: tap.destinationId())
         sending = Sending(sessionId: session, deviceName: device.name, sourceName: source.name, tap: tap, active: false)
