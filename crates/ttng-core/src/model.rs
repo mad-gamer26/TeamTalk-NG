@@ -1137,6 +1137,9 @@ pub struct Ban {
     pub channel_path: String,
     pub by_ip_address: bool,
     pub by_username: bool,
+    /// A ban from its channel only (the server records the channel of every
+    /// ban: a server ban has one too).
+    pub in_channel: bool,
     /// The ban's types as the server gave them (needed to remove it).
     pub raw_types: u32,
 }
@@ -1152,6 +1155,7 @@ impl From<&sys::BannedUser> for Ban {
             channel_path: from_tt(&b.szChannelPath),
             by_ip_address: b.uBanTypes & sys::BanType_BANTYPE_IPADDR != 0,
             by_username: b.uBanTypes & sys::BanType_BANTYPE_USERNAME != 0,
+            in_channel: b.uBanTypes & sys::BanType_BANTYPE_CHANNEL != 0,
             raw_types: b.uBanTypes,
         }
     }

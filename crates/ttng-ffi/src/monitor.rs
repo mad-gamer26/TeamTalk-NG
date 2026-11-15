@@ -512,6 +512,7 @@ pub(crate) fn ban_from(l: &Value) -> Ban {
         channel_path: text(l, "channel"),
         by_ip_address: types & BANTYPE_IPADDR != 0,
         by_username: types & BANTYPE_USERNAME != 0,
+        in_channel: types & BANTYPE_CHANNEL != 0,
         raw_types: types,
     }
 }

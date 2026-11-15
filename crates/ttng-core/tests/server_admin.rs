@@ -213,3 +213,37 @@ fn statistics_and_address_bans() {
     }
     assert!(admin.client.list_bans().unwrap().is_empty());
 }
+
+/// Kicked and banned from the server by username (the people menu's), the
+/// ban removed: they log in and join channels again.
+#[test]
+fn a_kick_and_ban_from_the_server_removed_lets_them_back_in() {
+    let server = Server::start();
+    let admin = TestClient::logged_in(&server, "admin");
+    let carol = TestClient::logged_in(&server, "carol");
+    carol.client.join_channel_path("/", "").unwrap();
+    let id = admin
+        .wait_until(|s| s.users.iter().any(|u| u.username == "carol"))
+        .users
+        .iter()
+        .find(|u| u.username == "carol")
+        .unwrap()
+        .id;
+    admin.client.ban_user(id, BanKind::Username).expect("banned");
+    admin.client.kick_user(id, false).expect("kicked");
+    carol.wait_for("the kick", |e| matches!(e, Event::Kicked { .. }).then_some(()));
+    let bans = admin.client.list_bans().unwrap();
+    let ban = bans.iter().find(|b| b.username == "carol").expect("listed").clone();
+    assert!(!ban.in_channel, "a server ban: {ban:?}");
+    assert!(
+        TestClient::new().client.connect(server.options("carol")).is_err(),
+        "banned: can't log in"
+    );
+    admin.client.unban(&ban).expect("unbanned");
+    assert!(admin.client.list_bans().unwrap().is_empty());
+    let back = TestClient::logged_in(&server, "carol");
+    back.client
+        .join_channel_path("/", "")
+        .expect("joins the root channel again");
+    back.wait_until(|s| s.my_channel_id > 0);
+}

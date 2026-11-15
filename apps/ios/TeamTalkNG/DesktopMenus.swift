@@ -178,13 +178,15 @@ struct SubscriptionsDialog: View {
     let connection: ServerConnection
     let user: User
     @Environment(\.dismiss) private var dismiss
+    /// The person as they are now (the switches follow each change).
+    private var u: User { connection.snapshot?.users.first { $0.id == user.id } ?? user }
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(Subscription.desktopOrder.filter(connection.shows), id: \.self) { sub in
                     Toggle(ServerConnection.subscriptionMenuName(sub), isOn: Binding(
-                        get: { user.mySubscriptions.on.contains(sub) },
+                        get: { u.mySubscriptions.on.contains(sub) },
                         set: { connection.setSubscription(user, sub, $0) }))
                 }
             }

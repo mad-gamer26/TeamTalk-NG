@@ -111,7 +111,8 @@ struct BansView: View {
 
     private func details(_ b: Ban) -> String {
         var parts: [String] = []
-        if !b.channelPath.isEmpty { parts.append("channel \(b.channelPath)") }
+        // The server records a channel for every ban; only a channel ban is from it.
+        if b.inChannel && !b.channelPath.isEmpty { parts.append("channel \(b.channelPath)") }
         if !b.time.isEmpty { parts.append(serverTime(b.time)) }
         if !b.owner.isEmpty { parts.append("by \(b.owner)") }
         return parts.joined(separator: ", ")

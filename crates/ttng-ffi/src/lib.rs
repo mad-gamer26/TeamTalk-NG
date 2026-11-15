@@ -950,10 +950,12 @@ pub struct Ban {
     pub time: String,
     /// Who banned them.
     pub owner: String,
-    /// A channel ban (its path), or empty for the whole server.
+    /// The channel the server recorded (every ban has one; see in_channel).
     pub channel_path: String,
     pub by_ip_address: bool,
     pub by_username: bool,
+    /// A ban from that channel only; otherwise from the whole server.
+    pub in_channel: bool,
     /// Keep as it is (needed to remove the ban).
     pub raw_types: u32,
 }
@@ -969,6 +971,7 @@ impl From<core::Ban> for Ban {
             channel_path: b.channel_path,
             by_ip_address: b.by_ip_address,
             by_username: b.by_username,
+            in_channel: b.in_channel,
             raw_types: b.raw_types,
         }
     }
@@ -985,6 +988,7 @@ impl From<Ban> for core::Ban {
             channel_path: b.channel_path,
             by_ip_address: b.by_ip_address,
             by_username: b.by_username,
+            in_channel: b.in_channel,
             raw_types: b.raw_types,
         }
     }

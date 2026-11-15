@@ -1015,6 +1015,13 @@ final class ServerConnection {
             refreshPending = false
             snapshot = monitorId == nil ? client.snapshot() : monitorSnapshot
             state = snapshot?.state ?? .disconnected
+            // My channel changed: in view, its parents open (as the
+            // desktop's join does; the channel I left was just collapsed,
+            // and it may be one of them).
+            if let mine = snapshot?.myChannelId, mine != shownMyChannel {
+                shownMyChannel = mine
+                if mine > 0 { expandWithParents(mine) }
+            }
             // Channels new to me: collapsed, or expanded with the setting.
             for c in snapshot?.channels ?? [] where seenChannels.insert(c.id).inserted {
                 if app?.autoExpandChannels == true { expanded.insert(c.id) }
@@ -1195,6 +1202,8 @@ final class ServerConnection {
     /// which are new). The desktop builds the tree again after a dropped
     /// connection, so this starts over then.
     private var seenChannels: Set<Int32> = []
+    /// My channel as the tree last showed it (to open the way to a new one).
+    private var shownMyChannel: Int32 = 0
 
     func isExpanded(_ c: Channel) -> Bool { expanded.contains(c.id) }
 
@@ -1333,7 +1342,12 @@ final class ServerConnection {
                 status(.joined, vars: v)
             }
         case .userLeft(let u, let ch):
-            if u.id == snapshot?.myUserId { expanded.remove(ch) }
+            if u.id == snapshot?.myUserId {
+                // The desktop: the one I left collapses, and the one I'm in
+                // stays in view (its join shows it, opening its parents) —
+                // leaving the root for a channel under it mustn't hide it.
+                expanded.remove(ch)
+            }
             guard u.id != snapshot?.myUserId else { break }
             if ch == myChannel && live {
                 sound(.userLeft)
