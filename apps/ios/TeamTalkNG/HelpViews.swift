@@ -29,7 +29,7 @@ struct HelpView: View {
     private let topics: [(String, String)] = [
         ("Servers", "Add a server with the Add server button: type its details, pick one from the public list, use a join code, or open a .tt file or tt:// link. Open a server to connect; it stays connected while you use others."),
         ("Channels and people", "A server shows its channels with the people in each. Double-tap a channel to join it. Double-tap a person for everything about them and what you can do with them. Each channel and person also has actions: swipe up or down with VoiceOver to hear them."),
-        ("Talking", "Push to talk: hold the Talk button, or double-tap it with VoiceOver to start and stop. Magic Tap, a two-finger double-tap, starts and stops talking anywhere on a server, or mutes and unmutes in the other modes. Choose push to talk, voice activation or always on in Settings."),
+        ("Talking", "Push to talk: hold the Talk button, or double-tap it with VoiceOver to start and stop. Magic Tap, a two-finger double-tap, starts and stops talking anywhere on a server, or mutes and unmutes with voice activation. Choose push to talk or voice activation in Settings."),
         ("Messages", "The Chat tab has the channel's conversation. Write privately to someone from their details. Your chat history stays until you clear it, and can be saved to text files."),
         ("Files and media", "The Files tab has the channel's files: download, upload, delete. Stream a media file to the channel from the More menu; you hear it too, unless you turn that off."),
         ("Sounds and speech", "Every event has a sound and a spoken message, as on the desktop. Choose which, change the messages and the voice in Settings → Sounds and Settings → Spoken events."),
@@ -79,7 +79,7 @@ struct FirstRunView: View {
                         ForEach(TalkMode.allCases) { Text($0.label).tag($0) }
                     }
                 } footer: {
-                    Text("Push to talk sends your voice while you hold the Talk button (or after a double-tap with VoiceOver, or Magic Tap). Voice activation sends when you speak. Always on sends all the time, with a mute button.")
+                    Text("Push to talk sends your voice while you hold the Talk button (or after a double-tap with VoiceOver, or Magic Tap). Voice activation sends when you speak, with a mute button.")
                 }
                 Section {
                     Button("Find a server to start with") { showPublic = true }

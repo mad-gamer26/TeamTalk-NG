@@ -13,7 +13,7 @@
 | App structure | Servers first; opening a server gives one screen with its channels and people, the conversation, and talk controls. Settings from a button. |
 | Connections | Several servers at once, each staying connected; one core `Client` each. They share the microphone and speaker (the SDK's shared sound devices). |
 | Channels | A tree, people listed under their channel; their state (talking, away, muted) is part of their name for screen readers. |
-| Talking | All four: a push-to-talk button, VoiceOver's Magic Tap (TalkBack's equivalent on Android), voice activation, and always on (with mute). |
+| Talking | The desktop's two modes: push to talk (a button, VoiceOver's Magic Tap, TalkBack's equivalent on Android) and voice activation (with mute). No "always on" (the desktop has none). |
 | Client name | The SDK can't set a client version (the old app patched that in); logins send the client name "TeamTalk NG", and servers show the SDK's version. |
 
 ## The core

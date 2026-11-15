@@ -93,7 +93,7 @@ final class ServerConnection {
 
     /// Push to talk: talking now.
     private(set) var transmitting = false
-    /// Voice activation and always on: microphone muted.
+    /// Voice activation: microphone muted.
     private(set) var muted = false
     /// Voice activation is sending my voice now.
     private(set) var voiceActive = false

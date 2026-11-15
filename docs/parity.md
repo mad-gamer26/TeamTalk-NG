@@ -34,7 +34,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Toggle question mode | done |
 | Gender (status flags) | done (kept apart from the status mode) |
 | Hear myself | done |
-| Push to talk, voice activation | done (with always on, Magic Tap) |
+| Push to talk, voice activation | done (with Magic Tap; no "always on", as the desktop) |
 | Video transmission | n/a on phones (see Video below) |
 | Desktop sharing | n/a: iOS can't share the screen to TeamTalk this way |
 
