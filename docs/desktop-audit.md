@@ -140,5 +140,9 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       the desktop's words, the optional dialog); "… blocked by channel
       operator" when talking, writing to the channel or streaming isn't
       allowed (the desktop's canTx: classroom lists allow, others block).
-- [ ] Still to read: file transfer done, new video/desktop session,
-      desktop access requests, sound devices (headset in and out).
+- [x] New video/desktop session status messages; sound devices coming
+      and going ("New sound device available: …", "Sound device removed:
+      …"), the microphone menu kept current, and the audio session set up
+      when Sound system opens (so the iPhone's microphone is listed).
+- [ ] Still to read: file transfer done, desktop access requests (n/a
+      without desktop sharing).

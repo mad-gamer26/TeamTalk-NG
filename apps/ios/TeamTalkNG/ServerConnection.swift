@@ -1207,8 +1207,8 @@ final class ServerConnection {
             say(t.event, v)
             status(StatusEvent(t.event), vars: v)
         }
-        if u.sendingVideo && !before.sendingVideo { sound(.newVideo) }
-        if u.sharingDesktop && !before.sharingDesktop { sound(.newDesktop) }
+        if u.sendingVideo && !before.sendingVideo { sound(.newVideo); status(nil, "New video session from \(u.displayName)") }
+        if u.sharingDesktop && !before.sharingDesktop { sound(.newDesktop); status(nil, "New desktop session from \(u.displayName)") }
     }
 
     /// My channel changed: classroom permissions, my turn to talk.

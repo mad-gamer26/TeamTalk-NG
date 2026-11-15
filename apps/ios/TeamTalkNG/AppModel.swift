@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 
@@ -255,7 +256,31 @@ final class AppModel {
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if convertedSettings { save() }
+        // The desktop's "Sound device detected" status messages (a headset
+        // in or out), and the microphone menu kept current.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
+            let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            let text: String?
+            switch reason {
+            case .newDeviceAvailable:
+                let name = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName
+                    ?? AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "a device"
+                text = "New sound device available: \(name)."
+            case .oldDeviceUnavailable:
+                let old = n.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
+                text = "Sound device removed: \(old?.outputs.first?.portName ?? old?.inputs.first?.portName ?? "a device")."
+            default:
+                text = nil
+            }
+            MainActor.assumeIsolated {
+                self?.routeChanges += 1
+                if let text { self?.connections.values.forEach { $0.status(.soundDevice, text) } }
+            }
+        }
     }
+
+    /// Counts audio route changes (views showing devices refresh on it).
+    var routeChanges = 0
 
     /// The desktop's "Reset preferences to default": every setting as it
     /// was at first (servers, accounts and sound packs stay).

@@ -36,6 +36,7 @@ struct SoundSystemView: View {
                 } label: {
                     LabeledContent("Microphone", value: AudioSession.inputLabel(preferredInput))
                 }
+                .id(model.routeChanges)  // rebuilt when a device comes or goes
                 .accessibilityLabel("Microphone")
                 .accessibilityValue(AudioSession.inputLabel(preferredInput))
             } header: {
@@ -68,6 +69,9 @@ struct SoundSystemView: View {
         }
         .navigationTitle("Sound system")
         .navigationBarTitleDisplayMode(.inline)
+        // So iOS lists the microphones (the session is otherwise set up
+        // only on connecting).
+        .onAppear { AudioSession.activate() }
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }
         .onChange(of: preferredInput) { AudioSession.activate() }
