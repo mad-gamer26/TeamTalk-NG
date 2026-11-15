@@ -117,6 +117,15 @@ final class ServerConnection {
     /// The Monitor's server ID, in monitor mode.
     private(set) var monitorId: Int64?
     var isMonitor: Bool { monitorId != nil }
+    /// Audio can be controlled here: not through the Monitor, a text-only
+    /// client (the owner's rule: no audio controls at all when exploring a
+    /// server through it).
+    var hasAudio: Bool { monitorId == nil }
+    /// What's about audio among subscriptions and what may be sent.
+    static let audioSubscriptions: Set<Subscription> = [.voice, .mediaFile, .interceptVoice, .interceptMediaFile]
+    static let audioStreams: Set<TransmitStream> = [.voice, .mediaFile]
+    func shows(_ s: Subscription) -> Bool { hasAudio || !Self.audioSubscriptions.contains(s) }
+    func shows(_ s: TransmitStream) -> Bool { hasAudio || !Self.audioStreams.contains(s) }
     fileprivate var monitorSnapshot: Snapshot?
     fileprivate var monitorTask: Task<Void, Never>?
 

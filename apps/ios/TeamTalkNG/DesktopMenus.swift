@@ -126,9 +126,12 @@ struct UserMenu: View {
         if connection.canModerate(channel: user.channelId) || rights.admin {
             m.append(.init(user.operator ? "Op, on" : "Op") { connection.setOperator(user, !user.operator) })
         }
-        m.append(.init("Volume") { open(.volume) })
-        m.append(.init(user.voiceMuted ? "Mute Voice, on" : "Mute Voice") { connection.toggleMuteVoice(user) })
-        m.append(.init(user.mediaMuted ? "Mute Media File, on" : "Mute Media File") { connection.toggleMuteMedia(user) })
+        let audio = connection.hasAudio
+        if audio {
+            m.append(.init("Volume") { open(.volume) })
+            m.append(.init(user.voiceMuted ? "Mute Voice, on" : "Mute Voice") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.mediaMuted ? "Mute Media File, on" : "Mute Media File") { connection.toggleMuteMedia(user) })
+        }
         if rights.kick || connection.canModerate(channel: user.channelId) {
             if user.channelId > 0 {
                 m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
@@ -141,9 +144,12 @@ struct UserMenu: View {
         if classroom && connection.canModerate(channel: user.channelId) {
             m.append(.init("Transmit Control") { open(.transmit) })
         }
-        m.append(.init("Advanced") { open(.advanced) })
-        let all = connection.snapshot?.mutedAll ?? false
-        m.append(.init(all ? "Mute All, on" : "Mute All") { connection.setMuteAll(!all) })
+        // Through the Monitor, Advanced has only moving people (no volumes, no relay).
+        if audio || rights.moveUsers { m.append(.init("Advanced") { open(.advanced) }) }
+        if audio {
+            let all = connection.snapshot?.mutedAll ?? false
+            m.append(.init(all ? "Mute All, on" : "Mute All") { connection.setMuteAll(!all) })
+        }
         return m
     }
 
@@ -172,7 +178,7 @@ struct SubscriptionsDialog: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(Subscription.desktopOrder, id: \.self) { sub in
+                ForEach(Subscription.desktopOrder.filter(connection.shows), id: \.self) { sub in
                     Toggle(ServerConnection.subscriptionMenuName(sub), isOn: Binding(
                         get: { user.mySubscriptions.on.contains(sub) },
                         set: { connection.setSubscription(user, sub, $0) }))
@@ -213,12 +219,12 @@ struct TransmitDialog: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(Self.kinds, id: \.1) { k in
+                ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
                     Toggle("Allow \(k.1)", isOn: Binding(
                         get: { allowed(user.id, k.0) },
                         set: { connection.setTransmit(channel: user.channelId, user: user.id, k.0, $0) }))
                 }
-                ForEach(Self.kinds, id: \.1) { k in
+                ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
                     Toggle("Allow All \(k.1)", isOn: Binding(
                         get: { allowed(0, k.0) },
                         set: { connection.setTransmit(channel: user.channelId, user: 0, k.0, $0) }))
@@ -241,25 +247,29 @@ struct AdvancedDialog: View {
     var body: some View {
         NavigationStack {
             List {
-                Button("Increase Voice Volume") { connection.stepVolume(user, media: false, by: 1) }
-                Button("Lower Voice Volume") { connection.stepVolume(user, media: false, by: -1) }
-                Button("Increase Media File Volume") { connection.stepVolume(user, media: true, by: 1) }
-                Button("Lower Media File Volume") { connection.stepVolume(user, media: true, by: -1) }
+                if connection.hasAudio {
+                    Button("Increase Voice Volume") { connection.stepVolume(user, media: false, by: 1) }
+                    Button("Lower Voice Volume") { connection.stepVolume(user, media: false, by: -1) }
+                    Button("Increase Media File Volume") { connection.stepVolume(user, media: true, by: 1) }
+                    Button("Lower Media File Volume") { connection.stepVolume(user, media: true, by: -1) }
+                }
                 if connection.rights.moveUsers {
                     Button(connection.pickedToMove.contains(user.id) ? "Store User for Move, on" : "Store User for Move") {
                         connection.togglePicked(user)
                     }
                     Button("Move Users Dialog") { dismiss(); moveDialog() }
                 }
-                Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
-                       ? "Relay Voice Stream, on" : "Relay Voice Stream") {
-                    let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
-                    connection.setRelay(on ? nil : user, .voice)
-                }
-                Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
-                       ? "Relay Media File Stream, on" : "Relay Media File Stream") {
-                    let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
-                    connection.setRelay(on ? nil : user, .mediaFile)
+                if connection.hasAudio {
+                    Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
+                           ? "Relay Voice Stream, on" : "Relay Voice Stream") {
+                        let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
+                        connection.setRelay(on ? nil : user, .voice)
+                    }
+                    Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
+                           ? "Relay Media File Stream, on" : "Relay Media File Stream") {
+                        let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
+                        connection.setRelay(on ? nil : user, .mediaFile)
+                    }
                 }
             }
             .foregroundStyle(.primary)

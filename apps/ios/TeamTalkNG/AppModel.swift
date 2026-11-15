@@ -526,8 +526,8 @@ final class AppModel {
 
     /// The open server, or the only connected one.
     var activeConnection: ServerConnection? {
-        if let id = navigation.last?.id, let c = connections[id], c.isConnected { return c }
-        let live = connections.values.filter(\.isConnected)
+        if let id = navigation.last?.id, let c = connections[id], c.isConnected, c.hasAudio { return c }
+        let live = connections.values.filter { $0.isConnected && $0.hasAudio }
         return live.count == 1 ? live.first : nil
     }
 

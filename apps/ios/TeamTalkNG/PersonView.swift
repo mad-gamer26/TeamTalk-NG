@@ -113,6 +113,7 @@ struct PersonView: View {
                     if u.sharingDesktop { Button("See their shared desktop") { watching = .desktop } }
                 }
             }
+            if connection.hasAudio {
             Section("Their voice, for me") {
                 Toggle("Mute their voice", isOn: Binding(get: { u.voiceMuted }, set: { connection.setMuted(u, $0) }))
                 volume("Voice volume", u.voiceVolume) { connection.setVolume(u, percent: $0) }
@@ -125,23 +126,24 @@ struct PersonView: View {
                 Toggle("Left speaker", isOn: Binding(get: { u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: $0, right: u.mediaRight) }))
                 Toggle("Right speaker", isOn: Binding(get: { u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: $0) }))
             }
+            }
             Section {
-                ForEach(Self.normal, id: \.self) { sub in subscription(u, sub) }
+                ForEach(Self.normal.filter(connection.shows), id: \.self) { sub in subscription(u, sub) }
             } header: {
                 Text("What I receive from them")
             } footer: {
-                Text(isMe ? "Your own voice: on means you hear yourself." : "")
+                Text(isMe && connection.hasAudio ? "Your own voice: on means you hear yourself." : "")
             }
             if rights.admin && !isMe {
                 Section {
-                    ForEach(Self.intercepts, id: \.self) { sub in subscription(u, sub) }
+                    ForEach(Self.intercepts.filter(connection.shows), id: \.self) { sub in subscription(u, sub) }
                 } header: {
                     Text("Intercept (administrators)")
                 } footer: {
-                    Text("Their messages and audio, even in other channels or to other people.")
+                    Text(connection.hasAudio ? "Their messages and audio, even in other channels or to other people." : "Their messages, even in other channels or to other people.")
                 }
             }
-            if !isMe {
+            if !isMe && connection.hasAudio {
                 Section {
                     let relaying = s?.relaying
                     Toggle("Relay their voice into my channel", isOn: Binding(
@@ -171,7 +173,7 @@ struct PersonView: View {
             }
             if let channel, channel.classroom, mod {
                 Section {
-                    ForEach(Self.streams, id: \.self) { st in
+                    ForEach(Self.streams.filter(connection.shows), id: \.self) { st in
                         let allowed = channel.transmit.contains { $0.userId == u.id && $0.allowed.contains(st) }
                         Toggle(Self.streamLabel(st), isOn: Binding(
                             get: { allowed },

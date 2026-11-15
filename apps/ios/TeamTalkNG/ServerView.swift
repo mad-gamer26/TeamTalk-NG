@@ -59,10 +59,12 @@ struct ServerView: View {
                 case .chat: ChatView(connection: connection, privateWith: nil)
                 case .files: FilesView(connection: connection)
                 }
-                if let st = connection.snapshot?.streaming {
-                    StreamBar(connection: connection, stream: st)
+                if connection.hasAudio {
+                    if let st = connection.snapshot?.streaming {
+                        StreamBar(connection: connection, stream: st)
+                    }
+                    TalkBar(connection: connection)
                 }
-                TalkBar(connection: connection)
                 // The desktop's status bar: its latest message.
                 if !connection.statusLine.isEmpty {
                     Text(connection.statusLine)
@@ -94,18 +96,20 @@ struct ServerView: View {
                         Button("Status") { showStatus = true }
                         Button("Change nickname") { renaming = true }
                         Button("Join a channel by its path") { joiningByPath = true }
-                        if (connection.snapshot?.myChannelId ?? 0) > 0 && connection.snapshot?.streaming == nil {
+                        if connection.hasAudio && (connection.snapshot?.myChannelId ?? 0) > 0 && connection.snapshot?.streaming == nil {
                             Button("Stream a media file to the channel") { pickingStream = true }
                         }
                         Toggle("Question mode", isOn: Binding(
                             get: { connection.me?.status == .question },
                             set: { on in connection.setStatus(on ? .question : .available, connection.me?.statusMessage ?? "") }))
-                        Toggle("Hear myself", isOn: Binding(get: { connection.hearingMyself }, set: { connection.setHearMyself($0) }))
-                        Toggle("Mute everyone", isOn: Binding(get: { connection.snapshot?.mutedAll ?? false }, set: { connection.setMuteAll($0) }))
-                        if connection.snapshot?.relaying != nil {
+                        if connection.hasAudio {
+                            Toggle("Hear myself", isOn: Binding(get: { connection.hearingMyself }, set: { connection.setHearMyself($0) }))
+                            Toggle("Mute everyone", isOn: Binding(get: { connection.snapshot?.mutedAll ?? false }, set: { connection.setMuteAll($0) }))
+                        }
+                        if connection.hasAudio && connection.snapshot?.relaying != nil {
                             Button("Stop relaying") { connection.setRelay(nil) }
                         }
-                        if (connection.snapshot?.myChannelId ?? 0) > 0 {
+                        if connection.hasAudio && (connection.snapshot?.myChannelId ?? 0) > 0 {
                             if connection.recording {
                                 Button("Stop recording") { connection.stopRecording() }
                             } else {
@@ -119,7 +123,7 @@ struct ServerView: View {
                             Button("Broadcast message") { broadcasting = true }
                         }
                         Button("Online users") { showOnline = true }
-                        if !connection.isMonitor {
+                        if connection.hasAudio {
                             Button(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }
                         }
                         Button("Connection statistics") { showClientStats = true }
@@ -140,7 +144,7 @@ struct ServerView: View {
                 }
             }
         }
-        .accessibilityAction(.magicTap) { connection.toggleTalking() }
+        .accessibilityAction(.magicTap) { if connection.hasAudio { connection.toggleTalking() } }
         // A hardware keyboard: the desktop's shortcuts (Help lists them).
         .background { DesktopShortcuts(run: perform) }
         .onAppear { connection.connect() }
@@ -522,8 +526,8 @@ private struct ChannelRow: View {
         if rights.modifyChannels && channel.parentId != 0 { m.append(.init("Delete Channel", delete)) }
         if moderate { m.append(.init("Banned Users From Channel", bans)) }
         if here {
-            m.append(.init("Stream Media File to Channel", stream))
-            if let connection, let st = snapshot.streaming {
+            if connection?.hasAudio != false { m.append(.init("Stream Media File to Channel", stream)) }
+            if let connection, connection.hasAudio, let st = snapshot.streaming {
                 m.append(.init("Pause/Resume Stream") { connection.pauseStream(st.status != .paused) })
             }
             if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
@@ -796,8 +800,10 @@ private struct StatusView: View {
                 }
                 TextField("Status message", text: $message).accessibilityLabel("Status message")
                 // The desktop's Change Status dialog checkbox.
-                Toggle("Display file name in status message when streaming", isOn: Binding(
-                    get: { model.streamingStatus }, set: { model.streamingStatus = $0 }))
+                if connection.hasAudio {
+                    Toggle("Display file name in status message when streaming", isOn: Binding(
+                        get: { model.streamingStatus }, set: { model.streamingStatus = $0 }))
+                }
                 Picker("Gender", selection: $gender) {
                     Text("Male").tag(Gender.male)
                     Text("Female").tag(Gender.female)
@@ -1062,6 +1068,16 @@ extension ServerView {
 
     func perform(_ cmd: DesktopCommand) {
         let u = focusedUser, c = focusedChannel
+        // Through the Monitor (text only): nothing about audio.
+        if !connection.hasAudio {
+            switch cmd {
+            case .record, .hearMyself, .pushToTalk, .voiceActivation, .soundEvents, .volume, .muteVoice, .muteMedia,
+                 .voiceUp, .voiceDown, .mediaUp, .mediaDown, .muteAll, .stream, .pauseStream, .talk: return
+            case .subscription(let sub) where !connection.shows(sub): return
+            case .transmit(let st, _) where !connection.shows(st): return
+            default: break
+            }
+        }
         switch cmd {
         case .record: if connection.recording { connection.stopRecording() } else { connection.startRecording() }
         case .speakClientStats: Task { await connection.speakClientStatistics() }
