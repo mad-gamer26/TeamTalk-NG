@@ -104,7 +104,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Sound events: pack, volume, per-event files, enable all/clear all | done: every desktop event (31) with the desktop's sounds built in, packs, volume, a file of your own per event, all on, all off, revert |
 | Text to speech: per-event messages with variables, voice, rate, volume, interrupt, output mode | done: the desktop's 20 events with its messages and {variables}, editable, through VoiceOver or the system voice (voice, speed, volume), interrupting or not |
 | Shortcuts | done for a hardware keyboard (talk, mute everyone, the tabs, send) |
-| Video capture: device, resolution, format, codec | todo (9) |
+| Video capture: device, resolution, format, codec | n/a on phones (no video capture in the SDK there) |
 
 ## Server entries and connecting
 
@@ -122,7 +122,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | Typing indicators | done (sent while writing privately, shown, sounded and spoken as on the desktop) |
-| Message templates and timestamps | todo (6) |
+| Message templates and timestamps | partial: timestamps on or off; todo: the desktop's chat templates ({date} <{user}> …) |
 | Message logs to files | done |
 
 ## Video and desktop
