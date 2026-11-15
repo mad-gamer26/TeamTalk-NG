@@ -17,8 +17,15 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
       (AudioMixing.swift; PREF_STREAM_AUDIONET_VOLUME, PREF_STREAM_FILE_VOLUME).
 - [n/a] Translations: the owner chose English only (2026-11-15); the old
       app's 18 languages aren't carried over.
-- [ ] Moving over from the old app: servers, settings, NG Account sign-in
-      (planned since the start).
+- [x] Moving over from the old app (OldAppImport.swift, once, before
+      anything loads, when this app replaces it under the same bundle ID):
+      its servers (NSKeyedArchiver "ServerList": passwords to the keychain,
+      channel, channel password, status message, certificates, NG Account
+      sync key), the settings both apps have (nickname, gender, status
+      message, PTT lock, return sends, join root, usernames, message popup,
+      text length, record media files) and its NG Account sign-in (its
+      keychain item in the App Group, same service only). Tested in the
+      Simulator with the old app's archive format. The old app's data stays.
 
 ## Smaller
 

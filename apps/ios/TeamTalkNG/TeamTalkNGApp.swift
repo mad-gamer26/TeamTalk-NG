@@ -7,7 +7,9 @@ struct TeamTalkNGApp: App {
     @State private var model: AppModel
 
     init() {
-        // iCloud's newer settings first, before anything reads them.
+        // The old app's servers and settings (once, when this app replaced
+        // it), then iCloud's newer settings, before anything reads them.
+        OldAppImport.runIfNeeded()
         ICloudSync.shared.startAtLaunch()
         _model = State(initialValue: AppModel())
     }
