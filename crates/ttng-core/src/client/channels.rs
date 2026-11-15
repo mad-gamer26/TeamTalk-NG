@@ -132,8 +132,23 @@ impl Worker {
         }
         let p = arg(path);
         let pb = playback(Some(offset_ms), paused);
-        // SAFETY: inst is live; p and pb outlive the call; no video codec.
-        if unsafe { sys::TT_StartStreamingMediaFileToChannelEx(self.inst, p.as_ptr(), &pb, ptr::null()) } == 0 {
+        // Its video too when asked (and it has some), as VP8.
+        let vc = sys::VideoCodec {
+            nCodec: sys::Codec_WEBM_VP8_CODEC,
+            __bindgen_anon_1: sys::VideoCodec__bindgen_ty_1 {
+                webm_vp8: sys::WebMVP8Codec {
+                    __bindgen_anon_1: sys::WebMVP8Codec__bindgen_ty_1 { nRcTargetBitrate: 256 },
+                    nEncodeDeadline: sys::WEBM_VPX_DL_REALTIME,
+                },
+            },
+        };
+        let video = if self.stream_video && info.video_width > 0 {
+            &vc as *const _
+        } else {
+            ptr::null()
+        };
+        // SAFETY: inst is live; p, pb and vc outlive the call.
+        if unsafe { sys::TT_StartStreamingMediaFileToChannelEx(self.inst, p.as_ptr(), &pb, video) } == 0 {
             return Err(Error::Refused("The file couldn't be streamed.".into()));
         }
         self.stop_local_playback();

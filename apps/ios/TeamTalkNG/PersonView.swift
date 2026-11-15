@@ -11,6 +11,7 @@ struct PersonView: View {
     let move: (User) -> Void
 
     @State private var stats: UserStatistics?
+    @State private var watching: VideoKind?
     @State private var confirm: Moderation?
     @State private var opPassword = ""
 
@@ -42,6 +43,9 @@ struct PersonView: View {
             .navigationTitle(user.map { isMe ? "\($0.displayName) (you)" : $0.displayName } ?? "Gone")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .sheet(item: $watching) { k in
+                if let u = user { VideoView(connection: connection, user: u, kind: k) }
+            }
             .confirmationDialog(confirm?.title ?? "", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                                 titleVisibility: .visible) {
                 Button(confirm?.title ?? "", role: .destructive) { if let c = confirm, let u = user { moderate(c, u) } }
@@ -78,6 +82,9 @@ struct PersonView: View {
             if !isMe {
                 Section {
                     Button("Message privately") { dismiss(); message(u) }
+                    if u.sendingVideo { Button("Watch their camera") { watching = .camera } }
+                    if u.streamingMedia { Button("Watch the video they're streaming") { watching = .mediaFile } }
+                    if u.sharingDesktop { Button("See their shared desktop") { watching = .desktop } }
                 }
             }
             Section("Their voice, for me") {
@@ -250,4 +257,8 @@ struct PersonView: View {
 
 extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+extension VideoKind: Identifiable {
+    public var id: Self { self }
 }

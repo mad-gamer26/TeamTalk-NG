@@ -111,6 +111,7 @@ final class ServerConnection {
         let client = self.client
         let audio = app?.audio ?? defaultAudioSettings()
         let hearOwn = app?.hearOwnStream ?? true
+        let streamVideo = app?.streamVideo ?? true
         Task {
             let allowed = await AudioSession.requestMicrophone()
             AudioSession.activate()
@@ -120,6 +121,7 @@ final class ServerConnection {
                     // Every connection shares the microphone and speaker.
                     try? client.setAudioSettings(settings: audio)
                     try? client.setHearOwnStream(on: hearOwn)
+                    try? client.setStreamVideo(on: streamVideo)
                     try? client.initAudio(devices: allowed ? .shared : .virtual)
                     return nil
                 } catch {
@@ -462,8 +464,11 @@ final class ServerConnection {
     // MARK: Sound
 
     func applyHearOwnStream() {
-        guard let on = app?.hearOwnStream else { return }
-        run("Couldn't change that") { try $0.setHearOwnStream(on: on) }
+        guard let on = app?.hearOwnStream, let video = app?.streamVideo else { return }
+        run("Couldn't change that") { c in
+            try c.setHearOwnStream(on: on)
+            try c.setStreamVideo(on: video)
+        }
     }
 
     func applyAudioSettings() {

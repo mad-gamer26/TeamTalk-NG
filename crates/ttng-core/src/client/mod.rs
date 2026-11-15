@@ -19,6 +19,7 @@ mod channels;
 mod people;
 mod server;
 mod sound;
+mod video;
 use channels::ChannelRequest;
 pub use channels::media_file_info;
 use people::PeopleRequest;
@@ -218,6 +219,14 @@ enum Request {
         typing: bool,
         reply: Reply,
     },
+    SendDesktop {
+        width: i32,
+        height: i32,
+        bgra: Vec<u8>,
+        reply: Reply,
+    },
+    StopDesktop(Reply),
+    StreamVideo(bool, Reply),
     /// People (see people.rs); `None` when the request answers itself.
     People(PeopleRequest, Option<Reply>),
     Quit,
@@ -252,6 +261,7 @@ pub struct Client {
     tx: Sender<Request>,
     model: Arc<Mutex<Model>>,
     level: Arc<std::sync::atomic::AtomicI32>,
+    frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -282,14 +292,17 @@ impl Client {
         let m = Arc::clone(&model);
         let level = Arc::new(std::sync::atomic::AtomicI32::new(0));
         let l = Arc::clone(&level);
+        let frames = Arc::new(Mutex::new(HashMap::new()));
+        let fr = Arc::clone(&frames);
         let worker = thread::Builder::new()
             .name("ttng-sdk".into())
-            .spawn(move || Worker::new(rx, etx, m, l).run())
+            .spawn(move || Worker::new(rx, etx, m, l, fr).run())
             .expect("can't start the SDK thread");
         Client {
             tx,
             model,
             level,
+            frames,
             worker: Some(worker),
         }
     }
@@ -766,6 +779,31 @@ impl Client {
         self.ask(|r| Request::Sound(SoundRequest::RecordEach(each), Some(r)))
     }
 
+    /// The latest picture of someone's camera, streamed video or desktop.
+    pub fn video_frame(&self, user_id: i32, kind: VideoKind) -> Option<VideoFrame> {
+        self.frames.lock().ok().and_then(|f| f.get(&(user_id, kind)).cloned())
+    }
+
+    /// Shares a picture (32-bit blue, green, red, alpha pixels) as my
+    /// desktop; send again to update it.
+    pub fn send_desktop_bitmap(&self, width: i32, height: i32, bgra: &[u8]) -> Result<()> {
+        self.ask(|reply| Request::SendDesktop {
+            width,
+            height,
+            bgra: bgra.to_vec(),
+            reply,
+        })
+    }
+
+    pub fn stop_desktop(&self) -> Result<()> {
+        self.ask(Request::StopDesktop)
+    }
+
+    /// Streams media files' video too (VP8), not only their sound.
+    pub fn set_stream_video(&self, on: bool) -> Result<()> {
+        self.ask(|r| Request::StreamVideo(on, r))
+    }
+
     /// Tells someone I'm writing to them (or stopped), as the desktop's
     /// private message window does.
     pub fn set_typing(&self, user_id: i32, typing: bool) -> Result<()> {
@@ -867,6 +905,12 @@ struct Worker {
     /// Play my own stream here too, and its local playback session.
     hear_own_stream: bool,
     local_playback: i32,
+    /// The latest picture of each video (shared with `Client::video_frame`),
+    /// and when each was last announced.
+    frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
+    last_frame_note: HashMap<(i32, VideoKind), Instant>,
+    /// Stream media files' video too (VP8).
+    stream_video: bool,
     /// BearWare's answer to a web login, when it comes.
     web_login: Option<Receiver<std::result::Result<String, String>>>,
 }
@@ -877,6 +921,7 @@ impl Worker {
         events: Sender<Event>,
         model: Arc<Mutex<Model>>,
         level: Arc<std::sync::atomic::AtomicI32>,
+        frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
     ) -> Worker {
         // SAFETY: creates an SDK instance; it's used and closed on this thread only.
         let inst = unsafe { sys::TT_InitTeamTalkPoll() };
@@ -903,6 +948,9 @@ impl Worker {
             hear_own_stream: false,
             local_playback: 0,
             web_login: None,
+            frames,
+            last_frame_note: HashMap::new(),
+            stream_video: false,
         }
     }
 
@@ -1400,6 +1448,23 @@ impl Worker {
             }
             Request::People(req, reply) => self.handle_people(req, reply),
             Request::Channels(req, reply) => self.handle_channels(req, reply),
+            Request::SendDesktop {
+                width,
+                height,
+                bgra,
+                reply,
+            } => {
+                let _ = reply.send(self.send_desktop(width, height, &bgra));
+            }
+            Request::StopDesktop(reply) => {
+                // SAFETY: inst is live.
+                unsafe { sys::TT_CloseDesktopWindow(self.inst) };
+                let _ = reply.send(Ok(()));
+            }
+            Request::StreamVideo(on, reply) => {
+                self.stream_video = on;
+                let _ = reply.send(Ok(()));
+            }
             Request::Typing { user_id, typing, reply } => {
                 let me = self.model.lock().map(|m| m.my_user_id).unwrap_or(0);
                 let m = sys::TextMessage {
@@ -1958,6 +2023,9 @@ impl Worker {
                 let on = unsafe { union.bActive } != 0;
                 self.emit(Event::VoiceActivated(on));
             }
+            sys::ClientEvent_CLIENTEVENT_USER_VIDEOCAPTURE => self.on_video(msg.nSource, VideoKind::Camera),
+            sys::ClientEvent_CLIENTEVENT_USER_MEDIAFILE_VIDEO => self.on_video(msg.nSource, VideoKind::MediaFile),
+            sys::ClientEvent_CLIENTEVENT_USER_DESKTOPWINDOW => self.on_video(msg.nSource, VideoKind::Desktop),
             sys::ClientEvent_CLIENTEVENT_STREAM_MEDIAFILE if msg.ttType == sys::TTType___MEDIAFILEINFO => {
                 // SAFETY: checked ttType.
                 let info = unsafe { union.mediafileinfo };
@@ -2236,7 +2304,8 @@ fn reply_of(req: Request) -> Option<Reply> {
         Request::StopRecording(r) => r,
         Request::People(_, Some(r)) => r,
         Request::Channels(_, r) => r,
-        Request::Typing { reply, .. } => reply,
+        Request::Typing { reply, .. } | Request::SendDesktop { reply, .. } => reply,
+        Request::StopDesktop(r) | Request::StreamVideo(_, r) => r,
         Request::Server(req) => {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;

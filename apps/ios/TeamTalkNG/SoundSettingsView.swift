@@ -37,6 +37,7 @@ struct SoundSystemView: View {
             }
             Section {
                 Toggle("Hear the files you stream", isOn: $model.hearOwnStream)
+                Toggle("Send video files' pictures too", isOn: $model.streamVideo)
             } header: {
                 Text("Streaming")
             } footer: {

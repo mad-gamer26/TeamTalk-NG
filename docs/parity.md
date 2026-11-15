@@ -35,7 +35,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Gender (status flags) | done (kept apart from the status mode) |
 | Hear myself | done |
 | Push to talk, voice activation | done (with always on, Magic Tap) |
-| Video transmission | todo (9): camera |
+| Video transmission | n/a on phones (see Video below) |
 | Desktop sharing | n/a: iOS can't share the screen to TeamTalk this way |
 
 ## Users menu
@@ -129,9 +129,9 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| See others' video and shared desktops | todo (9): described for screen readers (who's sharing), shown for others |
-| Send camera video | todo (9) |
-| Stream video files | todo (9) |
+| See others' video and shared desktops | done: camera, streamed video and shared desktops, each as an image VoiceOver can describe (tested: a desktop arrives pixel for pixel; a streamed video's pictures arrive) |
+| Send camera video | n/a on phones: BearWare's SDK captures video only on Mac, Windows and Linux and can't take frames from outside |
+| Stream video files | done (VP8; a setting). The Linux SDK decodes VP8/WebM video but not H.264's pictures; iPhone untested |
 
 ## Batches (in order)
 
@@ -151,5 +151,5 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
    .tt files, public server list, status message and channel password per
    server.
 8. **Typing indicators** (done).
-9. **Video**: seeing it, sending the camera, streaming video files.
+9. **Video** (done, receiving; sending the camera is n/a): seeing it, sending the camera, streaming video files.
 10. **Help and polish**: About, help, first-run setup, keyboard shortcuts.

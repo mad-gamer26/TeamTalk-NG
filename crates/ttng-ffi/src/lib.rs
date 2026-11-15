@@ -804,6 +804,42 @@ impl From<core::Transfer> for Transfer {
     }
 }
 
+/// Which kind of picture someone sends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum VideoKind {
+    Camera,
+    MediaFile,
+    Desktop,
+}
+
+impl From<core::VideoKind> for VideoKind {
+    fn from(k: core::VideoKind) -> Self {
+        match k {
+            core::VideoKind::Camera => Self::Camera,
+            core::VideoKind::MediaFile => Self::MediaFile,
+            core::VideoKind::Desktop => Self::Desktop,
+        }
+    }
+}
+
+impl From<VideoKind> for core::VideoKind {
+    fn from(k: VideoKind) -> Self {
+        match k {
+            VideoKind::Camera => Self::Camera,
+            VideoKind::MediaFile => Self::MediaFile,
+            VideoKind::Desktop => Self::Desktop,
+        }
+    }
+}
+
+/// A picture: 32-bit pixels (blue, green, red, alpha), row after row.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct VideoFrame {
+    pub width: i32,
+    pub height: i32,
+    pub bgra: Vec<u8>,
+}
+
 /// What a recording is saved as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum RecordingFormat {
@@ -1042,6 +1078,14 @@ pub enum Event {
     MessageReceived {
         message: TextMessage,
     },
+    /// A new picture of someone's video or desktop (a few a second at
+    /// most); `video_frame` has it.
+    VideoFrame {
+        user_id: i32,
+        kind: VideoKind,
+        width: i32,
+        height: i32,
+    },
     /// Someone started (or stopped) writing to me privately.
     Typing {
         user_id: i32,
@@ -1103,6 +1147,17 @@ impl From<core::Event> for Event {
             E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             E::VoiceActivated(sending) => Self::VoiceActivated { sending },
             E::Typing { user_id, typing } => Self::Typing { user_id, typing },
+            E::VideoFrame {
+                user_id,
+                kind,
+                width,
+                height,
+            } => Self::VideoFrame {
+                user_id,
+                kind: kind.into(),
+                width,
+                height,
+            },
             E::StreamChanged(m) => Self::StreamChanged { stream: m.into() },
             E::RecordingChanged { path, active, error } => Self::RecordingChanged { path, active, error },
             E::FileAdded(f) => Self::FileAdded { file: f.into() },
@@ -1381,6 +1436,29 @@ impl TtClient {
     /// Pauses, resumes, moves (`offset_ms`) the stream.
     pub fn update_stream(&self, offset_ms: Option<u32>, paused: bool) -> Result<()> {
         Ok(self.inner.update_stream(offset_ms, paused)?)
+    }
+
+    /// The latest picture of someone's camera, streamed video or desktop.
+    pub fn video_frame(&self, user_id: i32, kind: VideoKind) -> Option<VideoFrame> {
+        self.inner.video_frame(user_id, kind.into()).map(|f| VideoFrame {
+            width: f.width,
+            height: f.height,
+            bgra: f.bgra,
+        })
+    }
+
+    /// Shares a picture as my desktop.
+    pub fn send_desktop_bitmap(&self, width: i32, height: i32, bgra: Vec<u8>) -> Result<()> {
+        Ok(self.inner.send_desktop_bitmap(width, height, &bgra)?)
+    }
+
+    pub fn stop_desktop(&self) -> Result<()> {
+        Ok(self.inner.stop_desktop()?)
+    }
+
+    /// Streams media files' video too, not only their sound.
+    pub fn set_stream_video(&self, on: bool) -> Result<()> {
+        Ok(self.inner.set_stream_video(on)?)
     }
 
     /// Tells someone I'm writing to them (or stopped).

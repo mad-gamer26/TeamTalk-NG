@@ -32,6 +32,14 @@ final class AppModel {
         }
     }
 
+    /// Stream the video of video files too (VP8).
+    var streamVideo = true {
+        didSet {
+            save()
+            for c in connections.values { c.applyHearOwnStream() }
+        }
+    }
+
     /// Hear the files I stream (the SDK doesn't play my own stream back).
     var hearOwnStream = true {
         didSet {
@@ -113,6 +121,7 @@ final class AppModel {
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
         hearOwnStream = defaults.object(forKey: "hearOwnStream") as? Bool ?? true
+        streamVideo = defaults.object(forKey: "streamVideo") as? Bool ?? true
         showUsernames = defaults.bool(forKey: "showUsernames")
         showTopics = defaults.object(forKey: "showTopics") as? Bool ?? true
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
@@ -232,6 +241,7 @@ final class AppModel {
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
         defaults.set(hearOwnStream, forKey: "hearOwnStream")
+        defaults.set(streamVideo, forKey: "streamVideo")
         defaults.set(showUsernames, forKey: "showUsernames")
         defaults.set(showTopics, forKey: "showTopics")
         defaults.set(sortChannelsByName, forKey: "sortChannelsByName")

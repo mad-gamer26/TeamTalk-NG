@@ -705,6 +705,26 @@ pub struct ClientStatistics {
     pub tcp_silence_s: i32,
 }
 
+/// Which kind of picture someone sends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VideoKind {
+    /// Their camera.
+    Camera,
+    /// The video of a media file they stream.
+    MediaFile,
+    /// Their shared desktop (or window).
+    Desktop,
+}
+
+/// The latest picture of someone's video or desktop: 32-bit pixels
+/// (blue, green, red, alpha), row after row.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VideoFrame {
+    pub width: i32,
+    pub height: i32,
+    pub bgra: Vec<u8>,
+}
+
 /// What a recording is saved as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecordingFormat {
@@ -1232,6 +1252,14 @@ pub enum Event {
         talking: bool,
     },
     MessageReceived(TextMessage),
+    /// A new picture of someone's video or desktop (at most a few a
+    /// second); `Client::video_frame` has it.
+    VideoFrame {
+        user_id: i32,
+        kind: VideoKind,
+        width: i32,
+        height: i32,
+    },
     /// Someone started (or stopped) writing to me privately.
     Typing {
         user_id: i32,
