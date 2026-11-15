@@ -182,9 +182,14 @@ fn a_whole_encrypted_session_with_tt5prosrv() {
     };
     // BearWare's Professional server starts only with a BearWare.dk web
     // login authorized for it: its ID and access token, from
-    // TTNG_PROSRV_BEARWARE ("id token", kept private).
+    // TTNG_PROSRV_BEARWARE ("id token"; on this server it's kept in
+    // ~/.config/ttng/prosrv-bearware, readable only by its owner).
+    let saved = std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join(".config/ttng/prosrv-bearware"))
+        .and_then(|p| std::fs::read_to_string(p).ok());
     let Some((id, token)) = std::env::var("TTNG_PROSRV_BEARWARE")
         .ok()
+        .or(saved)
         .and_then(|v| v.split_once(' ').map(|(a, b)| (a.to_owned(), b.trim().to_owned())))
     else {
         eprintln!("skipped: tt5prosrv needs TTNG_PROSRV_BEARWARE (a BearWare.dk ID and token)");
@@ -194,10 +199,12 @@ fn a_whole_encrypted_session_with_tt5prosrv() {
     let server = Server::start_exe(
         exe,
         &format!(
-            "<certificate-file>{}</certificate-file><privatekey-file>{}</privatekey-file>\
-             <bearware-weblogin><bearwareid>{id}</bearwareid><bearwaretoken>{token}</bearwaretoken></bearware-weblogin>",
+            "<certificate-file>{}</certificate-file><privatekey-file>{}</privatekey-file>",
             certs.path("srv.pem"),
             certs.path("srv.key")
+        ),
+        &format!(
+            "<bearware-weblogin><bearwareid>{id}</bearwareid><bearwaretoken>{token}</bearwaretoken></bearware-weblogin>"
         ),
     );
     let secure = |user: &str, ca: &str| {

@@ -66,11 +66,13 @@ impl Server {
 
     /// A server with more `<general>` settings (encryption, say).
     pub fn start_with(general: &str) -> Server {
-        Server::start_exe(tt5srv(), general)
+        Server::start_exe(tt5srv(), general, "")
     }
 
-    /// `exe` (tt5srv or tt5prosrv) with more `<general>` settings.
-    pub fn start_exe(exe: PathBuf, general: &str) -> Server {
+    /// `exe` (tt5srv or tt5prosrv) with more `<general>` settings, and
+    /// more settings beside them (`top`, such as tt5prosrv's
+    /// `<bearware-weblogin>`).
+    pub fn start_exe(exe: PathBuf, general: &str, top: &str) -> Server {
         let port = free_port();
         let dir = std::env::temp_dir().join(format!("ttng-test-{}-{port}", std::process::id()));
         std::fs::create_dir_all(dir.join("files")).unwrap();
@@ -91,10 +93,13 @@ impl Server {
   </general>
   <file-storage><files-root>files</files-root><max-diskusage>1000000000</max-diskusage><channel-diskquota>100000000</channel-diskquota></file-storage>
   <logging><server-log-maxsize>-1</server-log-maxsize></logging>
+  {top}
   <users>{users}</users>
 </teamtalk>"#
         );
-        std::fs::write(dir.join("tt5srv.xml"), xml).unwrap();
+        // tt5srv.xml, or tt5prosrv.xml for the Professional server.
+        let name = format!("{}.xml", exe.file_name().unwrap().to_string_lossy());
+        std::fs::write(dir.join(name), xml).unwrap();
         let mut s = Server {
             port,
             dir,

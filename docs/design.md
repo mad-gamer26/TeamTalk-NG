@@ -117,6 +117,23 @@ other than WAV don't stream). Decisions:
   Tested: every core test (54) runs inside the Simulator against the
   source-built SDK (`scripts/test-ios-sim.sh`), MP3 streaming included; the app
   runs in the Simulator.
+- Linux: done (2026-11-15) by `scripts/build-sdk-linux.sh linux` in
+  BearWare's own Docker image (Build/Docker/Dockerfile_ubuntu24), into
+  sdk/linux-src (tt5srv, tt5prosrv, the libraries). tt5prosrv starts only
+  with a BearWare.dk web login authorized for it: its ID and token in
+  `<bearware-weblogin>` beside `<users>` (not in `<general>`), in
+  tt5prosrv.xml. BearWare's built-in login address, login.bearware.dk,
+  had a certificate for bearware.dk only (2026-11-15), so the token was
+  got from www.bearware.dk's weblogin.php (action=auth) and kept in
+  ~/.config/ttng/prosrv-bearware (mode 600; TTNG_PROSRV_BEARWARE
+  overrides). tests/connecting.rs runs a whole encrypted session against
+  it, and skips with a reason when either is missing.
+- Android: `scripts/build-sdk-linux.sh android-arm64-v8a android-x64`, in
+  BearWare's Android image (Google's WebRTC tools build Android only on
+  Linux), into sdk/android-src.
+- Mac: not built from source (owner told 2026-11-15): BearWare's
+  args.gn_mac has no WEBRTC_CFG_EXTRA hook for the Xcode 27 settings, and
+  the official Mac SDK already has FFmpeg and Apple silicon.
 - MP3 recordings: BearWare's SDK only encodes MP3 with Windows Media
   Foundation, so elsewhere the SDK records WAV and the core converts it to
   MP3 with LAME when the recording stops.

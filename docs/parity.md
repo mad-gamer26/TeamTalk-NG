@@ -111,7 +111,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | Name, host, ports, encrypted, username, password, nickname, status message, channel and its password | done (kept in the old app's NG Account fields, so they sync) |
-| Encryption setup: CA, client certificate and key, verify server | done (imported from Files; certificate checking tested against a TLS server; BearWare's standard SDK server doesn't encrypt, so a whole encrypted session isn't tested here) |
+| Encryption setup: CA, client certificate and key, verify server | done (imported from Files; certificate checking tested against a TLS server, and a whole encrypted session (login with the certificate checked, messages, voice; another authority refused) against BearWare's tt5prosrv built from source) |
 | BearWare.dk web login | done (sign in once; servers with the username "bearware" log in with it; tested against a stand-in for bearware.dk) |
 | Join code, last joined channel | done |
 | .tt files and tt:// links: open, generate | done (import and share .tt files; open and copy links) |
