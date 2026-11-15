@@ -15,8 +15,9 @@ final class AppModel {
             save()
             connections.values.forEach { $0.applyTalkMode() }
             if talkMode != oldValue && (talkMode == .voiceActivation || oldValue == .voiceActivation) {
-                // Changed by me (the desktop's "Me" menu sounds).
-                if !loading { sounds.play(talkMode == .voiceActivation ? .voiceActivationMeOn : .voiceActivationMeOff) }
+                // Switching modes: vox_enable to voice activation, vox_disable
+                // to push to talk (the owner's choice).
+                if !loading { sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff) }
             }
         }
     }

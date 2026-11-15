@@ -185,10 +185,10 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       all, and an imported pack's hotkey.wav is left out; vox_me_enable /
       vox_me_disable (the desktop's "Voice activation enabled/disabled via
       "Me" menu", named here "Microphone turned on/off") whenever I turn my
-      microphone on or off: push to talk, mute and unmute, changing the
-      talk mode; voiceact_on/off only for voice activation itself; "Voice
-      activation enabled/disabled" (vox_enable/vox_disable) when the app
-      starts, as the desktop. n/a: "Channel
+      microphone on or off: push to talk, mute and unmute; voiceact_on/off
+      only for voice activation itself; "Voice activation enabled/disabled"
+      (vox_enable/vox_disable) when switching to voice activation or to
+      push to talk, and when the app starts (as the desktop). n/a: "Channel
       silent" (no sound by default), "Desktop access request".
 - [x] Per-server volumes (the desktop's separate copies, each with its
       own): master volume, microphone gain, media files, in the server
