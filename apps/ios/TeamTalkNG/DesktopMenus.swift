@@ -113,9 +113,6 @@ struct UserMenu: View {
     enum UserSheet { case info, messages, volume, move, subscriptions, transmit, advanced, banServer, banChannel }
 
     private var rights: MyRights { connection.rights }
-    private var classroom: Bool {
-        connection.snapshot?.channels.first { $0.id == user.channelId }?.classroom ?? false
-    }
 
     private var items: [MenuItem] {
         var m: [MenuItem] = [
@@ -141,7 +138,8 @@ struct UserMenu: View {
         if rights.kick { m.append(.init("Kick From Server") { connection.kick(user, fromChannel: false) }) }
         if rights.ban { m.append(.init("Kick and Ban From Server") { open(.banServer) }) }
         m.append(.init("Subscriptions") { open(.subscriptions) })
-        if classroom && connection.canModerate(channel: user.channelId) {
+        // In any channel, as the desktop (its "Allow All" items: classrooms only).
+        if user.channelId > 0 && connection.canControlTransmit(channel: user.channelId) {
             m.append(.init("Transmit Control") { open(.transmit) })
         }
         // Through the Monitor, Advanced has only moving people (no volumes, no relay).
@@ -197,8 +195,8 @@ extension Subscription {
     ]
 }
 
-/// The desktop's Transmit Control submenu (classroom channels): allow each
-/// kind for this person, and for everyone.
+/// The desktop's Transmit Control submenu: allow each kind for this person
+/// (in any channel), and for everyone (classroom channels).
 struct TransmitDialog: View {
     let connection: ServerConnection
     let user: User
@@ -211,7 +209,7 @@ struct TransmitDialog: View {
     ]
 
     private func allowed(_ who: Int32, _ s: TransmitStream) -> Bool {
-        channel?.transmit.contains { $0.userId == who && $0.allowed.contains(s) } ?? false
+        channel.map { connection.transmitAllowed($0, user: who, s) } ?? true
     }
 
     var body: some View {
@@ -222,10 +220,12 @@ struct TransmitDialog: View {
                         get: { allowed(user.id, k.0) },
                         set: { connection.setTransmit(channel: user.channelId, user: user.id, k.0, $0) }))
                 }
-                ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
-                    Toggle("Allow All \(k.1)", isOn: Binding(
-                        get: { allowed(0, k.0) },
-                        set: { connection.setTransmit(channel: user.channelId, user: 0, k.0, $0) }))
+                if channel?.classroom == true {
+                    ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
+                        Toggle("Allow All \(k.1)", isOn: Binding(
+                            get: { allowed(0, k.0) },
+                            set: { connection.setTransmit(channel: user.channelId, user: 0, k.0, $0) }))
+                    }
                 }
             }
             .navigationTitle("Transmit Control")

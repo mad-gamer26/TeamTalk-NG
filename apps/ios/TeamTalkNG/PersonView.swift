@@ -171,16 +171,16 @@ struct PersonView: View {
                     Text("Channel operator")
                 }
             }
-            if let channel, channel.classroom, mod {
+            if let channel, connection.canControlTransmit(channel: channel.id) {
                 Section {
                     ForEach(Self.streams.filter(connection.shows), id: \.self) { st in
-                        let allowed = channel.transmit.contains { $0.userId == u.id && $0.allowed.contains(st) }
+                        let allowed = connection.transmitAllowed(channel, user: u.id, st)
                         Toggle(Self.streamLabel(st), isOn: Binding(
                             get: { allowed },
                             set: { connection.setTransmit(channel: channel.id, user: u.id, st, $0) }))
                     }
                 } header: {
-                    Text("Classroom: they may send")
+                    Text("They may send (Transmit Control)")
                 }
             }
             if !isMe && (rights.moveUsers || rights.kick || rights.ban || mod) {

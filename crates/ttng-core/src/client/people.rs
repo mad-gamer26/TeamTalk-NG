@@ -181,10 +181,19 @@ impl Worker {
                 } else {
                     user_id
                 };
+                // A classroom channel lists who may send; any other channel
+                // lists who may not (as the desktop's Transmit Control).
+                let classroom = c.uChannelType & sys::ChannelType_CHANNEL_CLASSROOM != 0;
+                if !classroom && user_id == 0 {
+                    return answer(Err(Error::Refused(
+                        "Allowing everyone is for classroom channels.".into(),
+                    )));
+                }
+                let listed = if classroom { allowed } else { !allowed };
                 let list = &mut c.transmitUsers;
                 let at = list.iter().position(|e| e[0] == who);
                 let bits = stream.bits() as i32;
-                match (at, allowed) {
+                match (at, listed) {
                     (Some(i), true) => list[i][1] |= bits,
                     (Some(i), false) => {
                         list[i][1] &= !bits;

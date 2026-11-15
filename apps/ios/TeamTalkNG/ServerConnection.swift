@@ -329,6 +329,20 @@ final class ServerConnection {
         rights.admin || (me?.operator == true && me?.channelId == id)
     }
 
+    /// The desktop's Transmit Control: channel operators and those who may
+    /// modify channels, in any channel.
+    func canControlTransmit(channel id: Int32) -> Bool {
+        // Not through the Monitor (it can't change channels).
+        monitorId == nil && (canModerate(channel: id) || rights.modifyChannels)
+    }
+
+    /// Whether someone (0: everyone, classroom only) may send a kind of
+    /// stream: a classroom channel lists who may, any other who may not.
+    func transmitAllowed(_ c: Channel, user: Int32, _ s: TransmitStream) -> Bool {
+        let listed = c.transmit.contains { $0.userId == user && $0.allowed.contains(s) }
+        return c.classroom ? listed : !listed
+    }
+
     func setSubscription(_ user: User, _ what: Subscription, _ on: Bool) {
         run("Couldn't change that") { try $0.setSubscription(userId: user.id, what: what, on: on) }
     }

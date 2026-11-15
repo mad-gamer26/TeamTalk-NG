@@ -224,6 +224,62 @@ fn in_a_classroom_only_those_allowed_talk() {
     assert!(refused.is_err(), "only operators and admins");
 }
 
+/// Outside a classroom the channel's list blocks (the desktop's Transmit
+/// Control in any channel): stopping Bob's voice lists him; allowing it
+/// again takes him off; "everyone" is for classrooms only.
+#[test]
+fn transmit_control_blocks_in_an_ordinary_channel() {
+    let server = Server::start();
+    let v = in_root(&server, &["admin", "alice", "bob"]);
+    let (admin, a, b) = (&v[0], &v[1], &v[2]);
+    for c in [admin, a, b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+    }
+    let root = admin.client.snapshot().my_channel_id;
+    let bob = me(b);
+    b.client.set_test_tone(440).unwrap();
+    b.client.set_transmitting(true).unwrap();
+    a.wait_for("Bob talking", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == bob).then_some(())
+    });
+
+    admin
+        .client
+        .set_transmit_allowed(root, bob, TransmitStream::Voice, false)
+        .expect("blocked");
+    a.wait_for("Bob silenced", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: false } if *user_id == bob).then_some(())
+    });
+    let ch = admin.client.snapshot().channel(root).cloned().unwrap();
+    assert!(
+        ch.transmit
+            .iter()
+            .any(|t| t.user_id == bob && t.allows(TransmitStream::Voice)),
+        "listed, which blocks outside a classroom"
+    );
+
+    admin
+        .client
+        .set_transmit_allowed(root, bob, TransmitStream::Voice, true)
+        .expect("allowed again");
+    a.wait_for("Bob talking again", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == bob).then_some(())
+    });
+    assert!(
+        !admin
+            .client
+            .snapshot()
+            .channel(root)
+            .unwrap()
+            .transmit
+            .iter()
+            .any(|t| t.user_id == bob)
+    );
+
+    let everyone = admin.client.set_transmit_allowed(root, 0, TransmitStream::Voice, false);
+    assert!(matches!(everyone, Err(Error::Refused(_))), "{everyone:?}");
+}
+
 #[test]
 fn channel_bans() {
     let server = Server::start();

@@ -203,3 +203,9 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] Import a sound pack from a folder (Settings → Sounds): the desktop's
       names, any sound file kind; the old app's on.* plays as the hotkey.
       Earlier own sounds and settings for on/off carry over (to voiceact_*).
+- [x] Transmit Control in any channel (mainwindow.cpp slotUpdateUI): the
+      per-person "Allow … Transmission" items for channel operators and
+      those who may modify channels, everywhere; "Allow All …" in
+      classroom channels only. Outside a classroom the channel's list
+      blocks (the core turns "allowed" into not listed there; tested:
+      Bob silenced, then heard again). Also in the person's details.

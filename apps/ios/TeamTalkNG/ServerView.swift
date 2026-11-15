@@ -1129,9 +1129,9 @@ extension ServerView {
         case .kickBanServer: if let u { banning = BanTarget(user: u, fromChannel: false) }
         case .subscription(let s): if let u { connection.toggleSubscription(u, s) }
         case .transmit(let s, let all):
-            guard let c, let who = all ? Int32(0) : u?.id else { return }
-            let now = c.transmit.contains { $0.userId == who && $0.allowed.contains(s) }
-            connection.setTransmit(channel: c.id, user: who, s, !now)
+            guard let c, let who = all ? Int32(0) : u?.id, connection.canControlTransmit(channel: c.id),
+                  !all || c.classroom else { return }
+            connection.setTransmit(channel: c.id, user: who, s, !connection.transmitAllowed(c, user: who, s))
         case .voiceUp: if let u { connection.stepVolume(u, media: false, by: 1) }
         case .voiceDown: if let u { connection.stepVolume(u, media: false, by: -1) }
         case .mediaUp: if let u { connection.stepVolume(u, media: true, by: 1) }

@@ -620,8 +620,9 @@ impl Client {
         })
     }
 
-    /// In a classroom channel: whether someone (`user_id` 0: everyone) may
-    /// send a kind of stream.
+    /// Whether someone may send a kind of stream in a channel (the
+    /// desktop's Transmit Control): a classroom channel lists who may
+    /// (`user_id` 0: everyone, classroom only), any other who may not.
     pub fn set_transmit_allowed(
         &self,
         channel_id: i32,
