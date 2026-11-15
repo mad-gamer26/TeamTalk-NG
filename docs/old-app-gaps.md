@@ -32,9 +32,13 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
 - [x] "Return sends message" (PREF_GENERAL_SENDONRETURN).
 - [x] Files list sort field and order (PREF_FILES_SORT_*).
 - [x] Speech voice language (PREF_TTSEVENT_VOICELANG; NG picks a voice).
-- [ ] Monitor administration (accounts, bans, server properties through
-      the Monitor, /v1/servers/{id}/admin): with monitor mode, the server
-      screen's admin screens through the Monitor.
+- [x] Monitor administration: in monitor mode the server screen's admin
+      screens (user accounts, bans and channel bans, server settings,
+      statistics, save configuration, broadcast) go through the Monitor's
+      login (/v1/servers/{id}/admin; FFI admin_*, tested end to end), shown
+      as its account's rights allow. ngmon fix (source and dev Mac only,
+      not live yet): ban/unban take the ban's `type` (it refused it, so
+      username and channel bans couldn't work).
 - [x] Monitor notification sounds (the pack's sounds, the iPhone's, or none; Monitor screen; sounds turned off in Settings → Sounds are silent).
 - [x] NG Account sound pack sync: catalog packs installed and the chosen
       pack follow the account, as the old app's settings records

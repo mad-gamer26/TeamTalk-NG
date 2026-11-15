@@ -114,6 +114,9 @@ pub struct MonitorView {
     pub channels: Vec<MonitorChannel>,
     pub users: Vec<MonitorUser>,
     pub my_user_id: i64,
+    /// The monitor's account: TeamTalk's user type (2: admin) and rights bits.
+    pub my_user_type: i64,
+    pub my_user_rights: i64,
     pub seq: i64,
 }
 
@@ -285,6 +288,8 @@ impl MonitorClient {
                 })
                 .collect(),
             my_user_id: v.my_user_id,
+            my_user_type: v.my_user_type,
+            my_user_rights: v.my_user_rights,
             seq: v.seq,
         })
     }
@@ -408,4 +413,258 @@ impl MonitorClient {
 pub struct MonitorRegistration {
     pub token: String,
     pub push_key: String,
+}
+
+// Server administration through the Monitor: TeamTalk's own commands and
+// replies (the protocol's field names, as BearWare's server writes them),
+// as the core's records, so the app's admin screens work the same.
+
+use crate::Ban;
+use crate::admin::{ServerSettings, ServerStatistics, UserAccount, UserRight};
+use serde_json::{Value, json};
+
+const BANTYPE_CHANNEL: u32 = 0x01;
+const BANTYPE_IPADDR: u32 = 0x02;
+const BANTYPE_USERNAME: u32 = 0x04;
+
+fn text(v: &Value, k: &str) -> String {
+    v.get(k).and_then(Value::as_str).unwrap_or_default().to_owned()
+}
+
+/// A time the server sends as Unix seconds, as text (the app formats it);
+/// servers use small numbers for "never".
+fn time(v: &Value, k: &str) -> String {
+    match v.get(k) {
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .filter(|&t| t > 86_400)
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+fn int(v: &Value, k: &str) -> i64 {
+    v.get(k).and_then(Value::as_i64).unwrap_or(0)
+}
+
+fn ints(v: &Value, k: &str) -> Vec<i64> {
+    v.get(k)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default()
+}
+
+fn rights_from(bits: u32) -> Vec<UserRight> {
+    ttng_core::UserRight::ALL
+        .into_iter()
+        .filter(|r| bits & r.bit() != 0)
+        .map(Into::into)
+        .collect()
+}
+
+fn rights_bits(rights: &[UserRight]) -> u32 {
+    rights
+        .iter()
+        .map(|r| ttng_core::UserRight::from(*r).bit())
+        .fold(0, |a, b| a | b)
+}
+
+pub(crate) fn account_from(l: &Value) -> UserAccount {
+    let flood = ints(l, "cmdflood");
+    UserAccount {
+        username: text(l, "username"),
+        password: text(l, "password"),
+        admin: int(l, "usertype") & 2 != 0,
+        rights: rights_from(int(l, "userrights") as u32),
+        note: text(l, "note"),
+        initial_channel: text(l, "initchan"),
+        auto_operator_channels: ints(l, "opchannels").into_iter().map(|c| c as i32).collect(),
+        bitrate_limit: int(l, "audiocodeclimit") as i32,
+        commands_limit: flood.first().copied().unwrap_or(0) as i32,
+        commands_interval_ms: flood.get(1).copied().unwrap_or(0) as i32,
+        last_modified: time(l, "modifiedtime"),
+        last_login: time(l, "lastlogin"),
+    }
+}
+
+pub(crate) fn account_params(a: &UserAccount) -> Value {
+    json!({
+        "username": a.username, "password": a.password,
+        "usertype": if a.admin { 2 } else { 1 },
+        "userrights": if a.admin { 0 } else { rights_bits(&a.rights) },
+        "note": a.note, "initchan": a.initial_channel,
+        "opchannels": a.auto_operator_channels,
+        "audiocodeclimit": a.bitrate_limit,
+        "cmdflood": [a.commands_limit, a.commands_interval_ms],
+    })
+}
+
+pub(crate) fn ban_from(l: &Value) -> Ban {
+    let types = int(l, "type") as u32;
+    Ban {
+        ip_address: text(l, "ipaddr"),
+        username: text(l, "username"),
+        nickname: text(l, "nickname"),
+        time: time(l, "bantime"),
+        owner: text(l, "owner"),
+        channel_path: text(l, "channel"),
+        by_ip_address: types & BANTYPE_IPADDR != 0,
+        by_username: types & BANTYPE_USERNAME != 0,
+        raw_types: types,
+    }
+}
+
+pub(crate) fn settings_from(p: &serde_json::Map<String, Value>) -> ServerSettings {
+    let v = Value::Object(p.clone());
+    let n = |k: &str| int(&v, k) as i32;
+    ServerSettings {
+        name: text(&v, "servername"),
+        motd: text(&v, "motdraw"),
+        max_users: n("maxusers"),
+        max_login_attempts: n("maxloginattempts"),
+        max_logins_per_address: n("maxiplogins"),
+        login_delay_ms: n("logindelay"),
+        voice_limit: n("voicetxlimit"),
+        video_limit: n("videotxlimit"),
+        media_file_limit: n("mediafiletxlimit"),
+        desktop_limit: n("desktoptxlimit"),
+        total_limit: n("totaltxlimit"),
+        auto_save: int(&v, "autosave") != 0,
+        tcp_port: n("tcpport"),
+        udp_port: n("udpport"),
+        user_timeout: n("usertimeout"),
+        log_events: int(&v, "logevents") as u32,
+        version: text(&v, "version"),
+        protocol_version: text(&v, "protocol"),
+    }
+}
+
+pub(crate) fn settings_params(s: &ServerSettings) -> Value {
+    json!({
+        "servername": s.name, "motdraw": s.motd, "maxusers": s.max_users,
+        "maxloginattempts": s.max_login_attempts, "maxiplogins": s.max_logins_per_address,
+        "logindelay": s.login_delay_ms, "voicetxlimit": s.voice_limit, "videotxlimit": s.video_limit,
+        "mediafiletxlimit": s.media_file_limit, "desktoptxlimit": s.desktop_limit,
+        "totaltxlimit": s.total_limit, "autosave": s.auto_save, "tcpport": s.tcp_port,
+        "udpport": s.udp_port, "usertimeout": s.user_timeout, "logevents": s.log_events,
+    })
+}
+
+pub(crate) fn statistics_from(l: &Value) -> ServerStatistics {
+    ServerStatistics {
+        total_bytes_sent: int(l, "totaltx"),
+        total_bytes_received: int(l, "totalrx"),
+        voice_bytes_sent: int(l, "voicetx"),
+        voice_bytes_received: int(l, "voicerx"),
+        video_bytes_sent: int(l, "videocaptx"),
+        video_bytes_received: int(l, "videocaprx"),
+        media_file_bytes_sent: int(l, "mediafiletx"),
+        media_file_bytes_received: int(l, "mediafilerx"),
+        desktop_bytes_sent: int(l, "desktoptx"),
+        desktop_bytes_received: int(l, "desktoprx"),
+        users_served: int(l, "usersserved") as i32,
+        users_peak: int(l, "userspeak") as i32,
+        files_sent: int(l, "filestx"),
+        files_received: int(l, "filesrx"),
+        uptime_ms: int(l, "uptime"),
+    }
+}
+
+fn of_type<'a>(lines: &'a [Value], t: &'a str) -> impl Iterator<Item = &'a Value> + 'a {
+    lines
+        .iter()
+        .filter(move |l| l.get("type").and_then(Value::as_str) == Some(t))
+}
+
+#[uniffi::export]
+impl MonitorClient {
+    /// The server's user accounts (the Monitor's login must be an admin).
+    pub fn admin_accounts(&self, server_id: i64) -> Result<Vec<UserAccount>> {
+        let lines = self.with(|m| m.admin(server_id, "listaccounts", json!({ "index": 0, "count": 100000 })))?;
+        Ok(of_type(&lines, "useraccount").map(account_from).collect())
+    }
+
+    /// Adds an account, or changes the one with its username.
+    pub fn admin_save_account(&self, server_id: i64, account: UserAccount) -> Result<()> {
+        self.with(|m| m.admin(server_id, "newaccount", account_params(&account)))
+            .map(|_| ())
+    }
+
+    pub fn admin_delete_account(&self, server_id: i64, username: String) -> Result<()> {
+        self.with(|m| m.admin(server_id, "delaccount", json!({ "username": username })))
+            .map(|_| ())
+    }
+
+    /// The server's bans (server-wide and channels').
+    pub fn admin_bans(&self, server_id: i64) -> Result<Vec<Ban>> {
+        let lines = self.with(|m| m.admin(server_id, "listbans", json!({ "index": 0, "count": 100000 })))?;
+        // A ban's own `type` (its ban types, a number) hides the line's name
+        // in the Monitor's reply: they're the lines with a ban time.
+        Ok(lines
+            .iter()
+            .filter(|l| l.get("bantime").is_some() || l.get("type").and_then(Value::as_str) == Some("userbanned"))
+            .map(ban_from)
+            .collect())
+    }
+
+    /// A channel's bans.
+    pub fn admin_channel_bans(&self, server_id: i64, channel_id: i32) -> Result<Vec<Ban>> {
+        let lines = self.with(|m| {
+            m.admin(
+                server_id,
+                "listbans",
+                json!({ "chanid": channel_id, "index": 0, "count": 100000 }),
+            )
+        })?;
+        Ok(lines
+            .iter()
+            .filter(|l| l.get("bantime").is_some())
+            .map(ban_from)
+            .collect())
+    }
+
+    /// Bans an IP address or a username (by hand), from the server or a
+    /// channel (its path; empty: the server).
+    pub fn admin_ban(&self, server_id: i64, address: String, username: String, channel_path: String) -> Result<()> {
+        let mut types = if username.is_empty() {
+            BANTYPE_IPADDR
+        } else {
+            BANTYPE_USERNAME
+        };
+        let mut p = json!({ "ipaddr": address, "username": username });
+        if !channel_path.is_empty() {
+            types |= BANTYPE_CHANNEL;
+            p["channel"] = channel_path.into();
+        }
+        p["type"] = types.into();
+        self.with(|m| m.admin(server_id, "ban", p)).map(|_| ())
+    }
+
+    pub fn admin_unban(&self, server_id: i64, ban: Ban) -> Result<()> {
+        let p = json!({
+            "ipaddr": ban.ip_address, "username": ban.username,
+            "channel": ban.channel_path, "type": ban.raw_types,
+        });
+        self.with(|m| m.admin(server_id, "unban", p)).map(|_| ())
+    }
+
+    pub fn admin_server_settings(&self, server_id: i64) -> Result<ServerSettings> {
+        Ok(settings_from(&self.with(|m| m.server_properties(server_id))?))
+    }
+
+    pub fn admin_update_server(&self, server_id: i64, settings: ServerSettings) -> Result<()> {
+        self.with(|m| m.admin(server_id, "updateserver", settings_params(&settings)))
+            .map(|_| ())
+    }
+
+    pub fn admin_statistics(&self, server_id: i64) -> Result<ServerStatistics> {
+        let lines = self.with(|m| m.admin(server_id, "querystats", json!({})))?;
+        Ok(of_type(&lines, "stats").next().map(statistics_from).unwrap_or_default())
+    }
+
+    pub fn admin_save_config(&self, server_id: i64) -> Result<()> {
+        self.with(|m| m.admin(server_id, "saveconfig", json!({}))).map(|_| ())
+    }
 }

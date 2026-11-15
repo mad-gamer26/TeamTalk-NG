@@ -384,6 +384,9 @@ final class ServerConnection {
     }
 
     func channelBans(_ channel: Int32) async -> [Ban]? {
+        if let id = monitorId {
+            return await monitorAdmin("Couldn't list the bans") { try $0.adminChannelBans(serverId: id, channelId: channel) }
+        }
         let client = self.client
         let r: Result<[Ban], Error> = await Task.detached { Result { try client.listChannelBans(channelId: channel) } }.value
         switch r {
@@ -678,6 +681,15 @@ final class ServerConnection {
     }
 
     func saveServerConfig() {
+        if let id = monitorId {
+            Task {
+                if await monitorAdmin("Couldn't save the configuration", { try $0.adminSaveConfig(serverId: id) }) != nil {
+                    note("Server configuration saved")
+                    status(.serverConfigSaved, "Server configuration saved")
+                }
+            }
+            return
+        }
         run("Couldn't save the configuration") { try $0.saveServerConfig() }
         note("Server configuration saved")
         status(.serverConfigSaved, "Server configuration saved")
@@ -687,23 +699,38 @@ final class ServerConnection {
     func banUsername(_ username: String, channelPath: String = "") {
         let u = username.trimmingCharacters(in: .whitespaces)
         guard !u.isEmpty else { return }
+        if let id = monitorId {
+            Task { _ = await monitorAdmin("Couldn't ban it") { try $0.adminBan(serverId: id, address: "", username: u, channelPath: channelPath) } }
+            return
+        }
         run("Couldn't ban it") { try $0.banUsername(username: u, channelPath: channelPath) }
     }
 
     func banAddress(_ address: String, channelPath: String = "") {
         let a = address.trimmingCharacters(in: .whitespaces)
         guard !a.isEmpty else { return }
+        if let id = monitorId {
+            Task { _ = await monitorAdmin("Couldn't ban it") { try $0.adminBan(serverId: id, address: a, username: "", channelPath: channelPath) } }
+            return
+        }
         run("Couldn't ban it") { try $0.banAddress(address: a, channelPath: channelPath) }
     }
 
     func broadcast(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if let id = monitorId {
+            Task { _ = await monitorAdmin("Couldn't broadcast") { try $0.sendMessage(serverId: id, to: .broadcast, text: text) } }
+            return
+        }
         run("Couldn't broadcast") { try $0.sendMessage(target: .broadcast, text: text) }
     }
 
     /// The server's bans (nil and announced when they can't be listed).
     func bans() async -> [Ban]? {
+        if let id = monitorId {
+            return await monitorAdmin("Couldn't list the bans") { try $0.adminBans(serverId: id) }
+        }
         let client = self.client
         let result: Result<[Ban], Error> = await Task.detached {
             do { return .success(try client.listBans()) } catch { return .failure(error) }
@@ -717,6 +744,9 @@ final class ServerConnection {
     }
 
     func unban(_ ban: Ban) async -> Bool {
+        if let id = monitorId {
+            return await monitorAdmin("Couldn't remove the ban") { try $0.adminUnban(serverId: id, ban: ban) } != nil
+        }
         let client = self.client
         let failed: String? = await Task.detached {
             do { try client.unban(ban: ban); return nil } catch { return words(error) }
@@ -1412,6 +1442,16 @@ extension ServerConnection {
         monitorTask = nil
     }
 
+    /// The Monitor's account's rights (TeamTalk's UserRight bits; an admin
+    /// has them all). Only what the Monitor can do: no channels or files.
+    static func rights(type: Int64, bits: Int64) -> MyRights {
+        let admin = type & 2 != 0
+        func has(_ b: Int64) -> Bool { admin || bits & b != 0 }
+        return MyRights(admin: admin, createTemporaryChannels: false, modifyChannels: false, broadcast: has(0x10),
+                        kick: has(0x20), ban: has(0x40), moveUsers: has(0x80), uploadFiles: false, downloadFiles: false,
+                        updateServer: has(0x800))
+    }
+
     /// The Monitor's view as the core's snapshot.
     private func applyMonitorView(_ v: MonitorView, announce: Bool) {
         let users = v.users.map(Self.user(from:))
@@ -1421,8 +1461,7 @@ extension ServerConnection {
             state: .loggedIn,
             server: ServerInfo(name: v.serverName, motd: v.motd, version: "", maxUsers: 0),
             myUserId: Int32(v.myUserId), myChannelId: me?.channelId ?? 0,
-            myRights: MyRights(admin: me?.admin ?? false, createTemporaryChannels: false, modifyChannels: false, broadcast: false,
-                               kick: true, ban: true, moveUsers: true, uploadFiles: false, downloadFiles: false, updateServer: false),
+            myRights: Self.rights(type: v.myUserType, bits: v.myUserRights),
             channels: channels, users: users, files: [], transfers: [], recordingPath: "",
             mutedAll: false, relaying: nil, streaming: nil)
         // As a live connection: events are handled against what was known,
@@ -1475,6 +1514,20 @@ extension ServerConnection {
             at = snapshot?.channels.first { $0.id == x.parentId }
         }
         return "/" + parts.joined(separator: "/") + "/"
+    }
+
+    /// A call on the Monitor for this server (nil: the Monitor couldn't be reached).
+    func monitorCall<T: Sendable>(_ f: @escaping @Sendable (MonitorClient) throws -> T) async -> Result<T, Error>? {
+        await monitorStore?.call(f)
+    }
+
+    /// Server administration through the Monitor; failures announced.
+    private func monitorAdmin<T: Sendable>(_ what: String, _ f: @escaping @Sendable (MonitorClient) throws -> T) async -> T? {
+        switch await monitorCall(f) {
+        case .success(let v)?: return v
+        case .failure(let e)?: announce("\(what): \(NGAccountStore.words(e))"); return nil
+        case nil: announce("\(what): the Monitor can't be reached."); return nil
+        }
     }
 
     private func monitorAct(_ a: MonitorAction) {

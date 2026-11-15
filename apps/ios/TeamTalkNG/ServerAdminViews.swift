@@ -33,15 +33,30 @@ extension UserRight {
 
 /// Runs a blocking call off the main thread; failures announced.
 @MainActor
-func adminCall<T: Sendable>(_ connection: ServerConnection, _ what: String, _ f: @escaping @Sendable (TtClient) throws -> T) async -> T? {
-    let c = connection.coreClient
-    let r = await Task.detached { Result { try f(c) } }.value
+func adminCall<T: Sendable>(_ connection: ServerConnection, _ what: String,
+                             monitor m: @escaping @Sendable (MonitorClient, Int64) throws -> T,
+                             _ f: @escaping @Sendable (TtClient) throws -> T) async -> T? {
+    let r: Result<T, Error>
+    if let id = connection.monitorId {
+        // Through the Monitor's own login, as if connected.
+        guard let got = await connection.monitorCall({ try m($0, id) }) else { announce("\(what): the Monitor can't be reached."); return nil }
+        r = got
+    } else {
+        let c = connection.coreClient
+        r = await Task.detached { Result { try f(c) } }.value
+    }
     switch r {
     case .success(let v): return v
     case .failure(let e):
-        announce("\(what): \(words(e))")
+        announce("\(what): \(connection.monitorId == nil ? words(e) : NGAccountStore.words(e))")
         return nil
     }
+}
+
+/// A time as the server gives it; the Monitor sends Unix seconds.
+func serverTime(_ s: String) -> String {
+    guard !s.isEmpty, s.allSatisfy(\.isNumber), let t = TimeInterval(s) else { return s }
+    return Date(timeIntervalSince1970: t).formatted(date: .abbreviated, time: .shortened)
 }
 
 /// The server's accounts.
@@ -103,7 +118,7 @@ struct AccountsView: View {
                     if let a = deleting {
                         Task {
                             let name = a.username
-                            if await adminCall(connection, "Couldn't delete it", { try $0.deleteAccount(username: name) }) != nil {
+                            if await adminCall(connection, "Couldn't delete it", monitor: { try $0.adminDeleteAccount(serverId: $1, username: name) }, { try $0.deleteAccount(username: name) }) != nil {
                                 announce("Deleted \(name)")
                             }
                             await load()
@@ -119,12 +134,12 @@ struct AccountsView: View {
     private func summary(_ a: UserAccount) -> String {
         var p = [a.admin ? "Administrator" : "Default user"]
         if !a.note.isEmpty { p.append(a.note) }
-        if !a.lastLogin.isEmpty { p.append("last login \(a.lastLogin)") }
+        if !a.lastLogin.isEmpty { p.append("last login \(serverTime(a.lastLogin))") }
         return p.joined(separator: ", ")
     }
 
     private func load() async {
-        accounts = await adminCall(connection, "Couldn't list the accounts") { try $0.listAccounts() }?
+        accounts = await adminCall(connection, "Couldn't list the accounts", monitor: { try $0.adminAccounts(serverId: $1) }) { try $0.listAccounts() }?
             .sorted { $0.username.localizedStandardCompare($1.username) == .orderedAscending } ?? accounts ?? []
     }
 }
@@ -201,8 +216,8 @@ struct AccountEditView: View {
                 }
                 if !new && !account.lastModified.isEmpty {
                     Section {
-                        LabeledContent("Changed", value: account.lastModified)
-                        if !account.lastLogin.isEmpty { LabeledContent("Last login", value: account.lastLogin) }
+                        LabeledContent("Changed", value: serverTime(account.lastModified))
+                        if !account.lastLogin.isEmpty { LabeledContent("Last login", value: serverTime(account.lastLogin)) }
                     }
                 }
             }
@@ -219,7 +234,7 @@ struct AccountEditView: View {
                         a.username = a.username.trimmingCharacters(in: .whitespaces)
                         let saving = a
                         Task {
-                            if await adminCall(connection, "Couldn't save it", { try $0.saveAccount(account: saving) }) != nil {
+                            if await adminCall(connection, "Couldn't save it", monitor: { try $0.adminSaveAccount(serverId: $1, account: saving) }, { try $0.saveAccount(account: saving) }) != nil {
                                 announce("Saved \(saving.username)")
                                 dismiss()
                             }
@@ -292,7 +307,7 @@ struct ServerSettingsView: View {
                     Button("Save") {
                         guard let saving = s else { return }
                         Task {
-                            if await adminCall(connection, "Couldn't change the server", { try $0.updateServerSettings(settings: saving) }) != nil {
+                            if await adminCall(connection, "Couldn't change the server", monitor: { try $0.adminUpdateServer(serverId: $1, settings: saving) }, { try $0.updateServerSettings(settings: saving) }) != nil {
                                 announce("Server settings saved")
                                 dismiss()
                             }
@@ -301,7 +316,7 @@ struct ServerSettingsView: View {
                     .disabled(s == nil)
                 }
             }
-            .task { s = await adminCall(connection, "Couldn't read the settings") { try $0.serverSettings() } }
+            .task { s = await adminCall(connection, "Couldn't read the settings", monitor: { try $0.adminServerSettings(serverId: $1) }) { try $0.serverSettings() } }
         }
     }
 
@@ -357,7 +372,7 @@ struct ServerStatisticsView: View {
     }
 
     private func load() async {
-        st = await adminCall(connection, "Couldn't get the statistics") { try $0.serverStatistics() } ?? st
+        st = await adminCall(connection, "Couldn't get the statistics", monitor: { try $0.adminStatistics(serverId: $1) }) { try $0.serverStatistics() } ?? st
     }
 
     private func bytes(_ sent: Int64, _ received: Int64) -> String {

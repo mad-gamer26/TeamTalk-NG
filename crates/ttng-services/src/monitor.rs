@@ -120,6 +120,9 @@ pub struct MonitorView {
     pub users: Vec<MonitorUser>,
     /// The monitor's own user ID there.
     pub my_user_id: i64,
+    /// The monitor's account: TeamTalk's user type (2: admin) and rights bits.
+    pub my_user_type: i64,
+    pub my_user_rights: i64,
     /// Events after this one are news.
     pub seq: i64,
 }
@@ -307,6 +310,8 @@ impl Monitor {
             channels: decode(state.get("channels").cloned().unwrap_or(json!([])))?,
             users: decode(state.get("users").cloned().unwrap_or(json!([])))?,
             my_user_id: state.pointer("/me/user_id").and_then(Value::as_i64).unwrap_or(0),
+            my_user_type: state.pointer("/me/user_type").and_then(Value::as_i64).unwrap_or(0),
+            my_user_rights: state.pointer("/me/user_rights").and_then(Value::as_i64).unwrap_or(0),
             seq: v.get("seq").and_then(Value::as_i64).unwrap_or(0),
         })
     }
@@ -377,6 +382,27 @@ impl Monitor {
         body["text"] = text.into();
         self.call("POST", &format!("/v1/servers/{server_id}/messages"), Some(body))
             .map(|_| ())
+    }
+
+    /// Server administration through the Monitor's own login (its owner
+    /// only): a TeamTalk command with its parameters; the lines the server
+    /// answered (each with its name as `type`).
+    pub fn admin(&self, server_id: i64, command: &str, params: Value) -> Result<Vec<Value>> {
+        let v = self.call(
+            "POST",
+            &format!("/v1/servers/{server_id}/admin"),
+            Some(json!({ "command": command, "params": params })),
+        )?;
+        Ok(v.get("lines").and_then(Value::as_array).cloned().unwrap_or_default())
+    }
+
+    /// The server's settings as it last sent them (its `serverupdate`).
+    pub fn server_properties(&self, server_id: i64) -> Result<serde_json::Map<String, Value>> {
+        let v = self.call("GET", &format!("/v1/servers/{server_id}"), None)?;
+        Ok(v.pointer("/state/info/properties")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default())
     }
 
     pub fn act(&self, server_id: i64, action: &MonitorAction) -> Result<()> {
