@@ -4,7 +4,6 @@
 use super::*;
 
 pub(super) enum ChannelRequest {
-    HearOwnStream(bool),
     JoinHidden {
         path: String,
         password: String,
@@ -120,10 +119,6 @@ impl Worker {
                 let cmd = unsafe { sys::TT_DoJoinChannel(self.inst, &c) };
                 self.track(cmd, Pending::Reply(reply), "Joining that channel");
             }
-            ChannelRequest::HearOwnStream(on) => {
-                self.hear_own_stream = on;
-                let _ = reply.send(Ok(()));
-            }
             ChannelRequest::Stream {
                 path,
                 offset_ms,
@@ -142,10 +137,6 @@ impl Worker {
                 let pb = playback(offset_ms, paused);
                 // SAFETY: inst is live; pb is valid; no video codec.
                 let ok = unsafe { sys::TT_UpdateStreamingMediaFileToChannel(self.inst, &pb, ptr::null()) } != 0;
-                if ok && self.local_playback > 0 {
-                    // SAFETY: inst is live; pb is valid.
-                    unsafe { sys::TT_UpdateLocalPlayback(self.inst, self.local_playback, &pb) };
-                }
                 if ok {
                     st.status = if paused {
                         StreamStatus::Paused
@@ -166,7 +157,6 @@ impl Worker {
                 let had = self.model.lock().ok().and_then(|m| m.streaming.clone());
                 // SAFETY: inst is live.
                 unsafe { sys::TT_StopStreamingMediaFileToChannel(self.inst) };
-                self.stop_local_playback();
                 if let Some(mut st) = had {
                     st.status = StreamStatus::Stopped;
                     self.set_stream(None);
@@ -223,13 +213,8 @@ impl Worker {
         if unsafe { sys::TT_StartStreamingMediaFileToChannelEx(self.inst, p.as_ptr(), &pb, video) } == 0 {
             return Err(Error::Refused("The file couldn't be streamed.".into()));
         }
-        self.stop_local_playback();
-        if self.hear_own_stream && !live {
-            // The SDK never plays my own stream back to me: play the file
-            // here too, kept in step (pause, seek, stop).
-            // SAFETY: inst is live; p and pb outlive the call.
-            self.local_playback = unsafe { sys::TT_InitLocalPlayback(self.inst, p.as_ptr(), &pb) }.max(0);
-        }
+        // Hearing it myself is my own media file subscription (the server
+        // sends it back), as on the desktop.
         self.set_stream(Some(MediaStream {
             path: path.into(),
             status: StreamStatus::Started,
@@ -238,14 +223,6 @@ impl Worker {
             looping,
         }));
         Ok(())
-    }
-
-    pub(super) fn stop_local_playback(&mut self) {
-        if self.local_playback > 0 {
-            // SAFETY: inst is live.
-            unsafe { sys::TT_StopLocalPlayback(self.inst, self.local_playback) };
-            self.local_playback = 0;
-        }
     }
 
     /// Keeps the model and my status's streaming flags up to date.
@@ -298,7 +275,6 @@ impl Worker {
                 }
             }
             StreamStatus::Finished | StreamStatus::Failed | StreamStatus::Stopped => {
-                self.stop_local_playback();
                 self.set_stream(None);
                 self.emit(Event::StreamChanged(st));
             }

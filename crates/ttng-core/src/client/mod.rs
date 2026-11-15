@@ -719,12 +719,6 @@ impl Client {
         self.ask(|r| Request::Channels(ChannelRequest::UpdateStream { offset_ms, paused }, r))
     }
 
-    /// Whether I hear the files I stream (the SDK doesn't play my own
-    /// stream back; this plays the file here too, in step).
-    pub fn set_hear_own_stream(&self, on: bool) -> Result<()> {
-        self.ask(|r| Request::Channels(ChannelRequest::HearOwnStream(on), r))
-    }
-
     pub fn stop_stream(&self) -> Result<()> {
         self.ask(|r| Request::Channels(ChannelRequest::StopStream, r))
     }
@@ -937,8 +931,6 @@ struct Worker {
     /// An MP3 recording being made as WAV first: the WAV and the MP3.
     recording_mp3: Option<(String, String)>,
     /// Play my own stream here too, and its local playback session.
-    hear_own_stream: bool,
-    local_playback: i32,
     /// The streamed file's audio preprocessor (kept for looping).
     stream_preprocessor: StreamPreprocessor,
     /// The latest picture of each video (shared with `Client::video_frame`),
@@ -982,8 +974,6 @@ impl Worker {
             duplex: false,
             record_each: None,
             recording_mp3: None,
-            hear_own_stream: false,
-            local_playback: 0,
             stream_preprocessor: StreamPreprocessor::None,
             web_login: None,
             frames,

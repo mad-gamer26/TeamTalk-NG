@@ -301,8 +301,45 @@ fn others_hear_streamed(kind: &str) {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// As the desktop: my own stream comes back to me when I subscribe to my
+/// own media files (the server sends it); no local playback of the file.
 #[test]
-fn hearing_my_own_stream_and_refusing_what_cant_play() {
+fn my_own_stream_comes_back_through_my_subscription() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    a.client.init_audio(AudioDevices::Virtual).unwrap();
+    a.client.join_channel_path("/", "").unwrap();
+    let alice = a.client.snapshot().my_user_id;
+    a.client.set_subscription(alice, Subscription::MediaFile, true).unwrap();
+    let dir = std::env::temp_dir().join(format!("ttng-own-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    tone_wav(&wav, 3);
+    let rec = dir.join("heard.wav");
+    a.client
+        .start_recording_with(rec.to_str().unwrap(), RecordingFormat::Wave, true)
+        .unwrap();
+    a.client
+        .stream_media_file(wav.to_str().unwrap(), 0, false, false)
+        .unwrap();
+    a.wait_for("the end", |e| {
+        matches!(e, Event::StreamChanged(s) if s.status == StreamStatus::Finished).then_some(())
+    });
+    std::thread::sleep(Duration::from_millis(800));
+    a.client.stop_recording().unwrap();
+    let data = std::fs::read(&rec).unwrap();
+    let loud = data[44..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .filter(|c| i16::from_le_bytes(**c).unsigned_abs() > 1000)
+        .count();
+    assert!(loud > 48_000, "Alice heard her own stream back ({loud} loud samples)");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_stream_pauses_seeks_stops_and_refuses_what_cant_play() {
     let server = Server::start();
     let a = TestClient::logged_in(&server, "alice");
     let b = TestClient::logged_in(&server, "bob");
@@ -310,11 +347,10 @@ fn hearing_my_own_stream_and_refusing_what_cant_play() {
         c.client.init_audio(AudioDevices::Virtual).unwrap();
         c.client.join_channel_path("/", "").unwrap();
     }
-    let dir = std::env::temp_dir().join(format!("ttng-own-{}-{}", std::process::id(), server.port));
+    let dir = std::env::temp_dir().join(format!("ttng-pause-{}-{}", std::process::id(), server.port));
     std::fs::create_dir_all(&dir).unwrap();
     let wav = dir.join("tone.wav");
     tone_wav(&wav, 3);
-    a.client.set_hear_own_stream(true).unwrap();
     a.client
         .stream_media_file(wav.to_str().unwrap(), 0, false, false)
         .unwrap();

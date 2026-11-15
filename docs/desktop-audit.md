@@ -137,8 +137,7 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       decrease per second, denoising, max attenuation; Default), core
       StreamPreprocessor, tested with real audio (gain 0 silent, Speex heard,
       and an earlier stream's preprocessor not kept). n/a: test playback
-      (NG plays your own stream as you send it: "Hear the files you
-      stream"), video codec bitrate (NG sends VP8 at the desktop's default).
+      (as the desktop: your own media file subscription brings your stream back; NG has no local playback), video codec bitrate (NG sends VP8 at the desktop's default).
 - [x] Online users: "Keep disconnected users" (off).
 - [n/a] File transfer: "Close when completed" and Open: NG has no transfer
       dialog; downloads go to the Files app.
@@ -183,12 +182,13 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] The desktop's sound events by its names, in its order, by its file
       names (settings.h SOUNDEVENT_*_DEFAULT), so its sound packs work as
       they are. The owner's choices: no "Hotkey pressed" (hotkey.wav) at
-      all — push to talk starts and stops with "Voice activation
-      triggered/stopped" (voiceact_on/off), and an imported pack's
-      hotkey.wav is left out; "Voice activation enabled/disabled via "Me"
-      menu" (vox_me_*) when I change the talk mode, "Voice activation
-      enabled/disabled" (vox_enable/vox_disable) when the app starts, as the
-      desktop does. n/a: "Channel
+      all, and an imported pack's hotkey.wav is left out; vox_me_enable /
+      vox_me_disable (the desktop's "Voice activation enabled/disabled via
+      "Me" menu", named here "Microphone turned on/off") whenever I turn my
+      microphone on or off: push to talk, mute and unmute, changing the
+      talk mode; voiceact_on/off only for voice activation itself; "Voice
+      activation enabled/disabled" (vox_enable/vox_disable) when the app
+      starts, as the desktop. n/a: "Channel
       silent" (no sound by default), "Desktop access request".
 - [x] Per-server volumes (the desktop's separate copies, each with its
       own): master volume, microphone gain, media files, in the server

@@ -53,17 +53,10 @@ final class AppModel {
     var streamVideo = true {
         didSet {
             save()
-            for c in connections.values { c.applyHearOwnStream() }
+            for c in connections.values { c.applyStreamVideo() }
         }
     }
 
-    /// Hear the files I stream (the SDK doesn't play my own stream back).
-    var hearOwnStream = true {
-        didSet {
-            save()
-            for c in connections.values { c.applyHearOwnStream() }
-        }
-    }
 
     /// Recording as the desktop sets it up.
     var recordMP3 = true { didSet { save() } }
@@ -231,7 +224,6 @@ final class AppModel {
         recordEachPerson = defaults.bool(forKey: "recordEachPerson")
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
-        hearOwnStream = defaults.object(forKey: "hearOwnStream") as? Bool ?? true
         audioNetVolume = defaults.object(forKey: "audioNetVolume") as? Int ?? 50
         mixFileVolume = defaults.object(forKey: "mixFileVolume") as? Int ?? 50
         streamVideo = defaults.object(forKey: "streamVideo") as? Bool ?? true
@@ -337,7 +329,6 @@ final class AppModel {
         audio = defaultAudioSettings()
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
-        hearOwnStream = true
         showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false; sendOnReturn = true
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
@@ -446,7 +437,6 @@ final class AppModel {
         defaults.set(recordEachPerson, forKey: "recordEachPerson")
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
-        defaults.set(hearOwnStream, forKey: "hearOwnStream")
         defaults.set(audioNetVolume, forKey: "audioNetVolume")
         defaults.set(mixFileVolume, forKey: "mixFileVolume")
         defaults.set(streamVideo, forKey: "streamVideo")

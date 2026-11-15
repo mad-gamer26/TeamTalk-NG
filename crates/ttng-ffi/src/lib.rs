@@ -1488,12 +1488,6 @@ impl TtClient {
         Ok(self.inner.set_typing(user_id, typing)?)
     }
 
-    /// Whether I hear the files I stream myself (the SDK doesn't play my
-    /// own stream back; this plays the file here too, in step).
-    pub fn set_hear_own_stream(&self, on: bool) -> Result<()> {
-        Ok(self.inner.set_hear_own_stream(on)?)
-    }
-
     pub fn stop_stream(&self) -> Result<()> {
         Ok(self.inner.stop_stream()?)
     }

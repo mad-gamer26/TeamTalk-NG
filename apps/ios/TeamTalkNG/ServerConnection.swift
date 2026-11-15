@@ -175,7 +175,6 @@ final class ServerConnection {
             webLoginUsername: s.bearwareLogin ? BearWare.username : "", webLoginToken: s.bearwareLogin ? BearWare.token : "")
         let client = self.client
         let audio = effectiveAudio
-        let hearOwn = app?.hearOwnStream ?? true
         let streamVideo = app?.streamVideo ?? true
         Task {
             let allowed = await AudioSession.requestMicrophone()
@@ -186,7 +185,6 @@ final class ServerConnection {
                     try client.connect(options: options)
                     // Every connection shares the microphone and speaker.
                     try? client.setAudioSettings(settings: audio)
-                    try? client.setHearOwnStream(on: hearOwn)
                     try? client.setStreamVideo(on: streamVideo)
                     try? client.initAudio(devices: allowed ? .shared : .virtual)
                     return nil
@@ -699,12 +697,9 @@ final class ServerConnection {
 
     // MARK: Sound
 
-    func applyHearOwnStream() {
-        guard let on = app?.hearOwnStream, let video = app?.streamVideo else { return }
-        run("Couldn't change that") { c in
-            try c.setHearOwnStream(on: on)
-            try c.setStreamVideo(on: video)
-        }
+    func applyStreamVideo() {
+        guard let video = app?.streamVideo else { return }
+        run("Couldn't change that") { try $0.setStreamVideo(on: video) }
     }
 
     /// The Settings volumes, with this server's own where it has them
@@ -923,15 +918,15 @@ final class ServerConnection {
     func setTransmitting(_ on: Bool) {
         guard isConnected, app?.talkMode == .pushToTalk, on != transmitting else { return }
         transmitting = on
-        // Talking starts and stops (the owner's choice of sounds).
-        sound(on ? .voiceActivationStarts : .voiceActivationStops)
+        // Microphone on and off (the owner's choice: vox_me_*).
+        sound(on ? .voiceActivationMeOn : .voiceActivationMeOff)
         if on { checkBlocked(.voice) }
         run("Couldn't talk") { try $0.setTransmitting(on: on) }
     }
 
     func setMicMuted(_ on: Bool) {
         muted = on
-        sound(on ? .voiceActivationStops : .voiceActivationStarts)
+        sound(on ? .voiceActivationMeOff : .voiceActivationMeOn)
         applyTalkMode()
     }
 

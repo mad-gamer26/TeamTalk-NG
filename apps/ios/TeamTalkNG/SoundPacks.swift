@@ -9,8 +9,7 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     // The desktop's sound events, in its order (soundeventsmodel.cpp), by
     // its file names (settings.h SOUNDEVENT_*_DEFAULT), so a desktop sound
     // pack works as it is. Not here: "Hotkey pressed" (the owner's choice:
-    // talking starts and stops with "Voice activation triggered" and
-    // "stopped" instead), "Channel silent" (no sound by default) and
+    // talking starts and stops with vox_me_enable and vox_me_disable), "Channel silent" (no sound by default) and
     // "Desktop access request" (no desktop sharing on phones).
     case loggedIn = "logged_on", loggedOut = "logged_off"
     case userJoined = "newuser", userLeft = "removeuser"
@@ -53,8 +52,11 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
         case .questionMode: "User enabled question mode"
         case .voiceActivationOn: "Voice activation enabled"
         case .voiceActivationOff: "Voice activation disabled"
-        case .voiceActivationMeOn: "Voice activation enabled via \"Me\" menu"
-        case .voiceActivationMeOff: "Voice activation disabled via \"Me\" menu"
+        // The desktop's "Voice activation enabled/disabled via "Me" menu"
+        // (vox_me_*): here whenever I turn my microphone on or off
+        // (push to talk, mute, the talk mode).
+        case .voiceActivationMeOn: "Microphone turned on"
+        case .voiceActivationMeOff: "Microphone turned off"
         case .voiceActivationStarts: "Voice activation triggered"
         case .voiceActivationStops: "Voice activation stopped"
         case .muteAllOn: "Mute master volume"
@@ -67,11 +69,11 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     }
 
     /// Earlier names: this app's and the old app's talking sounds are the
-    /// voice activation ones now.
+    /// microphone on/off ones (vox_me_*) now.
     var olderNames: [String] {
         switch self {
-        case .voiceActivationStarts: ["on"]
-        case .voiceActivationStops: ["off"]
+        case .voiceActivationMeOn: ["on"]
+        case .voiceActivationMeOff: ["off"]
         default: []
         }
     }
@@ -142,8 +144,8 @@ final class SoundStore {
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
             // This app's talking on and off sounds are the voice activation ones now.
-            if off.contains("on") { disabled.insert(.voiceActivationStarts) }
-            if off.contains("off") { disabled.insert(.voiceActivationStops) }
+            if off.contains("on") { disabled.insert(.voiceActivationMeOn) }
+            if off.contains("off") { disabled.insert(.voiceActivationMeOff) }
             // Once: this app's earlier defaults (five off) become the
             // desktop's (all on); a list changed by hand stays.
             if !defaults.bool(forKey: "soundsDesktopDefaults") {
@@ -159,7 +161,7 @@ final class SoundStore {
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
         // My own sounds for talking on and off: the voice activation ones now.
-        for (old, new) in [("on", "voiceact_on"), ("off", "voiceact_off"), ("hotkey", "")] {
+        for (old, new) in [("on", "vox_me_enable"), ("off", "vox_me_disable"), ("hotkey", "")] {
             let from = Self.customDirectory.appendingPathComponent("\(old).wav")
             guard FileManager.default.fileExists(atPath: from.path) else { continue }
             let to = Self.customDirectory.appendingPathComponent("\(new).wav")
@@ -408,7 +410,7 @@ final class SoundStore {
             }
         }
         guard !found.isEmpty else {
-            return "No sounds there: a pack's sounds are named as the desktop client's, such as logged_on.wav and voiceact_on.wav."
+            return "No sounds there: a pack's sounds are named as the desktop client's, such as logged_on.wav and vox_me_enable.wav."
         }
         let id = "imported-" + UUID().uuidString.prefix(8).lowercased()
         let target = Self.directory(id)

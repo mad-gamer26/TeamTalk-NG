@@ -87,12 +87,11 @@ struct SoundSystemView: View {
                 Text("Echo cancellation uses the iPhone's own (as in phone calls), so the others don't hear what your speaker plays. A channel with a fixed volume sets the gain itself.")
             }
             Section {
-                Toggle("Hear the files you stream", isOn: $model.hearOwnStream)
                 Toggle("Send video files' pictures too", isOn: $model.streamVideo)
             } header: {
                 Text("Streaming")
             } footer: {
-                Text("TeamTalk doesn't send your own stream back to you; with this on, the file plays here too, in step with what the channel hears.")
+                Text("To hear the files you stream, turn on your own media file subscription (your entry in the channel list), as on the desktop: the server sends your stream back to you.")
             }
             Section("Levels") {
                 level("Microphone gain", $model.audio.micGain)
