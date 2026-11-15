@@ -314,6 +314,8 @@ pub struct User {
     pub sending_video: bool,
     pub sharing_desktop: bool,
     pub streaming_media: bool,
+    /// Their stream is paused (the desktop's 💿⏸️).
+    pub stream_paused: bool,
     /// Their media file audio is playing for me right now.
     pub playing_media: bool,
     /// What I receive from them, and what they receive from me.
@@ -521,6 +523,7 @@ impl From<&sys::User> for User {
             sending_video: mode & 0x200 != 0,
             sharing_desktop: mode & 0x400 != 0,
             streaming_media: mode & 0x800 != 0,
+            stream_paused: mode & 0x2000 != 0,
             playing_media: state & sys::UserState_USERSTATE_MEDIAFILE_AUDIO != 0,
             my_subscriptions: Subscriptions(u.uLocalSubscriptions),
             their_subscriptions: Subscriptions(u.uPeerSubscriptions),

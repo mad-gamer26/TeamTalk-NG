@@ -105,24 +105,28 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       talk in yellow (on), show icons (on), maximum text length 50 (shown
       text cut, VoiceOver gets all), sort ascending / popularity, unread
       private messages marked.
-- [ ] Display: timestamp format; dialogs: excluded from channel/server
-      (off), close the transfer dialog when done (off), MOTD dialog (off),
-      server list on startup (off).
-- [ ] Sound events: playback mode (check options); event volume.
+- [x] Display: timestamp format (empty: the system's short date and
+      time); dialogs: text message popup (on: a private message opens its
+      conversation), excluded from channel/server (off: an alert), server
+      list on startup (off). n/a: the transfer dialog (NG has none), the
+      MOTD dialog (NG shows it in the chat, as the desktop's default).
+- [x] Sound events: playback mode (Default, One by One, Overlapping).
 - [ ] Sound system: "Test selected" (play a test through the output).
 
 ## F. Dialogs
 
-- [ ] Status: "Display file name in status message when streaming".
-- [ ] New channel: "Join channel on creation" (check its default).
-- [ ] Server entry: "Show password"; last joined channel checkbox.
-- [ ] Server list: filter by name and user count; official/unofficial;
-      export the list to a .tt file; latest hosts.
+- [x] Status: "Display file name in status message when streaming"; a
+      paused stream shown (💿⏸️ / "Streaming mediafile (Paused)").
+- [x] New channel: "Join channel on exit" (checked; made and joined).
+- [x] Server entry: "Show password" (and the channel's).
+- [x] Server list: filter by name and user count; official/unofficial.
+- [ ] Server list: export the list to a .tt file; latest hosts.
 - [ ] Volume: "Default" buttons.
+- [x] Stream media file: the dialog with the file's properties,
+      "Continuously play media file", start position.
 - [ ] Stream media file: audio preprocessor (none / TeamTalk / Speex /
-      WebRTC with its gain and denoise settings), start position, test
-      playback, video codec bitrate.
-- [ ] Online users: "Keep disconnected users".
+      WebRTC), test playback, video codec bitrate (core work).
+- [x] Online users: "Keep disconnected users" (off).
 - [ ] File transfer: "Close when completed"; open the file when done.
 - [ ] Banned users: ban by hand with a ban type; unban lists.
 - [ ] Record: stream types, separate folders for channel and private logs.

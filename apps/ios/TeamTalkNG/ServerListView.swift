@@ -5,6 +5,7 @@ struct ServerListView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: SavedServer?
     @State private var showSettings = false
+    @State private var shownServerList = false
     @State private var showPublic = false
     @State private var firstRun = false
     @State private var importing = false
@@ -67,7 +68,11 @@ struct ServerListView: View {
             }
             .sheet(isPresented: $showPublic) { PublicServersView() }
             .sheet(isPresented: $firstRun) { FirstRunView() }
-            .onAppear { if !UserDefaults.standard.bool(forKey: "setUp") && model.servers.isEmpty { firstRun = true } }
+            .onAppear {
+                if !UserDefaults.standard.bool(forKey: "setUp") && model.servers.isEmpty { firstRun = true }
+                // The desktop's "Show dialog box with server list on startup".
+                else if model.serverListOnStart && !shownServerList { shownServerList = true; showPublic = true }
+            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.teamTalkFile, .xml, .data]) { r in
                 if case .success(let url) = r { model.open(url) }
             }
@@ -136,6 +141,8 @@ struct ServerEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State var server: SavedServer
     @State private var importingCert: CertKind?
+    @State private var showPassword = false
+    @State private var showChannelPassword = false
 
     enum CertKind { case ca, cert, key }
 
@@ -194,7 +201,14 @@ struct ServerEditView: View {
                     TextField("Username", text: $server.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    SecureField("Password", text: $password)
+                    if showPassword {
+                        TextField("Password", text: $password)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    } else {
+                        SecureField("Password", text: $password)
+                    }
+                    // The desktop's "Show password".
+                    Toggle("Show password", isOn: $showPassword)
                     TextField("Nickname (optional)", text: $server.nickname)
                     TextField("Status message (optional)", text: $server.statusMessage)
                 }
@@ -205,7 +219,13 @@ struct ServerEditView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if !server.joinChannel.isEmpty {
-                        SecureField("Its password (optional)", text: $server.channelPassword)
+                        if showChannelPassword {
+                            TextField("Its password (optional)", text: $server.channelPassword)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        } else {
+                            SecureField("Its password (optional)", text: $server.channelPassword)
+                        }
+                        Toggle("Show channel password", isOn: $showChannelPassword)
                     }
                 }
             }

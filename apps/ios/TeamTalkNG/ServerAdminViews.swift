@@ -371,6 +371,7 @@ struct ServerStatisticsView: View {
 
 /// Everyone on the server, and who left while I was here.
 struct OnlineUsersView: View {
+    @AppStorage("keepDisconnectedUsers") private var keepDisconnected = false
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     let open: (User) -> Void
@@ -392,7 +393,9 @@ struct OnlineUsersView: View {
                         .accessibilityElement(children: .combine)
                     }
                 }
-                if !connection.departed.isEmpty {
+                // The desktop's "Keep disconnected users" (off by default).
+                Toggle("Keep disconnected users", isOn: $keepDisconnected)
+                if keepDisconnected && !connection.departed.isEmpty {
                     Section("Left while you were here") {
                         ForEach(connection.departed.reversed(), id: \.at) { d in
                             Text("\(d.user.displayName) (\(d.user.username)), at \(d.at.formatted(date: .omitted, time: .shortened))")

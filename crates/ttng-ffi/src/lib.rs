@@ -457,6 +457,7 @@ pub struct User {
     pub sending_video: bool,
     pub sharing_desktop: bool,
     pub streaming_media: bool,
+    pub stream_paused: bool,
     pub playing_media: bool,
     /// What I receive from them, and they from me.
     pub my_subscriptions: Subscriptions,
@@ -663,6 +664,7 @@ impl From<core::User> for User {
             sending_video: u.sending_video,
             sharing_desktop: u.sharing_desktop,
             streaming_media: u.streaming_media,
+            stream_paused: u.stream_paused,
             playing_media: u.playing_media,
             my_subscriptions: u.my_subscriptions.into(),
             their_subscriptions: u.their_subscriptions.into(),

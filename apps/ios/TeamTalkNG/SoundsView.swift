@@ -27,6 +27,9 @@ struct SoundsView: View {
                     ForEach(sounds.packs) { Text($0.name).tag($0.id) }
                 }
                 NavigationLink("Get sound packs") { CatalogView() }
+                Picker("Playback mode", selection: $b.playbackMode) {
+                    ForEach(SoundStore.PlaybackMode.allCases) { Text($0.label).tag($0) }
+                }
                 Slider(value: $b.volume, in: 0...1, step: 0.05) { Text("Sound volume") }
                     .accessibilityValue("\(Int(sounds.volume * 100)) percent")
             }

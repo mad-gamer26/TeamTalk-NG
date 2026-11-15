@@ -27,6 +27,9 @@ struct ChannelEditView: View {
     @State private var fixedLevel = 30.0
     @State private var voiceLimit = ""
     @State private var mediaLimit = ""
+    /// The desktop's "Join channel on exit" (checked; only those who may
+    /// make lasting channels can leave it off).
+    @State private var joinOnExit = true
 
     private var editing: Channel? { if case .edit(let c) = sheet { c } else { nil } }
     private var temporary: Bool { if case .new(_, let t) = sheet { t } else { false } }
@@ -43,6 +46,9 @@ struct ChannelEditView: View {
                     if editing != nil { Toggle("Change the password", isOn: $changePassword) }
                     if editing == nil || changePassword {
                         SecureField("Password (empty for none)", text: $password)
+                    }
+                    if editing == nil && !temporary {
+                        Toggle("Join channel on exit", isOn: $joinOnExit)
                     }
                 }
                 if !temporary {
@@ -182,7 +188,9 @@ struct ChannelEditView: View {
         if let c = editing {
             connection.updateChannel(c, spec)
         } else {
-            connection.makeChannel(spec, temporary: temporary)
+            // As the desktop: made and joined unless "Join channel on exit"
+            // is off (only possible with the right to make lasting channels).
+            connection.makeChannel(spec, temporary: temporary || joinOnExit)
         }
     }
 }

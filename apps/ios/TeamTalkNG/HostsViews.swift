@@ -89,8 +89,18 @@ struct PublicServersView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var servers: [HostEntry]?
     @State private var problem: String?
-    @State private var unofficial = false
+    // The desktop's server list filters (remembered, as its settings).
+    @AppStorage("serverListOfficial") private var official = true
+    @AppStorage("serverListUnofficial") private var unofficial = false
+    @AppStorage("serverListName") private var nameFilter = ""
+    @AppStorage("serverListUsers") private var minUsers = 0
     @State private var code = ""
+
+    private var shown: [HostEntry]? {
+        servers?.filter { s in
+            (nameFilter.isEmpty || s.name.localizedCaseInsensitiveContains(nameFilter)) && Int(s.userCount) >= minUsers
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -104,10 +114,17 @@ struct PublicServersView: View {
                 } footer: {
                     Text("A server's owner can give you a join code instead of its address.")
                 }
-                Section {
+                Section("Filter Servers") {
+                    TextField("Name", text: $nameFilter)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Stepper("Users: at least \(minUsers)", value: $minUsers, in: 0...1000)
+                    Toggle("Include official servers", isOn: $official)
                     Toggle("Include unofficial servers", isOn: $unofficial)
+                }
+                Section {
                     if let problem { Text("Couldn't load the list: \(problem)") }
-                    if let servers {
+                    if let servers = shown {
+                        if servers.isEmpty { Text("No servers match.") }
                         ForEach(servers, id: \.self) { s in
                             Button { add(s) } label: {
                                 VStack(alignment: .leading) {
@@ -129,7 +146,7 @@ struct PublicServersView: View {
             .navigationTitle("Public servers")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-            .task(id: unofficial) { await load() }
+            .task(id: "\(official)\(unofficial)") { await load() }
         }
     }
 
@@ -144,8 +161,8 @@ struct PublicServersView: View {
     private func load() async {
         servers = nil
         problem = nil
-        let u = unofficial
-        switch await Task.detached(operation: { Result { try publicServers(official: true, unofficial: u) } }).value {
+        let (o, u) = (official, unofficial)
+        switch await Task.detached(operation: { Result { try publicServers(official: o, unofficial: u) } }).value {
         case .success(let l): servers = l
         case .failure(let e): problem = words(e)
         }

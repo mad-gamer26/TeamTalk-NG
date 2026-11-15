@@ -222,6 +222,15 @@ final class ServerConnection {
         run("Couldn't change the status") { try $0.setStatus(mode: mode, message: message) }
     }
 
+    /// My status message before it showed a streamed file's name.
+    private var statusBeforeStream: String?
+
+    private func restoreStatusAfterStream() {
+        guard let msg = statusBeforeStream, let me else { return }
+        statusBeforeStream = nil
+        run("Couldn't change the status") { try $0.setStatus(mode: me.status, message: msg) }
+    }
+
     /// The status before going away by itself (to come back to), when away.
     private var autoAway: (mode: StatusMode, message: String)?
     /// Voice activation paused while away (Settings).
@@ -372,11 +381,23 @@ final class ServerConnection {
             return
         }
         let path = copy.path
-        guard mediaFileInfo(path: path) != nil else {
+        guard let info = mediaFileInfo(path: path) else {
             announce("That file can't be played.")
             return
         }
-        run("Couldn't stream") { try $0.streamMediaFile(path: path, offsetMs: 0, paused: false, looping: false) }
+        // The desktop's Stream Media File dialog comes first.
+        streamPlan = StreamPlan(path: path, info: info)
+    }
+
+    /// A file picked to stream, waiting for the Stream Media File dialog.
+    struct StreamPlan: Identifiable {
+        let path: String
+        let info: MediaFileInfo
+        var id: String { path }
+    }
+
+    func startStream(_ plan: StreamPlan, offsetMs: UInt32, looping: Bool) {
+        run("Couldn't stream") { try $0.streamMediaFile(path: plan.path, offsetMs: offsetMs, paused: false, looping: looping) }
     }
 
     func pauseStream(_ paused: Bool) {
@@ -766,6 +787,14 @@ final class ServerConnection {
         }
     }
 
+    /// A file waiting for the Stream Media File dialog.
+    var streamPlan: StreamPlan?
+
+    /// A private conversation to open (the desktop's message popup).
+    var popupConversation: User?
+    /// Why I was excluded, for the desktop's dialog box.
+    var excludedMessage: String?
+
     /// Who talked last (the desktop's "Show last to talk").
     private(set) var lastTalker: Int32 = 0
     /// People whose private messages aren't read yet (the desktop's ✉).
@@ -920,7 +949,11 @@ final class ServerConnection {
             case .user:
                 lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now, kind: .privateMessage, vars: ["user": from, "content": m.text]))
                 // The desktop marks who has written until their messages are read.
-                if focusedConversation != m.fromUserId { unread.insert(m.fromUserId) }
+                if focusedConversation != m.fromUserId {
+                    unread.insert(m.fromUserId)
+                    // The desktop's "Popup dialog when receiving text message".
+                    if app?.messagePopup == true, let sender { popupConversation = sender }
+                }
                 sound(.privateMessage)
                 say(.privateMessage, v)
                 notifyIfAway("Private message from \(from)", m.text)
@@ -1034,10 +1067,24 @@ final class ServerConnection {
         case .streamChanged(let st):
             let name = ((st.path as NSString).lastPathComponent as NSString).deletingPathExtension
             switch st.status {
-            case .started: note("Streaming \(name)"); status(nil, "Started streaming media file to channel")
-            case .finished: if !st.looping { note("\(name) finished"); status(nil, "Finished streaming media file to channel") }
-            case .failed: announce("Streaming \(name) failed"); status(nil, "Error streaming media file to channel")
-            case .stopped: note("Stopped streaming"); status(nil, "Aborted streaming media file to channel")
+            case .started:
+                note("Streaming \(name)"); status(nil, "Started streaming media file to channel")
+                // The desktop's "Display file name in status message when streaming".
+                if app?.streamingStatus == true, let me {
+                    statusBeforeStream = me.statusMessage
+                    run("Couldn't change the status") { try $0.setStatus(mode: me.status, message: (st.path as NSString).lastPathComponent) }
+                }
+            case .finished:
+                if !st.looping {
+                    note("\(name) finished"); status(nil, "Finished streaming media file to channel")
+                    restoreStatusAfterStream()
+                }
+            case .failed:
+                announce("Streaming \(name) failed"); status(nil, "Error streaming media file to channel")
+                restoreStatusAfterStream()
+            case .stopped:
+                note("Stopped streaming"); status(nil, "Aborted streaming media file to channel")
+                restoreStatusAfterStream()
             default: break
             }
         case .recordingChanged(let path, let active, let error):
@@ -1077,6 +1124,7 @@ final class ServerConnection {
             let text = "Kicked from \(ch > 0 ? "channel" : "server") \(who)"
             sayText(.connectivity, text)
             status(nil, text)
+            if app?.excludedDialog == true { excludedMessage = text }
         default: break
         }
         refresh()

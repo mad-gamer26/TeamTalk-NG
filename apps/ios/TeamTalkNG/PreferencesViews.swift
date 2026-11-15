@@ -29,10 +29,18 @@ struct DisplaySettingsView: View {
             }
             Section("Chat") {
                 Toggle("Show the time of messages", isOn: $model.showTimestamps)
+                TextField("Timestamp format (empty: the system's)", text: $model.timestampFormat)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .accessibilityHint("Such as HH:mm:ss. Now: \(model.timestamp(.now))")
                 Toggle("Show the message of the day", isOn: $model.showMOTD)
                 Toggle("Show status-bar events in the chat", isOn: $model.eventsInChat)
                 NavigationLink("Status-bar events") { StatusEventsView() }
                 NavigationLink("Message templates") { ChatTemplatesView() }
+            }
+            Section("Dialogs") {
+                Toggle("Popup dialog when receiving text message", isOn: $model.messagePopup)
+                Toggle("Show dialog box when excluded from channel or server", isOn: $model.excludedDialog)
+                Toggle("Show dialog box with server list on startup", isOn: $model.serverListOnStart)
             }
             Section {
                 Toggle("Notify me of private messages", isOn: $model.notifyInBackground)

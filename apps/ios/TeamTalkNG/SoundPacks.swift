@@ -116,6 +116,7 @@ final class SoundStore {
             installed = p
         }
         selectedId = defaults.string(forKey: "soundPack") ?? InstalledPack.builtIn.id
+        playbackMode = PlaybackMode(rawValue: defaults.string(forKey: "soundPlaybackMode") ?? "") ?? .standard
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
@@ -200,8 +201,31 @@ final class SoundStore {
         guard let url = url(for: e, in: pack ?? selected), let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.volume = Float(volume)
         players.removeAll { !$0.isPlaying }
+        // The desktop's "One by One": each waits for the one before.
+        if playbackMode == .oneByOne, let last = players.last {
+            let wait = max(0, last.duration - last.currentTime)
+            players.append(p)
+            p.play(atTime: p.deviceCurrentTime + wait)
+            return
+        }
         players.append(p)
         p.play()
+    }
+
+    /// The desktop's sound event "Playback mode".
+    enum PlaybackMode: String, CaseIterable, Identifiable {
+        case standard = "default", oneByOne, overlapping
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .standard: "Default"
+            case .oneByOne: "One by One"
+            case .overlapping: "Overlapping"
+            }
+        }
+    }
+    var playbackMode = PlaybackMode.standard {
+        didSet { defaults.set(playbackMode.rawValue, forKey: "soundPlaybackMode") }
     }
 
     /// The pack's sound, or the built-in one where it has none.

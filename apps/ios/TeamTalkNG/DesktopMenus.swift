@@ -350,3 +350,52 @@ extension ServerConnection {
         for sub in now.symmetricDifference(c.subscriptions) { setSubscription(u, sub, c.subscriptions.contains(sub)) }
     }
 }
+
+/// The desktop's Stream Media File dialog (streammediafile.ui): the file's
+/// properties, "Continuously play media file", the start position.
+struct StreamMediaFileDialog: View {
+    let connection: ServerConnection
+    let plan: ServerConnection.StreamPlan
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("streamLoop") private var loop = false
+    @State private var start = 0.0
+
+    private var info: MediaFileInfo { plan.info }
+
+    private func time(_ ms: Double) -> String {
+        let s = Int(ms / 1000)
+        return String(format: "%d:%02d:%02d.%03d", s / 3600, s / 60 % 60, s % 60, Int(ms) % 1000)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Media File Properties") {
+                    LabeledContent("Media file", value: (plan.path as NSString).lastPathComponent)
+                    LabeledContent("Audio format", value: info.sampleRate > 0 ? "\(info.sampleRate) Hz, \(info.channels == 1 ? "Mono" : "Stereo")" : "None")
+                    LabeledContent("Video format", value: info.videoWidth > 0 ? "\(info.videoWidth)x\(info.videoHeight)" : "None")
+                    LabeledContent("Duration", value: time(Double(info.durationMs)))
+                    Toggle("Continuously play media file", isOn: $loop)
+                }
+                Section("Playback Settings") {
+                    if info.durationMs > 0 {
+                        Slider(value: $start, in: 0...Double(info.durationMs), step: 1000) { Text("Start position") }
+                            .accessibilityValue(time(start))
+                        LabeledContent("Start position", value: time(start))
+                    }
+                }
+            }
+            .navigationTitle("Stream Media File")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK") {
+                        connection.startStream(plan, offsetMs: UInt32(start), looping: loop)
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}

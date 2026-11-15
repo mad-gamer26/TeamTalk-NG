@@ -152,6 +152,7 @@ struct ServerView: View {
         } message: {
             Text("\(passwordFor?.name ?? "This channel") needs a password.")
         }
+        .modifier(DesktopDialogs(connection: connection, privateWith: $privateWith, busy: personFor != nil))
         .sheet(item: $privateWith) { user in
             NavigationStack {
                 ChatView(connection: connection, privateWith: user)
@@ -563,6 +564,7 @@ private struct UserRow: View {
             if user.status == .question { t += ", ❓" }
             if talking { t += ", 🎤" }
             if user.streamingMedia { t += ", 💿" }
+            if user.streamPaused { t += ", 💿⏸️" }
             if user.sendingVideo { t += ", 🎥" }
             if user.sharingDesktop { t += ", 💻" }
         case .text:
@@ -571,6 +573,7 @@ private struct UserRow: View {
             if user.status == .question { t += ", Question" }
             if talking { t += ", Speaking" }
             if user.streamingMedia { t += ", Streaming mediafile" }
+            if user.streamPaused { t += ", Streaming mediafile (Paused)" }
             if user.sendingVideo { t += ", Video" }
             if user.sharingDesktop { t += ", Desktop sharing" }
         case .none: break
@@ -751,9 +754,8 @@ struct ChatView: View {
         .onDisappear { if connection.focusedConversation == privateWith?.id { connection.focusedConversation = nil } }
     }
 
-    private func stamp(_ t: Date) -> String {
-        t.formatted(Calendar.current.isDateInToday(t) ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
-    }
+    /// The desktop's timestamp (Settings → Display → Timestamp format).
+    private func stamp(_ t: Date) -> String { model.timestamp(t) }
 
     private func send() {
         connection.send(draft, to: privateWith)
@@ -763,6 +765,7 @@ struct ChatView: View {
 
 /// My status on this server.
 private struct StatusView: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     @State private var mode = StatusMode.available
@@ -779,6 +782,9 @@ private struct StatusView: View {
                     Text("Question").tag(StatusMode.question)
                 }
                 TextField("Status message", text: $message)
+                // The desktop's Change Status dialog checkbox.
+                Toggle("Display file name in status message when streaming", isOn: Binding(
+                    get: { model.streamingStatus }, set: { model.streamingStatus = $0 }))
                 Picker("Gender", selection: $gender) {
                     Text("Male").tag(Gender.male)
                     Text("Female").tag(Gender.female)
@@ -955,5 +961,29 @@ private struct StreamBar: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
+    }
+}
+
+/// The desktop's dialogs: the text message popup (a private message opens
+/// its conversation, when nothing else is open on top) and the dialog box
+/// when excluded from a channel or the server.
+private struct DesktopDialogs: ViewModifier {
+    let connection: ServerConnection
+    @Binding var privateWith: User?
+    let busy: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: connection.popupConversation?.id) {
+                if let u = connection.popupConversation, privateWith == nil, !busy { privateWith = u }
+                connection.popupConversation = nil
+            }
+            .sheet(item: Binding(get: { connection.streamPlan }, set: { connection.streamPlan = $0 })) { plan in
+                StreamMediaFileDialog(connection: connection, plan: plan)
+            }
+            .alert("Excluded", isPresented: Binding(get: { connection.excludedMessage != nil },
+                                                    set: { if !$0 { connection.excludedMessage = nil } })) {
+                Button("OK") {}
+            } message: { Text(connection.excludedMessage ?? "") }
     }
 }

@@ -116,6 +116,29 @@ final class AppModel {
     /// The desktop's "Restore volume settings and subscriptions on login
     /// for Web Login users" (on by default).
     var restoreUserSettings = true { didSet { save() } }
+    /// The desktop's "Timestamp format": empty = the system's short date
+    /// and time; else a date pattern (such as "HH:mm:ss").
+    var timestampFormat = "" { didSet { save() } }
+    /// The desktop's "Popup dialog when receiving text message" (on): a
+    /// private message opens its conversation.
+    var messagePopup = true { didSet { save() } }
+    /// The desktop's "Show dialog box when excluded from channel or
+    /// server" (off).
+    var excludedDialog = false { didSet { save() } }
+    /// The desktop's "Show dialog box with server list on startup" (off).
+    var serverListOnStart = false { didSet { save() } }
+
+    /// A timestamp as the desktop writes it.
+    func timestamp(_ t: Date) -> String {
+        if timestampFormat.isEmpty { return t.formatted(date: .numeric, time: .shortened) }
+        let f = DateFormatter()
+        f.dateFormat = timestampFormat
+        return f.string(from: t)
+    }
+
+    /// The desktop's "Display file name in status message when streaming" (off).
+    var streamingStatus = false { didSet { save() } }
+
     /// The desktop's "Push To Talk Lock" (off by default).
     var pttLock = false { didSet { save() } }
     var showTimestamps = true { didSet { save() } }
@@ -201,6 +224,11 @@ final class AppModel {
         autoExpandChannels = defaults.bool(forKey: "autoExpandChannels")
         restoreUserSettings = defaults.object(forKey: "restoreUserSettings") as? Bool ?? true
         pttLock = defaults.bool(forKey: "pttLock")
+        timestampFormat = defaults.string(forKey: "timestampFormat") ?? ""
+        streamingStatus = defaults.bool(forKey: "streamingStatus")
+        messagePopup = defaults.object(forKey: "messagePopup") as? Bool ?? true
+        excludedDialog = defaults.bool(forKey: "excludedDialog")
+        serverListOnStart = defaults.bool(forKey: "serverListOnStart")
         showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
         eventsInChat = defaults.object(forKey: "eventsInChat") as? Bool ?? true
@@ -244,6 +272,7 @@ final class AppModel {
         statusMessage = ""; awayAfterMinutes = 3; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
         showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .emoji; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
+        timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
@@ -349,6 +378,11 @@ final class AppModel {
         defaults.set(autoExpandChannels, forKey: "autoExpandChannels")
         defaults.set(restoreUserSettings, forKey: "restoreUserSettings")
         defaults.set(pttLock, forKey: "pttLock")
+        defaults.set(timestampFormat, forKey: "timestampFormat")
+        defaults.set(streamingStatus, forKey: "streamingStatus")
+        defaults.set(messagePopup, forKey: "messagePopup")
+        defaults.set(excludedDialog, forKey: "excludedDialog")
+        defaults.set(serverListOnStart, forKey: "serverListOnStart")
         defaults.set(showTimestamps, forKey: "showTimestamps")
         defaults.set(showMOTD, forKey: "showMOTD")
         defaults.set(eventsInChat, forKey: "eventsInChat")
