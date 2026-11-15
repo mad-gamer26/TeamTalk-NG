@@ -98,13 +98,13 @@ extension SavedServer {
 
 /// How talking works, for every server.
 enum TalkMode: String, Codable, CaseIterable, Identifiable {
-    case pushToTalk, voiceActivation, alwaysOn
+    // The desktop's two (no "always on"; a saved one reads as push to talk).
+    case pushToTalk, voiceActivation
     var id: Self { self }
     var label: String {
         switch self {
         case .pushToTalk: "Push to talk"
         case .voiceActivation: "Voice activation"
-        case .alwaysOn: "Always on"
         }
     }
 }

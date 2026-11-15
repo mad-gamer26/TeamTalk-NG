@@ -938,9 +938,6 @@ final class ServerConnection {
             case .voiceActivation:
                 try c.setTransmitting(on: false)
                 try c.setVoiceActivation(on: !muted && !pausedForAway, level: level, stopDelayMs: 500)
-            case .alwaysOn:
-                try c.setVoiceActivation(on: false, level: level, stopDelayMs: 500)
-                try c.setTransmitting(on: !muted)
             }
         }
     }

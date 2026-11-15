@@ -627,7 +627,7 @@ private struct TalkBar: View {
                     .accessibilityHint("Double-tap to start or stop talking. Magic Tap does the same anywhere.")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { connection.setTransmitting(!connection.transmitting) }
-            case .voiceActivation, .alwaysOn:
+            case .voiceActivation:
                 HStack {
                     Text(micText).frame(maxWidth: .infinity, alignment: .leading)
                     Button(connection.muted ? "Unmute" : "Mute") { connection.setMicMuted(!connection.muted) }
@@ -643,7 +643,6 @@ private struct TalkBar: View {
 
     private var micText: String {
         if connection.muted { return "Microphone muted" }
-        if model.talkMode == .alwaysOn { return "Microphone on" }
         return connection.voiceActive ? "Voice activation: sending" : "Voice activation: waiting for sound"
     }
 }
