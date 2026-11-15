@@ -30,6 +30,7 @@ struct ServerView: View {
     @State private var showAccounts = false
     @State private var showStats = false
     @State private var showOnline = false
+    @State private var showAudioNet = false
     @State private var showClientStats = false
     @State private var broadcasting = false
     @State private var broadcastText = ""
@@ -118,6 +119,9 @@ struct ServerView: View {
                             Button("Broadcast message") { broadcasting = true }
                         }
                         Button("Online users") { showOnline = true }
+                        if !connection.isMonitor {
+                            Button(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }
+                        }
                         Button("Connection statistics") { showClientStats = true }
                         if connection.rights.updateServer {
                             Button("Server settings") { showServerSettings = true }
@@ -225,6 +229,7 @@ struct ServerView: View {
             BansView(connection: connection)
         }
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
+        .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
         .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
         .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }

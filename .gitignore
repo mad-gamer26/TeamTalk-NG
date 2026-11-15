@@ -6,3 +6,5 @@
 /apps/ios/*.xcodeproj/
 /apps/ios/build/
 /apps/ios/TeamTalkNG/Info.plist
+# AudioNet's engine, built by scripts/build-audionet.sh.
+/apps/ios/AudioNet/

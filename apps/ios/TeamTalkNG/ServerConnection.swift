@@ -1,3 +1,4 @@
+import AudioNetKit
 import Foundation
 import UIKit
 import UserNotifications
@@ -467,12 +468,29 @@ final class ServerConnection {
 
     func startStream(_ plan: StreamPlan, offsetMs: UInt32, looping: Bool, preprocessor: StreamPreprocessor = .none) {
         checkBlocked(.mediaFile)
+        if let mix {
+            // AudioNet is sending: the file joins it in the mix.
+            do {
+                let f = try MixFile(url: URL(fileURLWithPath: plan.path), sampleRate: Double(ChannelMix.sampleRate),
+                                    channels: ChannelMix.channels, offsetMs: offsetMs)
+                mix.setFile(f, loop: looping)
+                announce("Mixing \((plan.path as NSString).lastPathComponent) with the AudioNet sound")
+            } catch {
+                announce("Couldn't mix that file: \(error.localizedDescription)")
+            }
+            return
+        }
         run("Couldn't stream") {
             try $0.streamMediaFileWith(path: plan.path, offsetMs: offsetMs, paused: false, looping: looping, preprocessor: preprocessor)
         }
     }
 
     func pauseStream(_ paused: Bool) {
+        if let mix {
+            mix.setFilePaused(paused)
+            announce(paused ? "Paused" : "Playing")
+            return
+        }
         run("Couldn't change the stream") { try $0.updateStream(offsetMs: nil, paused: paused) }
         announce(paused ? "Paused" : "Playing")
     }
@@ -485,8 +503,83 @@ final class ServerConnection {
     }
 
     func stopStream() {
+        if mix != nil { endMix(); return }
         run("Couldn't stop the stream") { try $0.stopStream() }
     }
+
+    // MARK: The live mix: AudioNet and an audio file, as the media file stream
+
+    /// AudioNet's sound and a file mixed (see LiveMix.swift); nil when not.
+    private(set) var mix: ChannelMix?
+    @ObservationIgnored private var fifo: LiveFifo?
+
+    var canStreamMix: Bool { isConnected && monitorId == nil && canTransmit(.mediaFile) }
+
+    /// Starts sending a device's sound; a message when it can't.
+    func startAudioNet(device: Device, source: Source) -> String? {
+        guard let app else { return nil }
+        let tap: AudioTap
+        do { tap = try app.audioNet.startListening(device: device, source: source) } catch { return AudioNetStore.words(error) }
+        app.audioNet.onEnded = { [weak self] reason in self?.audioNetEnded(reason) }
+        guard let m = startMix() else { app.audioNet.stopSending(); return "The mix couldn't be streamed to the channel." }
+        m.setAudioNet(tap)
+        return nil
+    }
+
+    func stopAudioNet() {
+        app?.audioNet.stopSending()
+        mix?.setAudioNet(nil)
+        if mix?.isEmpty == true { endMix() }
+    }
+
+    private func audioNetEnded(_ reason: String) {
+        mix?.setAudioNet(nil)
+        announce(reason.isEmpty ? "AudioNet stopped sending." : "AudioNet stopped sending: \(reason)")
+        if mix?.isEmpty == true { endMix() }
+    }
+
+    /// The mix, started when needed: a file already streaming joins it.
+    private func startMix() -> ChannelMix? {
+        if let mix { return mix }
+        guard let app else { return nil }
+        let m = ChannelMix()
+        m.setGains(file: app.mixFileVolume, audioNet: app.audioNetVolume)
+        m.fileFinished = { [weak self] url in
+            self?.note("\(url.deletingPathExtension().lastPathComponent) finished")
+            if self?.mix?.isEmpty == true { self?.endMix() }
+        }
+        if let st = snapshot?.streaming, !Self.isLive(st.path),
+           let f = try? MixFile(url: URL(fileURLWithPath: st.path), sampleRate: Double(ChannelMix.sampleRate),
+                                channels: ChannelMix.channels, offsetMs: st.elapsedMs) {
+            m.setFile(f, loop: st.looping)
+            if st.status == .paused { m.setFilePaused(true) }
+            run("Couldn't stop the stream") { try $0.stopStream() }
+        }
+        guard let f = LiveFifo(mix: m) else { return nil }
+        f.start()
+        let path = f.path
+        mix = m
+        fifo = f
+        Task {
+            // After the file's own stream has stopped.
+            try? await Task.sleep(for: .milliseconds(300))
+            run("Couldn't stream the mix") { try $0.streamMediaFileWith(path: path, offsetMs: 0, paused: false, looping: false, preprocessor: .none) }
+        }
+        return m
+    }
+
+    /// Ends the mix (and its stream, unless it has ended already).
+    private func endMix(streamEnded: Bool = false) {
+        guard mix != nil else { return }
+        app?.audioNet.stopSending()
+        mix = nil
+        fifo?.stop()
+        fifo = nil
+        if !streamEnded { run("Couldn't stop the stream") { try $0.stopStream() } }
+    }
+
+    /// The mix's FIFO (the SDK reports its stream by this path).
+    static func isLive(_ path: String) -> Bool { (path as NSString).deletingLastPathComponent.hasSuffix("/live") }
 
     func setVolume(_ user: User, percent: Int) {
         run("Couldn't change the volume") { try $0.setUserVolume(userId: user.id, percent: Int32(percent)) }
@@ -1220,6 +1313,16 @@ final class ServerConnection {
             case .cancelled:
                 transfers[t.id] = nil
                 note("Cancelled \(t.remoteName)")
+            }
+        case .streamChanged(let st) where Self.isLive(st.path):
+            // The mix: its own words; it's over when its stream is.
+            switch st.status {
+            case .started: status(nil, "Started streaming media file to channel")
+            case .failed:
+                announce("Sending the mix failed"); status(nil, "Error streaming media file to channel")
+                endMix(streamEnded: true)
+            case .finished, .stopped: endMix(streamEnded: true)
+            default: break
             }
         case .streamChanged(let st):
             let name = ((st.path as NSString).lastPathComponent as NSString).deletingPathExtension
