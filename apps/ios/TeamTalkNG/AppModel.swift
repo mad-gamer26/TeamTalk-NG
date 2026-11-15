@@ -89,7 +89,26 @@ final class AppModel {
 
     var showUsernames = false { didSet { save() } }
     var showTopics = false { didSet { save() } }
+    /// The desktop's "Sort channels by": ascending (by name) or popularity
+    /// (most people first). Kept as a Bool: true = ascending.
     var sortChannelsByName = true { didSet { save() } }
+    /// The desktop's "Style of user and channel info": emoji (default),
+    /// text or none.
+    enum InfoStyle: String, CaseIterable, Identifiable {
+        case emoji, text, none
+        var id: Self { self }
+        var label: String { switch self { case .emoji: "Emoji"; case .text: "Text"; case .none: "None" } }
+    }
+    var infoStyle = InfoStyle.emoji { didSet { save() } }
+    /// The desktop's "Show number of users in channel" (on).
+    var showUserCount = true { didSet { save() } }
+    /// The desktop's "Show last to talk in yellow" (on).
+    var showLastTalk = true { didSet { save() } }
+    /// The desktop's "Show user and channel icons" (on).
+    var showIcons = true { didSet { save() } }
+    /// The desktop's "Maximum text length in channel list" (50; what's
+    /// shown is cut, what VoiceOver says isn't).
+    var maxTextLength = 50 { didSet { save() } }
     /// The desktop's default: join, or leave the channel you're in.
     var channelTap = ChannelTap.joinOrLeave { didSet { save() } }
     /// The desktop's "Auto expand channels": channels appear expanded.
@@ -166,6 +185,11 @@ final class AppModel {
         showUsernames = defaults.bool(forKey: "showUsernames")
         showTopics = defaults.object(forKey: "showTopics") as? Bool ?? false
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
+        infoStyle = InfoStyle(rawValue: defaults.string(forKey: "infoStyle") ?? "") ?? .emoji
+        showUserCount = defaults.object(forKey: "showUserCount") as? Bool ?? true
+        showLastTalk = defaults.object(forKey: "showLastTalk") as? Bool ?? true
+        showIcons = defaults.object(forKey: "showIcons") as? Bool ?? true
+        maxTextLength = defaults.object(forKey: "maxTextLength") as? Int ?? 50
         channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .joinOrLeave
         // "Joins it" was the default before the desktop's join-or-leave.
         // (Version 2: the first didn't save its change.)
@@ -219,7 +243,7 @@ final class AppModel {
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterMinutes = 3; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = false; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
+        showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .emoji; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
@@ -316,6 +340,11 @@ final class AppModel {
         defaults.set(showUsernames, forKey: "showUsernames")
         defaults.set(showTopics, forKey: "showTopics")
         defaults.set(sortChannelsByName, forKey: "sortChannelsByName")
+        defaults.set(infoStyle.rawValue, forKey: "infoStyle")
+        defaults.set(showUserCount, forKey: "showUserCount")
+        defaults.set(showLastTalk, forKey: "showLastTalk")
+        defaults.set(showIcons, forKey: "showIcons")
+        defaults.set(maxTextLength, forKey: "maxTextLength")
         defaults.set(channelTap.rawValue, forKey: "channelTap")
         defaults.set(autoExpandChannels, forKey: "autoExpandChannels")
         defaults.set(restoreUserSettings, forKey: "restoreUserSettings")

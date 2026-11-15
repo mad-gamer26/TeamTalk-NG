@@ -98,12 +98,15 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       users" (on; …@bearware.dk users, by username and client); voice
       activation level 0–20, 2 by default (passed to the SDK as is).
 - [ ] General: away after N seconds (NG counts minutes in the background).
-- [ ] Display: timestamp format; "Show number of users in channel" (on);
-      "Show last to talk" (on; said with the person); "Show user and
-      channel icons"; maximum text length in the channel list; style of
-      user and channel info (emoji / text / none); sort channels by
-      (check the options); dialogs: excluded from channel/server (off),
-      close the transfer dialog when done (off), MOTD dialog (off),
+- [x] Display, channel tree: the desktop's item texts exactly
+      (channelstree.cpp: person "name, ✉ 😴 ❓ 🎤 💿 🎥 💻 - status, 👩 (🦸)
+      (👮)", channel "name (n) or (n/all) - 👻 - 🔒: topic"), style emoji
+      (default) / text / none, show number of users (on), show last to
+      talk in yellow (on), show icons (on), maximum text length 50 (shown
+      text cut, VoiceOver gets all), sort ascending / popularity, unread
+      private messages marked.
+- [ ] Display: timestamp format; dialogs: excluded from channel/server
+      (off), close the transfer dialog when done (off), MOTD dialog (off),
       server list on startup (off).
 - [ ] Sound events: playback mode (check options); event volume.
 - [ ] Sound system: "Test selected" (play a test through the output).

@@ -766,6 +766,11 @@ final class ServerConnection {
         }
     }
 
+    /// Who talked last (the desktop's "Show last to talk").
+    private(set) var lastTalker: Int32 = 0
+    /// People whose private messages aren't read yet (the desktop's ✉).
+    var unread: Set<Int32> = []
+
     /// Web-login users' settings between their logins (the desktop's
     /// "Restore volume settings and subscriptions on login").
     var userCache: [String: CachedUser] = [:]
@@ -914,6 +919,8 @@ final class ServerConnection {
             switch m.target {
             case .user:
                 lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now, kind: .privateMessage, vars: ["user": from, "content": m.text]))
+                // The desktop marks who has written until their messages are read.
+                if focusedConversation != m.fromUserId { unread.insert(m.fromUserId) }
                 sound(.privateMessage)
                 say(.privateMessage, v)
                 notifyIfAway("Private message from \(from)", m.text)
@@ -1061,6 +1068,9 @@ final class ServerConnection {
         case .voiceActivated(let on):
             voiceActive = on
             sound(on ? .voiceActivationStarts : .voiceActivationStops)
+        case .talkingChanged(let userId, let talking):
+            // The desktop's last to talk: someone else who started talking.
+            if talking && userId != snapshot?.myUserId { lastTalker = userId }
         case .kicked(let by, let ch):
             // The desktop's words.
             let who = (known[by] ?? snapshot?.users.first { $0.id == by }).map { "by \($0.displayName)" } ?? "by unknown user"

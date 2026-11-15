@@ -290,6 +290,8 @@ struct ServerView: View {
                            expanded: connection.isExpanded(c),
                            setExpanded: { connection.setExpanded(c, $0) },
                            connection: connection,
+                           style: model.infoStyle, showCount: model.showUserCount,
+                           showIcons: model.showIcons, maxLength: model.maxTextLength,
                            stream: { pickingStream = true },
                            upload: { pickingUpload = true }) {
                     let here = c.id == snap?.myChannelId
@@ -303,7 +305,9 @@ struct ServerView: View {
                 }
             case .user(let u, let depth):
                 UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, showUsername: model.showUsernames,
-                        connection: connection) { kind in
+                        connection: connection, style: model.infoStyle, showIcons: model.showIcons,
+                        maxLength: model.maxTextLength,
+                        lastToTalk: model.showLastTalk && connection.lastTalker == u.id) { kind in
                     switch kind {
                     case .info: personFor = u
                     case .messages: privateWith = u
@@ -342,6 +346,10 @@ enum ChannelTree {
     /// when nil).
     static func rows(_ s: Snapshot, byName: Bool = true, expanded: Set<Int32>? = nil) -> [Row] {
         var out: [Row] = []
+        func population(_ id: Int32) -> Int {
+            let inside = descendants(id, s)
+            return s.users.filter { $0.channelId == id || inside.contains($0.channelId) }.count
+        }
         func add(_ c: Channel, _ depth: Int) {
             out.append(.channel(c, depth: depth))
             if let expanded, !expanded.contains(c.id) { return }
@@ -349,11 +357,25 @@ enum ChannelTree {
                 out.append(.user(u, depth: depth + 1))
             }
             let subs = s.channels.filter { $0.parentId == c.id }
-            for sub in byName ? subs.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) : subs.sorted(by: { $0.id < $1.id }) {
-                add(sub, depth + 1)
+            let byNameOrder = { (a: Channel, b: Channel) in a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending }
+            // The desktop's sort: ascending, or popularity (most people,
+            // subchannels included, first; then by name).
+            let sorted = byName ? subs.sorted(by: byNameOrder) : subs.sorted {
+                let (x, y) = (population($0.id), population($1.id))
+                return x != y ? x > y : byNameOrder($0, $1)
             }
+            for sub in sorted { add(sub, depth + 1) }
         }
         for root in s.channels where root.parentId == 0 { add(root, 0) }
+        return out
+    }
+
+    /// Every channel inside one, at any depth.
+    static func descendants(_ id: Int32, _ s: Snapshot) -> Set<Int32> {
+        var out = Set<Int32>(), todo = [id]
+        while let c = todo.popLast() {
+            for sub in s.channels where sub.parentId == c && out.insert(sub.id).inserted { todo.append(sub.id) }
+        }
         return out
     }
 
@@ -384,6 +406,10 @@ private struct ChannelRow: View {
     let expanded: Bool
     let setExpanded: (Bool) -> Void
     var connection: ServerConnection? = nil
+    var style: AppModel.InfoStyle = .emoji
+    var showCount = true
+    var showIcons = true
+    var maxLength = 50
     var stream: () -> Void = {}
     var upload: () -> Void = {}
     let join: () -> Void
@@ -398,29 +424,45 @@ private struct ChannelRow: View {
         }
     }
 
-    private var details: String {
-        let n = snapshot.users.filter { $0.channelId == channel.id }.count
-        var parts = [n == 1 ? "1 person" : "\(n) people"]
-        if here { parts.insert("you're here", at: 0) }
-        if channel.hasPassword { parts.append("password") }
-        if showTopic && !channel.topic.isEmpty { parts.append(channel.topic) }
-        return parts.joined(separator: ", ")
+    /// The desktop's channel item text (channelstree.cpp updateChannelItem):
+    /// name (the server's for root), (people) or (here/with subchannels),
+    /// hidden and password marks, and ": topic" when topics are shown.
+    private var desktopText: (display: String, spoken: String) {
+        var display = name, spoken = name
+        if display.count > maxLength { display = String(display.prefix(maxLength)) + "..." }
+        if showCount {
+            let count = snapshot.users.filter { $0.channelId == channel.id }.count
+            let subs = ChannelTree.descendants(channel.id, snapshot)
+            let suffix = subs.isEmpty ? " (\(count))"
+                : " (\(count)/\(snapshot.users.filter { $0.channelId == channel.id || subs.contains($0.channelId) }.count))"
+            display += suffix; spoken += suffix
+        }
+        for (on, emoji, text) in [(channel.hidden, "👻", "Hidden"), (channel.hasPassword, "🔒", "Password protected")] where on {
+            switch style {
+            case .emoji: display += " - \(emoji)"; spoken += " - \(emoji)"
+            case .text: display += " - \(text)"; spoken += " - \(text)"
+            case .none: break
+            }
+        }
+        if showTopic && !channel.topic.isEmpty { spoken += ": \(channel.topic)" }
+        return (display, spoken)
     }
 
     /// As the desktop says it after the channel: expanded or collapsed.
     private var state: String {
-        guard expandable else { return details }
-        return "\(details), \(expanded ? "Expanded" : "Collapsed")"
+        expandable ? (expanded ? "Expanded" : "Collapsed") : ""
     }
 
     var body: some View {
         HStack {
             Button(action: join) {
                 HStack {
-                    Image(systemName: here ? "folder.fill" : "folder")
+                    if showIcons { Image(systemName: here ? "folder.fill" : "folder") }
                     VStack(alignment: .leading) {
-                        Text(name).font(.body.weight(here ? .semibold : .regular))
-                        Text(details).font(.caption).foregroundStyle(.secondary)
+                        Text(desktopText.display).font(.body.weight(here ? .semibold : .regular))
+                        if showTopic && !channel.topic.isEmpty {
+                            Text(channel.topic).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -444,7 +486,7 @@ private struct ChannelRow: View {
         // One element for VoiceOver: a heading, double-tap as set, and
         // Expand or Collapse first among its actions.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name), channel")
+        .accessibilityLabel(desktopText.spoken)
         .accessibilityValue(state)
         .accessibilityHint(hint)
         .accessibilityAddTraits([.isButton, .isHeader])
@@ -501,35 +543,68 @@ private struct UserRow: View {
     let isMe: Bool
     let showUsername: Bool
     let connection: ServerConnection
+    var style: AppModel.InfoStyle = .emoji
+    var showIcons = true
+    var maxLength = 50
+    var lastToTalk = false
     let open: (UserMenu.UserSheet) -> Void
 
-    /// Their state, said with their name.
+    /// The desktop's user item text (channelstree.cpp updateUserItem), in
+    /// its order, with emoji or words or neither ("Style of user and
+    /// channel info").
     private var label: String {
-        let name = showUsername && !user.username.isEmpty ? user.username : user.displayName
-        var parts = [isMe ? "\(name) (you)" : name]
-        if user.talking { parts.append("talking") }
-        if user.voiceMuted { parts.append("muted") }
-        if user.operator { parts.append("operator") }
-        if user.streamingMedia { parts.append("streaming a file") }
-        if user.sendingVideo { parts.append("sending video") }
-        if user.sharingDesktop { parts.append("sharing a desktop") }
-        switch user.status {
-        case .away: parts.append("away")
-        case .question: parts.append("has a question")
-        case .available: break
+        var t = showUsername && !user.username.isEmpty ? user.username : user.displayName
+        let talking = user.talking || (isMe && connection.transmitting)
+        let female = user.gender == .female
+        switch style {
+        case .emoji:
+            if connection.unread.contains(user.id) { t += ", ✉" }
+            if user.status == .away { t += ", 😴" }
+            if user.status == .question { t += ", ❓" }
+            if talking { t += ", 🎤" }
+            if user.streamingMedia { t += ", 💿" }
+            if user.sendingVideo { t += ", 🎥" }
+            if user.sharingDesktop { t += ", 💻" }
+        case .text:
+            if connection.unread.contains(user.id) { t += ", Unread message" }
+            if user.status == .away { t += ", Away" }
+            if user.status == .question { t += ", Question" }
+            if talking { t += ", Speaking" }
+            if user.streamingMedia { t += ", Streaming mediafile" }
+            if user.sendingVideo { t += ", Video" }
+            if user.sharingDesktop { t += ", Desktop sharing" }
+        case .none: break
         }
-        if !user.statusMessage.isEmpty { parts.append(user.statusMessage) }
-        if user.admin { parts.append("admin") }
-        return parts.joined(separator: ", ")
+        if !user.statusMessage.isEmpty { t += " - \(user.statusMessage)" }
+        switch style {
+        case .emoji:
+            t += user.gender == .female ? ", 👩" : user.gender == .male ? ", 👨" : ", 🧑"
+            if user.admin { t += user.gender == .female ? " (🦸‍♀️)" : user.gender == .male ? " (🦸‍♂️)" : " (🦸)" }
+            if user.operator { t += user.gender == .female ? " (👮‍♀️)" : user.gender == .male ? " (👮‍♂️)" : " (👮)" }
+        case .text:
+            t += user.gender == .female ? ", Female" : user.gender == .male ? ", Male" : ", Neutral"
+            if user.admin { t += " (Administrator)" }
+            if user.operator { t += " (Channel operator)" }
+            _ = female
+        case .none: break
+        }
+        return t
+    }
+
+    /// What's shown: cut at the "Maximum text length" (VoiceOver gets it all).
+    private var shown: String {
+        label.count > maxLength ? String(label.prefix(maxLength)) + "..." : label
     }
 
     var body: some View {
         Button { open(.info) } label: {
             HStack {
-                Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
-                    .foregroundStyle(user.talking ? .green : .secondary)
-                    .accessibilityHidden(true)
-                Text(label)
+                if showIcons {
+                    Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
+                        .foregroundStyle(user.talking ? .green : .secondary)
+                        .accessibilityHidden(true)
+                }
+                Text(shown)
             }
             .padding(.leading, CGFloat(depth) * 16)
         }
@@ -542,6 +617,8 @@ private struct UserRow: View {
         // reversed for VoiceOver.
         .contextMenu { UserMenu(connection: connection, user: user, open: open) }
         .accessibilityActions { UserMenu(connection: connection, user: user, open: open, flatReversed: true) }
+        // The desktop's "Show last to talk in yellow".
+        .listRowBackground(lastToTalk && !user.talking ? Color.yellow.opacity(0.35) : nil)
     }
 }
 
@@ -670,7 +747,7 @@ struct ChatView: View {
             .padding(.vertical, 8)
         }
         // The conversation on screen (the desktop's "focused window").
-        .onAppear { if let p = privateWith { connection.focusedConversation = p.id } }
+        .onAppear { if let p = privateWith { connection.focusedConversation = p.id; connection.unread.remove(p.id) } }
         .onDisappear { if connection.focusedConversation == privateWith?.id { connection.focusedConversation = nil } }
     }
 

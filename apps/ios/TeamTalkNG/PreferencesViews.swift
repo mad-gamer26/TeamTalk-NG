@@ -11,9 +11,16 @@ struct DisplaySettingsView: View {
             Section("Channels") {
                 Toggle("Show usernames instead of nicknames", isOn: $model.showUsernames)
                 Toggle("Show channel topics", isOn: $model.showTopics)
-                Picker("Sort channels", selection: $model.sortChannelsByName) {
-                    Text("By name").tag(true)
-                    Text("As the server has them").tag(false)
+                Toggle("Show number of users in channel", isOn: $model.showUserCount)
+                Toggle("Show last to talk in yellow", isOn: $model.showLastTalk)
+                Toggle("Show user and channel icons", isOn: $model.showIcons)
+                Stepper("Maximum text length in channel list: \(model.maxTextLength)", value: $model.maxTextLength, in: 10...512, step: 10)
+                Picker("Style of user and channel info", selection: $model.infoStyle) {
+                    ForEach(AppModel.InfoStyle.allCases) { Text($0.label).tag($0) }
+                }
+                Picker("Sort channels by", selection: $model.sortChannelsByName) {
+                    Text("Ascending").tag(true)
+                    Text("Popularity").tag(false)
                 }
                 Picker("Double-tapping a channel", selection: $model.channelTap) {
                     ForEach(AppModel.ChannelTap.allCases) { Text($0.label).tag($0) }
