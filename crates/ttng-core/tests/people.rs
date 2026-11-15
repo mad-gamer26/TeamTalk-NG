@@ -110,12 +110,12 @@ fn how_i_hear_someone() {
     let (a, b) = (&v[0], &v[1]);
     a.client.init_audio(AudioDevices::Virtual).unwrap();
     let bob = me(b);
-    a.client.set_user_volume(bob, 50).unwrap();
-    a.client.set_user_media_volume(bob, 250).unwrap();
+    a.client.set_user_volume(bob, 30).unwrap();
+    a.client.set_user_media_volume(bob, 80).unwrap();
     a.client.set_user_media_muted(bob, true).unwrap();
     a.client.set_user_stereo(bob, AudioStream::Voice, true, false).unwrap();
     let p = person(a, bob);
-    assert_eq!((p.voice_volume, p.media_volume), (50, 250));
+    assert_eq!((p.voice_volume, p.media_volume), (30, 80));
     assert!(p.media_muted && !p.voice_muted);
     assert!(p.voice_left && !p.voice_right && p.media_left && p.media_right);
     a.client.set_mute_all(true).unwrap();

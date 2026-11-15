@@ -184,7 +184,8 @@ struct PersonView: View {
     }
 
     private func volume(_ label: String, _ percent: Int32, set: @escaping (Int) -> Void) -> some View {
-        Slider(value: Binding(get: { Double(percent) }, set: { set(Int($0)) }), in: 0...400, step: 10) { Text(label) }
+        // The desktop's scale: 0–100, 50 as sent, in steps of 1.
+        Slider(value: Binding(get: { Double(percent) }, set: { set(Int($0)) }), in: 0...100, step: 1) { Text(label) }
             .accessibilityLabel(label)
             .accessibilityValue("\(percent) percent")
     }

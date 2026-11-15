@@ -8,6 +8,7 @@ mod model;
 pub mod mp3;
 pub mod text;
 pub mod ttfile;
+pub mod volume;
 
 pub use client::{AudioDevices, Client, ConnectOptions, Encryption, EventListener, WebLogin, media_file_info};
 pub use error::{Error, Result};

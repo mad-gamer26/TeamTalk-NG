@@ -1246,7 +1246,7 @@ impl TtClient {
         Ok(self.inner.set_voice_activation(on, level, stop_delay_ms)?)
     }
 
-    /// Someone's volume in percent (100 normal, up to 400).
+    /// Someone's volume, the desktop's percent (0–100, 50 normal).
     pub fn set_user_volume(&self, user_id: i32, percent: i32) -> Result<()> {
         Ok(self.inner.set_user_volume(user_id, percent)?)
     }

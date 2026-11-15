@@ -123,8 +123,23 @@ final class AppModel {
         if let a = defaults.dictionary(forKey: "audio") as? [String: Int] {
             audio = AudioSettings(
                 echoCancellation: a["echo"] == 1, gainControl: a["agc", default: 1] == 1, noiseSuppression: a["denoise", default: 1] == 1,
-                micGain: Int32(a["mic", default: 100]), outputVolume: Int32(a["out", default: 100]), mediaVolume: Int32(a["media", default: 100]))
+                micGain: Int32(a["mic", default: 50]), outputVolume: Int32(a["out", default: 50]), mediaVolume: Int32(a["media", default: 100]))
+            // Once: levels saved on this app's earlier scale (100 normal, up
+            // to 400, straight) onto the desktop's (0–100 on a curve, 50
+            // normal), sounding the same.
+            if !defaults.bool(forKey: "desktopVolumeScale") {
+                func desktop(_ old: Int) -> Int32 {
+                    guard old > 0 else { return 0 }
+                    let level = Double(old) * 10, d = log((level + 50) / 82.832) / 0.0508
+                    return Int32(min(100, max(0, Int(d + 0.5))))
+                }
+                audio.micGain = desktop(a["mic", default: 100])
+                audio.outputVolume = desktop(a["out", default: 100])
+                audio.mediaVolume = Int32(min(100, a["media", default: 100]))
+                saveAudio()
+            }
         }
+        defaults.set(true, forKey: "desktopVolumeScale")
         recordMP3 = defaults.object(forKey: "recordMP3") as? Bool ?? true
         recordOneFile = defaults.object(forKey: "recordOneFile") as? Bool ?? true
         recordEachPerson = defaults.bool(forKey: "recordEachPerson")

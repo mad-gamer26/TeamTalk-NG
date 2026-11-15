@@ -1,0 +1,306 @@
+import SwiftUI
+
+// The desktop's Users and Channels menus (qtTeamTalk's mainwindow.ui), as
+// actions on people and channels: the same items, order, words and spoken
+// results. VoiceOver lists them reversed (the owner's choice); the
+// touch-and-hold menus keep the desktop's order, with its submenus.
+
+extension ServerConnection {
+    /// Speaks something whatever the spoken events say (the desktop's
+    /// addTextToSpeechMessage without an event).
+    func speakAlways(_ text: String) { appModel?.speech.speak(text) }
+
+    // MARK: Speak user / channel information, channel state
+
+    /// The desktop's "Speak User Information".
+    func speakUserInfo(_ u: User) {
+        let female = u.gender == .female
+        var s = "\(u.displayName): " + (u.admin ? (female ? "Administrator" : "Administrator") : "User")
+        if pickedToMove.contains(u.id) { s += ", Selected for move" }
+        if u.operator { s += ", Channel operator" }
+        if u.talking { s += ", Talking" }
+        switch u.status {
+        case .available: s += ", Available"
+        case .away: s += ", Away"
+        case .question: s += ", Question"
+        }
+        if u.voiceMuted { s += ", Mute" }
+        if u.streamingMedia { s += ", Streaming" }
+        if u.mediaMuted { s += ", Mute media file" }
+        if u.sendingVideo { s += ", Webcam" }
+        if u.sharingDesktop { s += ", Desktop" }
+        speakAlways(s)
+    }
+
+    /// The desktop's "Speak Channel Info".
+    func speakChannelInfo(_ c: Channel) {
+        guard let snap = snapshot else { return }
+        let root = c.parentId == 0
+        var s = "\(root ? snap.server.name : c.name): Channel" + (root ? " root" : "")
+        if c.classroom { s += ", Classroom" }
+        if c.hidden { s += ", Hidden" }
+        if c.hasPassword { s += ", Password protected" }
+        if !c.topic.isEmpty { s += ", Topic: \(c.topic)" }
+        let n = snap.users.filter { $0.channelId == c.id }.count
+        if n > 0 { s += ", \(n) users" }
+        let files = snap.files.filter { $0.channelId == c.id }.count
+        if (c.id == snap.myChannelId || snap.myRights.admin) && files > 0 { s += ", \(files) files" }
+        speakAlways(s)
+    }
+
+    /// The desktop's "Speak Channel State": who's talking, streaming, on
+    /// webcam, sharing a desktop in my channel.
+    func speakChannelState() {
+        guard let snap = snapshot else { return }
+        let here = snap.users.filter { $0.channelId == snap.myChannelId && snap.myChannelId > 0 }
+        var parts: [String] = []
+        func add(_ title: String, _ who: [User]) {
+            if !who.isEmpty { parts.append("\(title): " + who.map(\.displayName).joined(separator: ", ")) }
+        }
+        add("Talking", here.filter { $0.talking || ($0.id == snap.myUserId && transmitting) })
+        add("Streaming", here.filter(\.streamingMedia))
+        add("Webcam", here.filter(\.sendingVideo))
+        add("Desktop", here.filter(\.sharingDesktop))
+        speakAlways(parts.isEmpty ? "Nobody is active in this channel" : parts.joined(separator: ", "))
+    }
+
+    // MARK: Users menu items with the desktop's spoken results
+
+    func toggleMuteVoice(_ u: User) {
+        let on = !u.voiceMuted
+        setMuted(u, on)
+        noteMenu("Voice for \(u.displayName) \(on ? "disabled" : "enabled")")
+    }
+
+    func toggleMuteMedia(_ u: User) {
+        let on = !u.mediaMuted
+        setMediaMuted(u, on)
+        noteMenu("Media files for \(u.displayName) \(on ? "disabled" : "enabled")")
+    }
+
+    /// Increase/Lower Voice or Media File Volume: a step of 1 on the
+    /// desktop's scale.
+    func stepVolume(_ u: User, media: Bool, by step: Int) {
+        let now = Int(media ? u.mediaVolume : u.voiceVolume)
+        let new = min(100, max(0, now + step))
+        if media { setMediaVolume(u, percent: new) } else { setVolume(u, percent: new) }
+        noteMenu("\(media ? "Media files volume" : "Voice volume") for \(u.displayName) \(step > 0 ? "increased" : "decreased") to \(new)%")
+    }
+
+    func toggleSubscription(_ u: User, _ sub: Subscription) {
+        setSubscription(u, sub, !u.mySubscriptions.on.contains(sub))
+    }
+}
+
+/// The desktop's Users menu for one person: its items in its order, with
+/// its submenus (Mute, Kick, Subscriptions, Transmit Control, Advanced).
+struct UserMenu: View {
+    let connection: ServerConnection
+    let user: User
+    let open: (UserSheet) -> Void
+    /// For VoiceOver: one flat list, reversed; submenus open a list.
+    var flatReversed = false
+
+    enum UserSheet { case info, messages, volume, move, subscriptions, transmit, advanced, banServer, banChannel }
+
+    private var rights: MyRights { connection.rights }
+    private var classroom: Bool {
+        connection.snapshot?.channels.first { $0.id == user.channelId }?.classroom ?? false
+    }
+
+    private var items: [MenuItem] {
+        var m: [MenuItem] = [
+            .init("View User Information") { open(.info) },
+            .init("Speak User Information") { connection.speakUserInfo(user) },
+            .init("Messages") { open(.messages) },
+        ]
+        if connection.canModerate(channel: user.channelId) || rights.admin {
+            m.append(.init(user.operator ? "Op, on" : "Op") { connection.setOperator(user, !user.operator) })
+        }
+        m.append(.init("Volume") { open(.volume) })
+        m.append(.init(user.voiceMuted ? "Mute Voice, on" : "Mute Voice") { connection.toggleMuteVoice(user) })
+        m.append(.init(user.mediaMuted ? "Mute Media File, on" : "Mute Media File") { connection.toggleMuteMedia(user) })
+        if rights.kick || connection.canModerate(channel: user.channelId) {
+            if user.channelId > 0 {
+                m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
+                m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
+            }
+        }
+        if rights.kick { m.append(.init("Kick From Server") { connection.kick(user, fromChannel: false) }) }
+        if rights.ban { m.append(.init("Kick and Ban From Server") { open(.banServer) }) }
+        m.append(.init("Subscriptions") { open(.subscriptions) })
+        if classroom && connection.canModerate(channel: user.channelId) {
+            m.append(.init("Transmit Control") { open(.transmit) })
+        }
+        m.append(.init("Advanced") { open(.advanced) })
+        let all = connection.snapshot?.mutedAll ?? false
+        m.append(.init(all ? "Mute All, on" : "Mute All") { connection.setMuteAll(!all) })
+        return m
+    }
+
+    var body: some View {
+        let list = flatReversed ? items.reversed() : items
+        ForEach(list) { i in Button(i.title, action: i.action) }
+    }
+}
+
+struct MenuItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let action: () -> Void
+    init(_ title: String, _ action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+}
+
+/// The desktop's Subscriptions submenu: each one checked or not.
+struct SubscriptionsDialog: View {
+    let connection: ServerConnection
+    let user: User
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Subscription.desktopOrder, id: \.self) { sub in
+                    Toggle(ServerConnection.subscriptionMenuName(sub), isOn: Binding(
+                        get: { user.mySubscriptions.on.contains(sub) },
+                        set: { connection.setSubscription(user, sub, $0) }))
+                }
+            }
+            .navigationTitle("Subscriptions: \(user.displayName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+extension Subscription {
+    /// The desktop's Subscriptions menu order.
+    static let desktopOrder: [Subscription] = [
+        .userMessages, .channelMessages, .broadcastMessages, .voice, .video, .desktop, .desktopAccess, .mediaFile,
+        .interceptUserMessages, .interceptChannelMessages, .interceptVoice, .interceptVideo, .interceptDesktop, .interceptMediaFile,
+    ]
+}
+
+/// The desktop's Transmit Control submenu (classroom channels): allow each
+/// kind for this person, and for everyone.
+struct TransmitDialog: View {
+    let connection: ServerConnection
+    let user: User
+    @Environment(\.dismiss) private var dismiss
+
+    private var channel: Channel? { connection.snapshot?.channels.first { $0.id == user.channelId } }
+    private static let kinds: [(TransmitStream, String)] = [
+        (.channelMessages, "Channel Text Messages"), (.voice, "Voice Transmission"), (.video, "Video Transmission"),
+        (.desktop, "Desktop Transmission"), (.mediaFile, "Media File Transmission"),
+    ]
+
+    private func allowed(_ who: Int32, _ s: TransmitStream) -> Bool {
+        channel?.transmit.contains { $0.userId == who && $0.allowed.contains(s) } ?? false
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Self.kinds, id: \.1) { k in
+                    Toggle("Allow \(k.1)", isOn: Binding(
+                        get: { allowed(user.id, k.0) },
+                        set: { connection.setTransmit(channel: user.channelId, user: user.id, k.0, $0) }))
+                }
+                ForEach(Self.kinds, id: \.1) { k in
+                    Toggle("Allow All \(k.1)", isOn: Binding(
+                        get: { allowed(0, k.0) },
+                        set: { connection.setTransmit(channel: user.channelId, user: 0, k.0, $0) }))
+                }
+            }
+            .navigationTitle("Transmit Control")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// The desktop's Advanced submenu.
+struct AdvancedDialog: View {
+    let connection: ServerConnection
+    let user: User
+    let moveDialog: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button("Increase Voice Volume") { connection.stepVolume(user, media: false, by: 1) }
+                Button("Lower Voice Volume") { connection.stepVolume(user, media: false, by: -1) }
+                Button("Increase Media File Volume") { connection.stepVolume(user, media: true, by: 1) }
+                Button("Lower Media File Volume") { connection.stepVolume(user, media: true, by: -1) }
+                if connection.rights.moveUsers {
+                    Button(connection.pickedToMove.contains(user.id) ? "Store User for Move, on" : "Store User for Move") {
+                        connection.togglePicked(user)
+                    }
+                    Button("Move Users Dialog") { dismiss(); moveDialog() }
+                }
+                Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
+                       ? "Relay Voice Stream, on" : "Relay Voice Stream") {
+                    let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .voice
+                    connection.setRelay(on ? nil : user, .voice)
+                }
+                Button(connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
+                       ? "Relay Media File Stream, on" : "Relay Media File Stream") {
+                    let on = connection.snapshot?.relaying?.userId == user.id && connection.snapshot?.relaying?.stream == .mediaFile
+                    connection.setRelay(on ? nil : user, .mediaFile)
+                }
+            }
+            .foregroundStyle(.primary)
+            .navigationTitle("Advanced: \(user.displayName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// The desktop's Volume dialog (uservolume.ui): voice and media file
+/// volume with their stereo options, and Default.
+struct UserVolumeDialog: View {
+    let connection: ServerConnection
+    let user: User
+    @Environment(\.dismiss) private var dismiss
+
+    private var u: User { connection.snapshot?.users.first { $0.id == user.id } ?? user }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Voice Volume Settings") {
+                    slider("Volume", u.voiceVolume) { connection.setVolume(u, percent: $0) }
+                    Toggle("Mute left", isOn: Binding(get: { !u.voiceLeft }, set: { connection.setStereo(u, .voice, left: !$0, right: u.voiceRight) }))
+                    Toggle("Mute right", isOn: Binding(get: { !u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: !$0) }))
+                }
+                Section("Media File Volume Settings") {
+                    slider("Volume", u.mediaVolume) { connection.setMediaVolume(u, percent: $0) }
+                    Toggle("Mute left", isOn: Binding(get: { !u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: !$0, right: u.mediaRight) }))
+                    Toggle("Mute right", isOn: Binding(get: { !u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: !$0) }))
+                }
+                Section {
+                    Button("Default") {
+                        connection.setVolume(u, percent: 50)
+                        connection.setMediaVolume(u, percent: 50)
+                        connection.setStereo(u, .voice, left: true, right: true)
+                        connection.setStereo(u, .mediaFile, left: true, right: true)
+                    }
+                }
+            }
+            .navigationTitle("Volume: \(user.displayName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+
+    private func slider(_ label: String, _ value: Int32, set: @escaping (Int) -> Void) -> some View {
+        Slider(value: Binding(get: { Double(value) }, set: { set(Int($0)) }), in: 0...100, step: 1) { Text(label) }
+            .accessibilityLabel(label)
+            .accessibilityValue("\(value) percent")
+    }
+}

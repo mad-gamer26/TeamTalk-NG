@@ -23,10 +23,6 @@ impl SoundRequest {
     }
 }
 
-fn percent_of(default: u32, percent: i32) -> i32 {
-    percent.clamp(0, 400) * default as i32 / 100
-}
-
 /// WebRTC as the desktop sets it up, with the parts chosen.
 fn webrtc(echo: bool, denoise: bool, agc: bool) -> sys::AudioPreprocessor {
     let mut p = sys::AudioPreprocessor {
@@ -178,21 +174,21 @@ impl Worker {
         let gain = if fixed.is_some() {
             sys::SoundLevel_SOUND_GAIN_DEFAULT as i32
         } else {
-            percent_of(sys::SoundLevel_SOUND_GAIN_DEFAULT, s.mic_gain)
+            // The desktop's refGain: the same curve (50: the SDK's default).
+            crate::volume::level(s.mic_gain).min(sys::SoundLevel_SOUND_GAIN_MAX as i32)
         };
         // SAFETY: inst is live; p is a valid preprocessor.
         unsafe {
             sys::TT_SetSoundInputGainLevel(self.inst, gain);
             sys::TT_SetSoundInputPreprocessEx(self.inst, &p);
-            sys::TT_SetSoundOutputVolume(
-                self.inst,
-                percent_of(sys::SoundLevel_SOUND_VOLUME_DEFAULT, s.output_volume),
-            );
+            sys::TT_SetSoundOutputVolume(self.inst, crate::volume::level(s.output_volume));
         }
     }
 
     /// Everyone's media file volume, from the settings (for someone new).
     pub(super) fn apply_media_volume(&self, user_id: i32) {
+        // The desktop's "Media file vs. voice volume": a percent of the
+        // default level (100: as loud as voices).
         let pct = self.model.lock().map(|m| m.audio.media_volume).unwrap_or(100);
         if pct != 100 {
             // SAFETY: inst is live.
@@ -201,7 +197,7 @@ impl Worker {
                     self.inst,
                     user_id,
                     sys::StreamType_STREAMTYPE_MEDIAFILE_AUDIO,
-                    percent_of(sys::SoundLevel_SOUND_VOLUME_DEFAULT, pct),
+                    crate::volume::level(50) * pct.clamp(0, 100) / 100,
                 )
             };
         }

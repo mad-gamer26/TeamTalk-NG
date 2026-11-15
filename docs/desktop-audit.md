@@ -71,20 +71,25 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 
 ## D. Menus → actions
 
-- [ ] People: the whole Users menu as actions, desktop order: View / Speak
+- [x] People: the whole Users menu as actions, desktop order: View / Speak
       user information, Messages, Op, Volume, Mute voice, Mute media file,
       Kick from channel, Kick and ban from channel, Kick from server,
       Kick and ban from server, each subscription and intercept (checked
       state in the name), transmit control per type, increase/lower voice
       and media volume, store for move, move, relay voice/media, mute all.
-- [ ] Channels: the Channels menu as actions: Join, Leave, View / Speak
+- [x] Channels: the Channels menu as actions: Join, Leave, View / Speak
       channel info, Speak channel state, Generate tt:// URL, Create,
       Update, Delete, Banned users from channel, Stream media file,
       Pause/Resume, Upload, Download, Delete file.
-- [ ] Speak user information, Speak channel information, Speak channel
+- [x] Speak user information, Speak channel information, Speak channel
       state (spoken through the spoken-events voice).
 - [ ] Copy user information to the clipboard (userinfo.ui).
-- [ ] Kick and ban from channel (bans from the channel, not the server).
+- [x] Volumes on the desktop's scale (utilsound.cpp refVolume: 0–100 on a
+      curve, 50 normal, steps of 1): people's voice and media volume, the
+      microphone gain, the master volume, media file vs. voice volume;
+      the Volume dialog with stereo options and Default; earlier saved
+      levels converted to sound the same.
+- [x] Kick and ban from channel (bans from the channel, not the server).
 
 ## E. Preferences (preferences.ui)
 

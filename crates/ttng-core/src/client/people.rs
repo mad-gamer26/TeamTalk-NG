@@ -64,7 +64,7 @@ impl PeopleRequest {
 }
 
 fn percent_to_volume(percent: i32) -> i32 {
-    (percent.clamp(0, 400) * sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32) / 100
+    crate::volume::level(percent)
 }
 
 impl Worker {

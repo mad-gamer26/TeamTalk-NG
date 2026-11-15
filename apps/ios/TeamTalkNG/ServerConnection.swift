@@ -32,6 +32,8 @@ final class EventBridge: TtListener, @unchecked Sendable {
 final class ServerConnection {
     var server: SavedServer
     private weak var app: AppModel?
+    /// For the desktop's menus (DesktopMenus.swift).
+    var appModel: AppModel? { app }
     private let bridge = EventBridge()
     private let client: TtClient
     /// For screens that call the core themselves (off the main thread).
@@ -41,7 +43,8 @@ final class ServerConnection {
 
     func togglePicked(_ u: User) {
         if pickedToMove.contains(u.id) { pickedToMove.remove(u.id) } else { pickedToMove.insert(u.id) }
-        announce(pickedToMove.contains(u.id) ? "\(u.displayName) picked to move, \(pickedToMove.count) in all" : "\(u.displayName) no longer picked")
+        // The desktop's words ("Store User(s) for Move").
+        note(pickedToMove.contains(u.id) ? "\(u.displayName) selected for move" : "\(u.displayName) no longer selected for move")
     }
 
     /// Moves everyone picked into a channel.
@@ -51,7 +54,7 @@ final class ServerConnection {
         run("Couldn't move everyone") { cl in
             for id in ids { try cl.moveUser(userId: id, channelId: c.id) }
         }
-        announce(ids.count == 1 ? "Moved 1 person" : "Moved \(ids.count) people")
+        note("Selected users has been moved to channel \(c.parentId == 0 ? "root" : c.name)")
     }
 
     /// Who is writing to me privately right now (until when).
@@ -705,6 +708,7 @@ final class ServerConnection {
 
     /// Says the result of something I did (the desktop's "Menu actions").
     private func note(_ text: String) { app?.speech.say(.menuActions, ["message": text]) }
+    func noteMenu(_ text: String) { note(text) }
 
     /// Says fixed words under a spoken event (the desktop's connectivity,
     /// transmission toggles, menu actions).

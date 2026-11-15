@@ -322,7 +322,7 @@ pub struct User {
     /// Their voice and media files, for me only.
     pub voice_muted: bool,
     pub media_muted: bool,
-    /// In percent (100 as sent, up to 400).
+    /// The desktop's percent (0–100, 50 as sent; see volume.rs).
     pub voice_volume: i32,
     pub media_volume: i32,
     /// Which of my speakers play them (both normally).
@@ -498,9 +498,8 @@ impl From<&sys::User> for User {
     fn from(u: &sys::User) -> Self {
         let state = u.uUserState;
         let mode = u.nStatusMode;
-        let percent = |v: i32| {
-            (v * 100 + sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32 / 2) / sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32
-        };
+        // The desktop's percent (50 as sent).
+        let percent = crate::volume::percent;
         User {
             id: u.nUserID,
             nickname: from_tt(&u.szNickname),
@@ -662,12 +661,13 @@ pub struct AudioSettings {
     /// Evens out the microphone's level.
     pub gain_control: bool,
     pub noise_suppression: bool,
-    /// The microphone's gain in percent (100 as it is); ignored while a
-    /// channel's fixed volume sets it.
+    /// The microphone's gain, the desktop's percent (0–100, 50 as it is);
+    /// ignored while a channel's fixed volume sets it.
     pub mic_gain: i32,
-    /// Everything I hear, in percent (100 as it is).
+    /// Everything I hear, the desktop's percent (0–100, 50 as it is).
     pub output_volume: i32,
-    /// Everyone's media files, in percent of their voice (100: as loud).
+    /// Everyone's media files, in percent of the default level (the
+    /// desktop's "Media file vs. voice volume", 100: as loud as voices).
     pub media_volume: i32,
 }
 
@@ -677,8 +677,8 @@ impl Default for AudioSettings {
             echo_cancellation: false,
             gain_control: true,
             noise_suppression: true,
-            mic_gain: 100,
-            output_volume: 100,
+            mic_gain: 50,
+            output_volume: 50,
             media_volume: 100,
         }
     }

@@ -49,7 +49,7 @@ fn voice_goes_through_every_kind_of_processing() {
             echo_cancellation: false,
             gain_control: false,
             noise_suppression: false,
-            mic_gain: 250,
+            mic_gain: 70,
             output_volume: 60,
             media_volume: 50,
         },

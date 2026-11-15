@@ -393,10 +393,10 @@ impl Client {
         })
     }
 
-    /// Someone's volume for me only, in percent: 100 is as they send it, up
-    /// to 400.
+    /// Someone's volume for me only, the desktop's percent (0–100): 50 is
+    /// as they send it.
     pub fn set_user_volume(&self, user_id: i32, percent: i32) -> Result<()> {
-        let volume = (percent.clamp(0, 400) * sys::SoundLevel_SOUND_VOLUME_DEFAULT as i32) / 100;
+        let volume = crate::volume::level(percent);
         self.ask(|reply| Request::SetUserVolume { user_id, volume, reply })
     }
 
@@ -577,7 +577,7 @@ impl Client {
         self.set_subscription(me, Subscription::Voice, on)
     }
 
-    /// Someone's media file volume for me, in percent (up to 400).
+    /// Someone's media file volume for me, the desktop's percent (50 as sent).
     pub fn set_user_media_volume(&self, user_id: i32, percent: i32) -> Result<()> {
         self.people(PeopleRequest::MediaVolume { user_id, percent })
     }

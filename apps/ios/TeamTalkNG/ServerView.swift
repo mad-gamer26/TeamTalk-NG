@@ -13,6 +13,10 @@ struct ServerView: View {
     @State private var showStatus = false
     @State private var channelSheet: ChannelSheet?
     @State private var movingUser: User?
+    /// The desktop's Users submenus and Volume dialog.
+    @State private var userDialog: UserDialog?
+    @State private var pickingUpload = false
+    @State private var banning: BanTarget?
     @State private var deletingChannel: Channel?
     @State private var bansOf: Channel?
     @State private var infoOf: Channel?
@@ -179,6 +183,9 @@ struct ServerView: View {
         } message: {
             Text("For hidden channels, which aren't listed.")
         }
+        .fileImporter(isPresented: $pickingUpload, allowedContentTypes: [.item]) { result in
+            if case .success(let url) = result { connection.upload(url) }
+        }
         .fileImporter(isPresented: $pickingStream, allowedContentTypes: [.audio, .movie]) { result in
             if case .success(let url) = result { connection.streamFile(url) }
         }
@@ -187,6 +194,25 @@ struct ServerView: View {
         }
         .sheet(item: $classroomOf) { c in
             ClassroomView(connection: connection, channelId: c.id)
+        }
+        .sheet(item: $userDialog) { d in
+            switch d.kind {
+            case .subscriptions: SubscriptionsDialog(connection: connection, user: d.user)
+            case .transmit: TransmitDialog(connection: connection, user: d.user)
+            case .advanced: AdvancedDialog(connection: connection, user: d.user) { movingUser = d.user }
+            default: UserVolumeDialog(connection: connection, user: d.user)
+            }
+        }
+        .confirmationDialog(banning.map { $0.fromChannel ? "Kick and ban \($0.user.displayName) from the channel" : "Kick and ban \($0.user.displayName) from the server" } ?? "",
+                            isPresented: Binding(get: { banning != nil }, set: { if !$0 { banning = nil } }), titleVisibility: .visible) {
+            if let b = banning {
+                Button("Ban by username") {
+                    if b.fromChannel { connection.banFromChannel(b.user, by: .username) } else { connection.ban(b.user, by: .username) }
+                }
+                Button("Ban by IP-address") {
+                    if b.fromChannel { connection.banFromChannel(b.user, by: .ipAddress) } else { connection.ban(b.user, by: .ipAddress) }
+                }
+            }
         }
         .sheet(item: $movingUser) { user in
             MoveView(connection: connection, user: user)
@@ -262,7 +288,10 @@ struct ServerView: View {
                            showTopic: model.showTopics, tap: model.channelTap,
                            expandable: ChannelTree.hasRows(c, snap!),
                            expanded: connection.isExpanded(c),
-                           setExpanded: { connection.setExpanded(c, $0) }) {
+                           setExpanded: { connection.setExpanded(c, $0) },
+                           connection: connection,
+                           stream: { pickingStream = true },
+                           upload: { pickingUpload = true }) {
                     let here = c.id == snap?.myChannelId
                     switch model.channelTap {
                     case .nothing: break
@@ -273,11 +302,17 @@ struct ServerView: View {
                     }
                 }
             case .user(let u, let depth):
-                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, rights: connection.rights, showUsername: model.showUsernames,
-                        message: { privateWith = u }, details: { personFor = u },
-                        move: { movingUser = u },
-                        kick: { connection.kick(u, fromChannel: $0) },
-                        ban: { connection.ban(u, by: $0) })
+                UserRow(user: u, depth: depth, isMe: u.id == snap?.myUserId, showUsername: model.showUsernames,
+                        connection: connection) { kind in
+                    switch kind {
+                    case .info: personFor = u
+                    case .messages: privateWith = u
+                    case .move: movingUser = u
+                    case .banServer: banning = BanTarget(user: u, fromChannel: false)
+                    case .banChannel: banning = BanTarget(user: u, fromChannel: true)
+                    default: userDialog = UserDialog(user: u, kind: kind)
+                    }
+                }
             }
         }
         .listStyle(.plain)
@@ -348,6 +383,9 @@ private struct ChannelRow: View {
     let expandable: Bool
     let expanded: Bool
     let setExpanded: (Bool) -> Void
+    var connection: ServerConnection? = nil
+    var stream: () -> Void = {}
+    var upload: () -> Void = {}
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
@@ -411,64 +449,59 @@ private struct ChannelRow: View {
         .accessibilityHint(hint)
         .accessibilityAddTraits([.isButton, .isHeader])
         .accessibilityAction { join() }
-        .contextMenu {
-            if expandable { Button(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) } }
-            actions
-        }
-        .accessibilityActions {
-            voiceOverActions
-            if expandable { Button(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) } }
-        }
+        .contextMenu { ForEach(menu) { Button($0.title, action: $0.action) } }
+        .accessibilityActions { ForEach(menu.reversed()) { Button($0.title, action: $0.action) } }
     }
 
-    /// The actions in reverse, for VoiceOver (the owner's choice: its list
-    /// is the touch-and-hold menu's, reversed).
-    @ViewBuilder private var voiceOverActions: some View {
-        if moderate {
-            if channel.classroom { Button("Classroom: who may send", action: classroom) }
-            Button("Channel bans", action: bans)
+    /// The desktop's Channels menu, in its order (after Expand/Collapse;
+    /// this app's "move the picked here" and classroom list at the end).
+    private var menu: [MenuItem] {
+        var m: [MenuItem] = []
+        if expandable { m.append(.init(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) }) }
+        if !here { m.append(.init("Join Channel", join)) }
+        if here, let connection { m.append(.init("Leave Channel") { connection.leaveChannel() }) }
+        m.append(.init("View Channel Info", info))
+        if let connection {
+            m.append(.init("Speak Channel Info") { connection.speakChannelInfo(channel) })
+            if here { m.append(.init("Speak Channel State") { connection.speakChannelState() }) }
         }
-        if !picked.isEmpty { Button("Move the \(picked.count) picked here", action: movePicked) }
-        if rights.modifyChannels {
-            if channel.parentId != 0 { Button("Delete channel", action: delete) }
-            Button("Edit channel", action: edit)
+        m.append(.init("Generate tt:// URL to Clipboard", copyLink))
+        if rights.modifyChannels || rights.createTemporaryChannels { m.append(.init("Create Channel", newSub)) }
+        if rights.modifyChannels || moderate { m.append(.init("Update Channel", edit)) }
+        if rights.modifyChannels && channel.parentId != 0 { m.append(.init("Delete Channel", delete)) }
+        if moderate { m.append(.init("Banned Users From Channel", bans)) }
+        if here {
+            m.append(.init("Stream Media File to Channel", stream))
+            if let connection, let st = snapshot.streaming {
+                m.append(.init("Pause/Resume Stream") { connection.pauseStream(st.status != .paused) })
+            }
+            if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
         }
-        if rights.modifyChannels || rights.createTemporaryChannels {
-            Button("New channel inside", action: newSub)
-        }
-        Button("Copy a tt:// link to it", action: copyLink)
-        Button("Channel information", action: info)
+        if !picked.isEmpty { m.append(.init("Move the \(picked.count) picked here", movePicked)) }
+        if moderate && channel.classroom { m.append(.init("Classroom: who may send", classroom)) }
+        return m
     }
+}
 
-    @ViewBuilder private var actions: some View {
-        Button("Channel information", action: info)
-        Button("Copy a tt:// link to it", action: copyLink)
-        if rights.modifyChannels || rights.createTemporaryChannels {
-            Button("New channel inside", action: newSub)
-        }
-        if rights.modifyChannels {
-            Button("Edit channel", action: edit)
-            if channel.parentId != 0 { Button("Delete channel", role: .destructive, action: delete) }
-        }
-        if !picked.isEmpty { Button("Move the \(picked.count) picked here", action: movePicked) }
-        if moderate {
-            Button("Channel bans", action: bans)
-            if channel.classroom { Button("Classroom: who may send", action: classroom) }
-        }
-    }
+struct UserDialog: Identifiable {
+    let user: User
+    let kind: UserMenu.UserSheet
+    var id: String { "\(user.id)-\(kind)" }
+}
+
+struct BanTarget: Identifiable {
+    let user: User
+    let fromChannel: Bool
+    var id: Int32 { user.id }
 }
 
 private struct UserRow: View {
     let user: User
     let depth: Int
     let isMe: Bool
-    let rights: MyRights
     let showUsername: Bool
-    let message: () -> Void
-    let details: () -> Void
-    let move: () -> Void
-    let kick: (_ fromChannel: Bool) -> Void
-    let ban: (BanKind) -> Void
+    let connection: ServerConnection
+    let open: (UserMenu.UserSheet) -> Void
 
     /// Their state, said with their name.
     private var label: String {
@@ -491,7 +524,7 @@ private struct UserRow: View {
     }
 
     var body: some View {
-        Button(action: details) {
+        Button { open(.info) } label: {
             HStack {
                 Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
                     .foregroundStyle(user.talking ? .green : .secondary)
@@ -505,37 +538,10 @@ private struct UserRow: View {
         .accessibilityLabel(label)
         .accessibilityHint("Double-tap for everything about \(isMe ? "you" : user.displayName).")
         .accessibilityAddTraits(.isButton)
-        .contextMenu { if isMe { Button("Details and controls", action: details) } else { actions } }
-        .accessibilityActions { if !isMe { voiceOverActions } }
-    }
-
-    /// The actions in reverse, for VoiceOver.
-    @ViewBuilder private var voiceOverActions: some View {
-        if rights.ban {
-            Button("Ban by IP address and kick") { ban(.ipAddress) }
-            Button("Ban by account and kick") { ban(.username) }
-        }
-        if rights.kick {
-            Button("Kick from the server") { kick(false) }
-            if user.channelId > 0 { Button("Kick from the channel") { kick(true) } }
-        }
-        if rights.moveUsers { Button("Move to a channel", action: move) }
-        Button("Details and controls", action: details)
-        Button("Message privately", action: message)
-    }
-
-    @ViewBuilder private var actions: some View {
-        Button("Message privately", action: message)
-        Button("Details and controls", action: details)
-        if rights.moveUsers { Button("Move to a channel", action: move) }
-        if rights.kick {
-            if user.channelId > 0 { Button("Kick from the channel") { kick(true) } }
-            Button("Kick from the server") { kick(false) }
-        }
-        if rights.ban {
-            Button("Ban by account and kick") { ban(.username) }
-            Button("Ban by IP address and kick") { ban(.ipAddress) }
-        }
+        // The desktop's Users menu: in order when touched and held, and
+        // reversed for VoiceOver.
+        .contextMenu { UserMenu(connection: connection, user: user, open: open) }
+        .accessibilityActions { UserMenu(connection: connection, user: user, open: open, flatReversed: true) }
     }
 }
 
