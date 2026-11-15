@@ -233,7 +233,7 @@ struct ServerView: View {
 
     private var channels: some View {
         let snap = connection.snapshot
-        let rows = snap.map { ChannelTree.rows($0, byName: model.sortChannelsByName) } ?? []
+        let rows = snap.map { ChannelTree.rows($0, byName: model.sortChannelsByName, expanded: connection.expanded) } ?? []
         return List(rows) { row in
             switch row {
             case .channel(let c, let depth):
@@ -248,7 +248,10 @@ struct ServerView: View {
                                UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
                                announce("Link to \(c.parentId == 0 ? "the root channel" : c.name) copied")
                            },
-                           showTopic: model.showTopics, tap: model.channelTap) {
+                           showTopic: model.showTopics, tap: model.channelTap,
+                           expandable: ChannelTree.hasRows(c, snap!),
+                           expanded: connection.isExpanded(c),
+                           setExpanded: { connection.setExpanded(c, $0) }) {
                     let here = c.id == snap?.myChannelId
                     switch model.channelTap {
                     case .nothing: break
@@ -289,10 +292,13 @@ enum ChannelTree {
     }
 
     /// `byName`: channels alphabetically, else in the server's order.
-    static func rows(_ s: Snapshot, byName: Bool = true) -> [Row] {
+    /// `expanded`: the channels whose people and subchannels show (all
+    /// when nil).
+    static func rows(_ s: Snapshot, byName: Bool = true, expanded: Set<Int32>? = nil) -> [Row] {
         var out: [Row] = []
         func add(_ c: Channel, _ depth: Int) {
             out.append(.channel(c, depth: depth))
+            if let expanded, !expanded.contains(c.id) { return }
             for u in s.users.filter({ $0.channelId == c.id }).sorted(by: { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
                 out.append(.user(u, depth: depth + 1))
             }
@@ -303,6 +309,11 @@ enum ChannelTree {
         }
         for root in s.channels where root.parentId == 0 { add(root, 0) }
         return out
+    }
+
+    /// Whether a channel has anything to expand (people or subchannels).
+    static func hasRows(_ c: Channel, _ s: Snapshot) -> Bool {
+        s.users.contains { $0.channelId == c.id } || s.channels.contains { $0.parentId == c.id }
     }
 }
 
@@ -323,6 +334,9 @@ private struct ChannelRow: View {
     let copyLink: () -> Void
     let showTopic: Bool
     let tap: AppModel.ChannelTap
+    let expandable: Bool
+    let expanded: Bool
+    let setExpanded: (Bool) -> Void
     let join: () -> Void
 
     private var name: String { channel.parentId == 0 ? (snapshot.server.name.nonEmpty ?? "Root channel") : channel.name }
@@ -344,26 +358,56 @@ private struct ChannelRow: View {
         return parts.joined(separator: ", ")
     }
 
+    /// As the desktop says it after the channel: expanded or collapsed.
+    private var state: String {
+        guard expandable else { return details }
+        return "\(details), \(expanded ? "Expanded" : "Collapsed")"
+    }
+
     var body: some View {
-        Button(action: join) {
-            HStack {
-                Image(systemName: here ? "folder.fill" : "folder")
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading) {
-                    Text(name).font(.body.weight(here ? .semibold : .regular))
-                    Text(details).font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Button(action: join) {
+                HStack {
+                    Image(systemName: here ? "folder.fill" : "folder")
+                    VStack(alignment: .leading) {
+                        Text(name).font(.body.weight(here ? .semibold : .regular))
+                        Text(details).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
+                .padding(.leading, CGFloat(depth) * 16)
+                .contentShape(Rectangle())
             }
-            .padding(.leading, CGFloat(depth) * 16)
+            .buttonStyle(.plain)
+            // The disclosure arrow, on the right.
+            if expandable {
+                Button { withAnimation { setExpanded(!expanded) } } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .foregroundStyle(.primary)
+        // One element for VoiceOver: a heading, double-tap as set, and
+        // Expand or Collapse first among its actions.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(name), channel")
-        .accessibilityValue(details)
+        .accessibilityValue(state)
         .accessibilityHint(hint)
-        .accessibilityAddTraits(.isButton)
-        .contextMenu { actions }
-        .accessibilityActions { actions }
+        .accessibilityAddTraits([.isButton, .isHeader])
+        .accessibilityAction { join() }
+        .contextMenu {
+            if expandable { Button(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) } }
+            actions
+        }
+        .accessibilityActions {
+            if expandable { Button(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) } }
+            actions
+        }
     }
 
     @ViewBuilder private var actions: some View {

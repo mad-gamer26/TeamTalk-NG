@@ -678,6 +678,10 @@ final class ServerConnection {
             refreshPending = false
             snapshot = client.snapshot()
             state = snapshot?.state ?? .disconnected
+            // Channels new to me: collapsed, or expanded with the setting.
+            if app?.autoExpandChannels == true {
+                for c in snapshot?.channels ?? [] where knownChannels[c.id] == nil { expanded.insert(c.id) }
+            }
             known = Dictionary(snapshot?.users.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
             knownChannels = Dictionary(snapshot?.channels.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
         }
@@ -727,6 +731,29 @@ final class ServerConnection {
         return c.parentId == 0 ? "root" : c.name
     }
 
+    // MARK: Expanded channels (the desktop's rules)
+
+    /// Channels showing their people and subchannels. As on the desktop:
+    /// new ones collapsed (expanded with "Expand channels automatically"),
+    /// the one I join expanded with every channel above it, the one I
+    /// leave collapsed.
+    private(set) var expanded: Set<Int32> = []
+
+    func isExpanded(_ c: Channel) -> Bool { expanded.contains(c.id) }
+
+    func setExpanded(_ c: Channel, _ on: Bool) {
+        if on { expanded.insert(c.id) } else { expanded.remove(c.id) }
+    }
+
+    private func expandWithParents(_ id: Int32) {
+        var at: Int32? = id
+        var seen = Set<Int32>()
+        while let i = at, i != 0, seen.insert(i).inserted {
+            expanded.insert(i)
+            at = snapshot?.channels.first { $0.id == i }?.parentId
+        }
+    }
+
     /// Who I knew, and how, before this event (to say what changed).
     private var known: [Int32: User] = [:]
     private var knownChannels: [Int32: Channel] = [:]
@@ -761,6 +788,7 @@ final class ServerConnection {
             case .disconnected:
                 transmitting = false
                 voiceActive = false
+                expanded = []
             default: break
             }
         case .connectionFailed(let m):
@@ -804,6 +832,7 @@ final class ServerConnection {
                 UserDefaults.standard.set(path, forKey: "lastChannel-\(server.id)")
                 joinedLines(c, path: path)
             }
+            if u.id == snapshot?.myUserId { expandWithParents(ch) }
             guard u.id != snapshot?.myUserId else { break }
             if ch == myChannel {
                 sound(.userJoined)
@@ -815,6 +844,7 @@ final class ServerConnection {
                 say(.joined, v)
             }
         case .userLeft(let u, let ch):
+            if u.id == snapshot?.myUserId { expanded.remove(ch) }
             guard u.id != snapshot?.myUserId else { break }
             if ch == myChannel {
                 sound(.userLeft)

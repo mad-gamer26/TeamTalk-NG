@@ -18,6 +18,7 @@ struct DisplaySettingsView: View {
                 Picker("Double-tapping a channel", selection: $model.channelTap) {
                     ForEach(AppModel.ChannelTap.allCases) { Text($0.label).tag($0) }
                 }
+                Toggle("Expand channels automatically", isOn: $model.autoExpandChannels)
             }
             Section("Chat") {
                 Toggle("Show the time of messages", isOn: $model.showTimestamps)

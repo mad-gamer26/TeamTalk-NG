@@ -74,7 +74,7 @@ final class AppModel {
     // MARK: Display (the desktop's Display tab)
 
     enum ChannelTap: String, CaseIterable, Identifiable {
-        case join, joinOrLeave, nothing
+        case joinOrLeave, join, nothing
         var id: Self { self }
         var label: String {
             switch self {
@@ -88,7 +88,10 @@ final class AppModel {
     var showUsernames = false { didSet { save() } }
     var showTopics = true { didSet { save() } }
     var sortChannelsByName = true { didSet { save() } }
-    var channelTap = ChannelTap.join { didSet { save() } }
+    /// The desktop's default: join, or leave the channel you're in.
+    var channelTap = ChannelTap.joinOrLeave { didSet { save() } }
+    /// The desktop's "Auto expand channels": channels appear expanded.
+    var autoExpandChannels = false { didSet { save() } }
     var showTimestamps = true { didSet { save() } }
     var showMOTD = true { didSet { save() } }
     var eventsInChat = false { didSet { save() } }
@@ -129,7 +132,13 @@ final class AppModel {
         showUsernames = defaults.bool(forKey: "showUsernames")
         showTopics = defaults.object(forKey: "showTopics") as? Bool ?? true
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
-        channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .join
+        channelTap = ChannelTap(rawValue: defaults.string(forKey: "channelTap") ?? "") ?? .joinOrLeave
+        // "Joins it" was the default before the desktop's join-or-leave.
+        if !defaults.bool(forKey: "channelTapDesktopDefault") {
+            defaults.set(true, forKey: "channelTapDesktopDefault")
+            if channelTap == .join { channelTap = .joinOrLeave }
+        }
+        autoExpandChannels = defaults.bool(forKey: "autoExpandChannels")
         showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
         eventsInChat = defaults.bool(forKey: "eventsInChat")
@@ -159,7 +168,7 @@ final class AppModel {
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterMinutes = 0; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = true; sortChannelsByName = true; channelTap = .join
+        showUsernames = false; showTopics = true; sortChannelsByName = true; channelTap = .joinOrLeave; autoExpandChannels = false
         showTimestamps = true; showMOTD = true; eventsInChat = false; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
@@ -252,6 +261,7 @@ final class AppModel {
         defaults.set(showTopics, forKey: "showTopics")
         defaults.set(sortChannelsByName, forKey: "sortChannelsByName")
         defaults.set(channelTap.rawValue, forKey: "channelTap")
+        defaults.set(autoExpandChannels, forKey: "autoExpandChannels")
         defaults.set(showTimestamps, forKey: "showTimestamps")
         defaults.set(showMOTD, forKey: "showMOTD")
         defaults.set(eventsInChat, forKey: "eventsInChat")
