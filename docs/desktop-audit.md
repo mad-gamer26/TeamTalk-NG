@@ -161,3 +161,19 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [x] File transfers: done plays the desktop's sound; a failure says its
       words ("Failed to download file …", "Failed to upload file …").
       n/a: desktop access requests (no desktop sharing on phones).
+
+## H. Keyboard shortcuts (mainwindow.ui) — 2026-11-15
+
+- [x] Every desktop menu shortcut that isn't a function key, Control as
+      Command and Alt as Option, acting on the row VoiceOver is on (the
+      desktop's selected item; else the focused person's channel, else
+      mine): DesktopShortcuts.swift. Enable Sound Events and Enable
+      Text-To-Speech Events master switches; Speak Client Statistics.
+- [ ] Function keys (F1 Manual, F2 Connect, F3 channel info, F4
+      Preferences, F5 nickname, F6 status, Ctrl+F6 question mode, F7/F8
+      create/delete channel, F9 server properties, Shift+F5/F6 upload/
+      download, Shift+Delete delete file): SwiftUI's keyboardShortcut has no
+      function keys; needs UIKit key commands.
+- NG's own keys moved off the desktop's: talk Command-Shift-P (was
+  Command-T, the desktop's Speak Client Statistics), tabs Control-1/2/3
+  (Command-1 to 8 are the desktop's subscriptions).
