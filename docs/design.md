@@ -128,9 +128,12 @@ other than WAV don't stream). Decisions:
   ~/.config/ttng/prosrv-bearware (mode 600; TTNG_PROSRV_BEARWARE
   overrides). tests/connecting.rs runs a whole encrypted session against
   it, and skips with a reason when either is missing.
-- Android: `scripts/build-sdk-linux.sh android-arm64-v8a android-x64`, in
-  BearWare's Android image (Google's WebRTC tools build Android only on
-  Linux), into sdk/android-src.
+- Android: BearWare's **official** SDK (owner agreed 2026-11-15): unlike
+  the iOS one it has FFmpeg (all ABIs, x86_64 for an emulator included),
+  and its standard library encrypts as a client; MP3 recording is the
+  core's LAME conversion everywhere. `scripts/build-sdk-linux.sh
+  android-arm64-v8a` still works if it's ever needed (BearWare's Android
+  image; Google's WebRTC tools build Android only on Linux).
 - Mac: not built from source (owner told 2026-11-15): BearWare's
   args.gn_mac has no WEBRTC_CFG_EXTRA hook for the Xcode 27 settings, and
   the official Mac SDK already has FFmpeg and Apple silicon.

@@ -5,6 +5,8 @@
 #                       libraries, into sdk/linux-src (for encryption tests)
 #   android-arm64-v8a   the Android libraries (FFmpeg on, BearWare's
 #   android-x64         default) into sdk/android-src/Library/TeamTalk_DLL/<abi>
+#                       (not needed: BearWare's official Android SDK has
+#                       FFmpeg; see docs/design.md)
 # Google's WebRTC tools build Android only on Linux. No changes to
 # BearWare's code. Slow the first time (WebRTC is fetched per platform).
 #   scripts/build-sdk-linux.sh [linux] [android-arm64-v8a] [android-x64]
@@ -23,7 +25,7 @@ fi
 [ "$(git -C "$SRC" rev-parse HEAD)" = "$COMMIT" ] || { echo "$SRC isn't BearWare's $TAG ($COMMIT)" >&2; exit 1; }
 mkdir -p "$WORK/home"
 targets=("$@")
-[ ${#targets[@]} -gt 0 ] || targets=(linux android-arm64-v8a android-x64)
+[ ${#targets[@]} -gt 0 ] || targets=(linux)
 
 # Runs a build in BearWare's image; root inside (their Android image keeps
 # the NDK in /root), and everything handed back to this user afterwards.
