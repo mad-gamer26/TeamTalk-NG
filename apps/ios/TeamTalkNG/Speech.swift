@@ -227,6 +227,7 @@ final class SpeechStore {
         if let t = defaults.dictionary(forKey: "speechTemplates") as? [String: String] {
             templates = t
         }
+        enabled = defaults.object(forKey: "speechEventsEnabled") as? Bool ?? true
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if converted { save() }
@@ -284,9 +285,17 @@ final class SpeechStore {
         return t
     }
 
+    /// The desktop's "Enable Text-To-Speech Events" (all of them at once).
+    var enabled = true { didSet { defaults.set(enabled, forKey: "speechEventsEnabled") } }
+
+    func toggleEnabled() {
+        enabled.toggle()
+        speak(enabled ? "Text-To-Speech events enabled" : "Text-To-Speech events disabled")
+    }
+
     /// Says an event (if it's on).
     func say(_ e: SpeechEvent, _ vars: [String: String]) {
-        guard isOn(e) else { return }
+        guard enabled, isOn(e) else { return }
         speak(text(e, vars))
     }
 
@@ -318,6 +327,9 @@ struct SpeechView: View {
         let speech = model.speech
         @Bindable var b = speech
         Form {
+            Section {
+                Toggle("Enable Text-To-Speech Events", isOn: Binding(get: { speech.enabled }, set: { speech.enabled = $0 }))
+            }
             Section {
                 Picker("Say events with", selection: $b.output) {
                     ForEach(SpeechStore.Output.allCases) { Text($0.label).tag($0) }

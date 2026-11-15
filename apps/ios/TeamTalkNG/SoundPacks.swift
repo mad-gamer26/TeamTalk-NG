@@ -113,6 +113,7 @@ final class SoundStore {
         }
         selectedId = defaults.string(forKey: "soundPack") ?? InstalledPack.builtIn.id
         playbackMode = PlaybackMode(rawValue: defaults.string(forKey: "soundPlaybackMode") ?? "") ?? .standard
+        enabled = defaults.object(forKey: "soundEventsEnabled") as? Bool ?? true
         volume = defaults.object(forKey: "soundVolume") as? Double ?? 0.8
         if let off = defaults.stringArray(forKey: "soundsOff") {
             disabled = Set(off.compactMap(SoundEvent.init(rawValue:)))
@@ -193,9 +194,12 @@ final class SoundStore {
 
     // MARK: Playing
 
+    /// The desktop's "Enable Sound Events" (all of them at once).
+    var enabled = true { didSet { defaults.set(enabled, forKey: "soundEventsEnabled") } }
+
     /// Plays an event's sound (if it's on), mixed with the voices.
     func play(_ e: SoundEvent) {
-        guard isOn(e) else { return }
+        guard enabled, isOn(e) else { return }
         preview(e)
     }
 

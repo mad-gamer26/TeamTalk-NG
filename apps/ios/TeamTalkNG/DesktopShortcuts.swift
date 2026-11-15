@@ -1,0 +1,101 @@
+import SwiftUI
+
+/// The desktop's menu commands that have keyboard shortcuts.
+enum DesktopCommand: Hashable {
+    case record, speakClientStats
+    case questionMode, hearMyself, pushToTalk, voiceActivation, speechEvents, soundEvents
+    case userInfo, speakUserInfo, messages, op, volume, muteVoice, muteMedia
+    case kickChannel, kickBanChannel, kickServer, kickBanServer
+    case subscription(Subscription)
+    case transmit(TransmitStream, all: Bool)
+    case voiceUp, voiceDown, mediaUp, mediaDown, storeForMove, moveUsers, moveDialog, muteAll
+    case join, leave, speakChannelInfo, speakChannelState, ttURL, channelBans, stream, pauseStream
+    case accounts, serverBans, onlineUsers, broadcast, saveConfig
+    case talk, tab(ServerView.Tab)
+}
+
+/// The desktop's keyboard shortcuts (mainwindow.ui), Ctrl as Command and
+/// Alt as Option, as hidden buttons for a hardware keyboard. They act on
+/// the person or channel VoiceOver is on, as the desktop's on the selected
+/// one. (SwiftUI can't take the function keys the desktop uses for
+/// Connect, Preferences and its dialogs.)
+struct DesktopShortcuts: View {
+    let run: (DesktopCommand) -> Void
+
+    private typealias Key = (String, KeyEquivalent, EventModifiers, DesktopCommand)
+
+    private static let keys: [Key] = {
+        var k: [Key] = [
+            ("Record Conversations to Disk", "a", [.command, .option], .record),
+            ("Speak Client Statistics", "t", .command, .speakClientStats),
+            ("Hear Myself", "3", [.command, .shift], .hearMyself),
+            ("Enable Push To Talk", "t", [.command, .shift], .pushToTalk),
+            ("Enable Voice Activation", "a", [.command, .shift], .voiceActivation),
+            ("Enable Text-To-Speech Events", "s", [.command, .option], .speechEvents),
+            ("Enable Sound Events", "z", [.command, .option], .soundEvents),
+            ("View User Information", "i", .command, .userInfo),
+            ("Speak User Information", "g", .command, .speakUserInfo),
+            ("Messages", "e", .command, .messages),
+            ("Op", "o", .command, .op),
+            ("Volume", "u", .command, .volume),
+            ("Mute Voice", "m", [.command, .shift], .muteVoice),
+            ("Mute Media File", "m", [.command, .option, .shift], .muteMedia),
+            ("Kick From Channel", "k", .command, .kickChannel),
+            ("Kick and Ban From Channel", "b", .command, .kickBanChannel),
+            ("Kick From Server", "k", [.command, .option], .kickServer),
+            ("Kick and Ban From Server", "b", [.command, .option], .kickBanServer),
+            ("Increase Voice Volume", "y", .command, .voiceUp),
+            ("Lower Voice Volume", "h", .command, .voiceDown),
+            ("Increase Media File Volume", "y", [.command, .shift], .mediaUp),
+            ("Lower Media File Volume", "h", [.command, .shift], .mediaDown),
+            ("Store User(s) for Move", "x", [.command, .option], .storeForMove),
+            ("Move User(s)", "v", [.command, .option], .moveUsers),
+            ("Move Users Dialog", "m", [.command, .option], .moveDialog),
+            ("Mute All", "m", .command, .muteAll),
+            ("Join Channel", "j", .command, .join),
+            ("Leave Channel", "l", .command, .leave),
+            ("Speak Channel Info", "g", [.command, .option], .speakChannelInfo),
+            ("Speak Channel State", "g", [.command, .shift], .speakChannelState),
+            ("Generate tt:// URL to Clipboard", "r", [.command, .shift], .ttURL),
+            ("Banned Users From Channel", "b", [.command, .option, .shift], .channelBans),
+            ("Stream Media File to Channel", "s", .command, .stream),
+            ("Pause/Resume Stream", "p", .command, .pauseStream),
+            ("User Accounts", "l", [.command, .shift], .accounts),
+            ("Banned Users", "b", [.command, .shift], .serverBans),
+            ("Online Users", "u", [.command, .shift], .onlineUsers),
+            ("Broadcast Message", "e", [.command, .shift], .broadcast),
+            ("Save Configuration", "s", [.command, .shift], .saveConfig),
+            // This app's own: talking, and its tabs (the desktop has neither).
+            ("Talk or stop talking", "p", [.command, .shift], .talk),
+            ("Channels", "1", .control, .tab(.channels)),
+            ("Chat", "2", .control, .tab(.chat)),
+            ("Files", "3", .control, .tab(.files)),
+        ]
+        // Subscriptions Ctrl+1–8, intercepts Ctrl+Shift+1–8 (the desktop's).
+        let subs: [(Subscription, Character)] = [(.userMessages, "1"), (.channelMessages, "2"), (.broadcastMessages, "3"),
+                                                 (.voice, "4"), (.video, "5"), (.desktop, "6"), (.mediaFile, "8")]
+        for (s, c) in subs { k.append((ServerConnection.subscriptionMenuName(s), KeyEquivalent(c), .command, .subscription(s))) }
+        let ints: [(Subscription, Character)] = [(.interceptUserMessages, "1"), (.interceptChannelMessages, "2"), (.interceptVoice, "4"),
+                                                 (.interceptVideo, "5"), (.interceptDesktop, "6"), (.interceptMediaFile, "8")]
+        for (s, c) in ints { k.append((ServerConnection.subscriptionMenuName(s), KeyEquivalent(c), [.command, .shift], .subscription(s))) }
+        // Transmit control: Ctrl+Alt+T/Q/W/E/R, and with Shift for everyone.
+        let tx: [(TransmitStream, Character, String)] = [(.channelMessages, "t", "Channel Text Messages"), (.voice, "q", "Voice Transmission"),
+                                                         (.video, "w", "Video Transmission"), (.desktop, "e", "Desktop Transmission"),
+                                                         (.mediaFile, "r", "Media File Transmission")]
+        for (s, c, name) in tx {
+            k.append(("Allow \(name)", KeyEquivalent(c), [.command, .option], .transmit(s, all: false)))
+            k.append(("Allow All \(name)", KeyEquivalent(c), [.command, .option, .shift], .transmit(s, all: true)))
+        }
+        return k
+    }()
+
+    var body: some View {
+        Group {
+            ForEach(Array(Self.keys.enumerated()), id: \.offset) { _, k in
+                Button(k.0) { run(k.3) }.keyboardShortcut(k.1, modifiers: k.2)
+            }
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+}

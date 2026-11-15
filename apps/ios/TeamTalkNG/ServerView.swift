@@ -35,6 +35,8 @@ struct ServerView: View {
     @State private var broadcastText = ""
     @State private var renaming = false
     @State private var newNickname = ""
+    /// The row VoiceOver is on (the desktop's selected item, for its shortcuts).
+    @AccessibilityFocusState private var voFocus: String?
 
     enum Tab: String, CaseIterable, Identifiable {
         case channels = "Channels", chat = "Chat", files = "Files"
@@ -129,18 +131,8 @@ struct ServerView: View {
             }
         }
         .accessibilityAction(.magicTap) { connection.toggleTalking() }
-        // A hardware keyboard: the main actions (Help lists them).
-        .background {
-            Group {
-                Button("Talk or stop talking") { connection.toggleTalking() }.keyboardShortcut("t", modifiers: .command)
-                Button("Mute or unmute everyone") { connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false)) }.keyboardShortcut("m", modifiers: .command)
-                Button("Channels") { tab = .channels }.keyboardShortcut("1", modifiers: .command)
-                Button("Chat") { tab = .chat }.keyboardShortcut("2", modifiers: .command)
-                Button("Files") { tab = .files }.keyboardShortcut("3", modifiers: .command)
-            }
-            .opacity(0)
-            .accessibilityHidden(true)
-        }
+        // A hardware keyboard: the desktop's shortcuts (Help lists them).
+        .background { DesktopShortcuts(run: perform) }
         .onAppear { connection.connect() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
             SecureField("Password", text: $channelPassword).accessibilityLabel("Password")
@@ -273,6 +265,7 @@ struct ServerView: View {
         let snap = connection.snapshot
         let rows = snap.map { ChannelTree.rows($0, byName: model.sortChannelsByName, expanded: connection.expanded) } ?? []
         return List(rows) { row in
+            Group {
             switch row {
             case .channel(let c, let depth):
                 ChannelRow(channel: c, depth: depth, snapshot: snap!, rights: connection.rights,
@@ -319,6 +312,8 @@ struct ServerView: View {
                     }
                 }
             }
+            }
+            .accessibilityFocused($voFocus, equals: row.id)
         }
         .listStyle(.plain)
     }
@@ -1007,5 +1002,84 @@ private struct DesktopDialogs: ViewModifier {
                                                     set: { if !$0 { connection.excludedMessage = nil } })) {
                 Button("OK") {}
             } message: { Text(connection.excludedMessage ?? "") }
+    }
+}
+
+// MARK: The desktop's keyboard shortcuts
+
+extension ServerView {
+    /// The person VoiceOver is on (the desktop's selected user).
+    private var focusedUser: User? {
+        guard let f = voFocus, f.hasPrefix("u"), let id = Int32(f.dropFirst()) else { return nil }
+        return connection.snapshot?.users.first { $0.id == id }
+    }
+
+    /// The channel VoiceOver is on, or the focused person's, or mine.
+    private var focusedChannel: Channel? {
+        let snap = connection.snapshot
+        if let f = voFocus, f.hasPrefix("c"), let id = Int32(f.dropFirst()) { return snap?.channels.first { $0.id == id } }
+        let id = focusedUser?.channelId ?? snap?.myChannelId ?? 0
+        return snap?.channels.first { $0.id == id }
+    }
+
+    func perform(_ cmd: DesktopCommand) {
+        let u = focusedUser, c = focusedChannel
+        switch cmd {
+        case .record: if connection.recording { connection.stopRecording() } else { connection.startRecording() }
+        case .speakClientStats: Task { await connection.speakClientStatistics() }
+        case .questionMode:
+            let q = connection.me?.status == .question
+            connection.setStatus(q ? .available : .question, connection.me?.statusMessage ?? "")
+        case .hearMyself: connection.setHearMyself(!connection.hearingMyself)
+        case .pushToTalk: model.talkMode = model.talkMode == .pushToTalk ? .voiceActivation : .pushToTalk
+            connection.noteMenu(model.talkMode == .pushToTalk ? "Push-To-Talk enabled" : "Push-To-Talk disabled")
+        case .voiceActivation: model.talkMode = model.talkMode == .voiceActivation ? .pushToTalk : .voiceActivation
+            connection.noteMenu(model.talkMode == .voiceActivation ? "Voice activation enabled" : "Voice activation disabled")
+        case .speechEvents: model.speech.toggleEnabled()
+        case .soundEvents:
+            model.sounds.enabled.toggle()
+            connection.noteMenu(model.sounds.enabled ? "Sound events enabled" : "Sound events disabled")
+        case .userInfo: if let u { personFor = u }
+        case .speakUserInfo: if let u { connection.speakUserInfo(u) } else if let c { connection.speakChannelInfo(c) }
+        case .messages: if let u { privateWith = u }
+        case .op: if let u { connection.setOperator(u, !u.operator) }
+        case .volume: if let u { userDialog = UserDialog(user: u, kind: .volume) }
+        case .muteVoice: if let u { connection.toggleMuteVoice(u) }
+        case .muteMedia: if let u { connection.toggleMuteMedia(u) }
+        case .kickChannel: if let u { connection.kick(u, fromChannel: true) }
+        case .kickBanChannel: if let u { banning = BanTarget(user: u, fromChannel: true) }
+        case .kickServer: if let u { connection.kick(u, fromChannel: false) }
+        case .kickBanServer: if let u { banning = BanTarget(user: u, fromChannel: false) }
+        case .subscription(let s): if let u { connection.toggleSubscription(u, s) }
+        case .transmit(let s, let all):
+            guard let c, let who = all ? Int32(0) : u?.id else { return }
+            let now = c.transmit.contains { $0.userId == who && $0.allowed.contains(s) }
+            connection.setTransmit(channel: c.id, user: who, s, !now)
+        case .voiceUp: if let u { connection.stepVolume(u, media: false, by: 1) }
+        case .voiceDown: if let u { connection.stepVolume(u, media: false, by: -1) }
+        case .mediaUp: if let u { connection.stepVolume(u, media: true, by: 1) }
+        case .mediaDown: if let u { connection.stepVolume(u, media: true, by: -1) }
+        case .storeForMove: if let u { connection.togglePicked(u) }
+        case .moveUsers: if let c { connection.movePicked(to: c) }
+        case .moveDialog: if let u { movingUser = u }
+        case .muteAll: connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false))
+        case .join: if let c, c.id != connection.snapshot?.myChannelId { if c.hasPassword { passwordFor = c } else { connection.join(c) } }
+        case .leave: connection.leaveChannel()
+        case .speakChannelInfo: if let c { connection.speakChannelInfo(c) }
+        case .speakChannelState: connection.speakChannelState()
+        case .ttURL:
+            UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
+            connection.noteMenu("Link copied to clipboard")
+        case .channelBans: if let c { bansOf = c }
+        case .stream: pickingStream = true
+        case .pauseStream: if let st = connection.snapshot?.streaming { connection.pauseStream(st.status != .paused) }
+        case .accounts: showAccounts = true
+        case .serverBans: showBans = true
+        case .onlineUsers: showOnline = true
+        case .broadcast: broadcasting = true
+        case .saveConfig: connection.saveServerConfig()
+        case .talk: connection.toggleTalking()
+        case .tab(let t): tab = t
+        }
     }
 }

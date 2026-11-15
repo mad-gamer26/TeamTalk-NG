@@ -87,6 +87,15 @@ extension ServerConnection {
         noteMenu("\(media ? "Media files volume" : "Voice volume") for \(u.displayName) \(step > 0 ? "increased" : "decreased") to \(new)%")
     }
 
+    /// The desktop's "Speak Client Statistics": "RX: …, TX: …, PING: …".
+    func speakClientStatistics() async {
+        guard let st = await clientStatistics() else { return }
+        let size = { (b: Int64) in ByteCountFormatter.string(fromByteCount: b, countStyle: .file) }
+        var s = "RX: \(size(st.udpBytesReceived)), TX: \(size(st.udpBytesSent))"
+        if st.udpPingMs >= 0 { s += ", PING: \(st.udpPingMs)" }
+        speakAlways(s)
+    }
+
     func toggleSubscription(_ u: User, _ sub: Subscription) {
         setSubscription(u, sub, !u.mySubscriptions.on.contains(sub))
     }
