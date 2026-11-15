@@ -83,7 +83,7 @@ struct BansView: View {
                         Text("Ban Username").tag(true)
                     }
                     .pickerStyle(.menu)
-                    TextField(byUsername ? "Username" : "IP-address, like 10.0.0.*", text: $address)
+                    TextField(byUsername ? "Username" : "IP-address, like 10.0.0.*", text: $address).accessibilityLabel(byUsername ? "Username" : "IP-address")
                         .textFieldStyle(.roundedBorder)
                         .keyboardType(byUsername ? .default : .numbersAndPunctuation)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()

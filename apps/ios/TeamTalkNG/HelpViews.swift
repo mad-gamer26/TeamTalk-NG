@@ -67,7 +67,7 @@ struct FirstRunView: View {
                     Text("A few things to set up. You can change all of them later in Settings.")
                 }
                 Section("You") {
-                    TextField("Nickname", text: $nickname)
+                    TextField("Nickname", text: $nickname).accessibilityLabel("Nickname")
                     Picker("Gender", selection: $gender) {
                         Text("Male").tag(Gender.male)
                         Text("Female").tag(Gender.female)

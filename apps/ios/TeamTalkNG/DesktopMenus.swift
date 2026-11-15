@@ -299,9 +299,7 @@ struct UserVolumeDialog: View {
     }
 
     private func slider(_ label: String, _ value: Int32, set: @escaping (Int) -> Void) -> some View {
-        Slider(value: Binding(get: { Double(value) }, set: { set(Int($0)) }), in: 0...100, step: 1) { Text(label) }
-            .accessibilityLabel(label)
-            .accessibilityValue("\(value) percent")
+        NamedSlider(label, int: Binding(get: { Int(value) }, set: { set($0) }), in: 0...100, spoken: "\(value) percent")
     }
 }
 
@@ -405,19 +403,18 @@ struct StreamMediaFileDialog: View {
                         Text("Speex DSP Audio Preprocessor").tag(2)
                     }
                     if kind == 1 {
-                        Slider(value: Binding(get: { Double(ttGain) }, set: { ttGain = Int($0) }), in: 0...100, step: 1) { Text("Gain Level") }
-                            .accessibilityValue("\(ttGain) percent")
+                        NamedSlider("Gain Level", int: $ttGain, in: 0...100, spoken: "\(ttGain) percent")
                         Toggle("Mute left channel", isOn: $ttLeft)
                         Toggle("Mute right channel", isOn: $ttRight)
                     }
                     if kind == 2 {
                         Toggle("Enable AGC", isOn: $spAGC)
-                        Stepper("Gain Level: \(spGain)", value: $spGain, in: 0...32000, step: 500)
-                        Stepper("Max Gain dB: \(spMaxGain)", value: $spMaxGain, in: 0...100)
-                        Stepper("Max Gain Increase Per Sec (dB): \(spInc)", value: $spInc, in: 0...100)
-                        Stepper("Max Gain Decrease Per Sec (dB): \(spDec)", value: $spDec, in: -100...0)
+                        NumberField("Gain Level", value: $spGain, in: 0...32000)
+                        NumberField("Max Gain dB", value: $spMaxGain, in: 0...100)
+                        NumberField("Max Gain Increase Per Sec (dB)", value: $spInc, in: 0...100)
+                        NumberField("Max Gain Decrease Per Sec (dB)", value: $spDec, in: -100...0)
                         Toggle("Enable Denoising", isOn: $spDenoise)
-                        Stepper("Max Attenuation of noise (dB): \(spAtten)", value: $spAtten, in: -100...0)
+                        NumberField("Max Attenuation of noise (dB)", value: $spAtten, in: -100...0)
                     }
                     if kind != 0 {
                         Button("Default") {
@@ -426,9 +423,7 @@ struct StreamMediaFileDialog: View {
                         }
                     }
                     if info.durationMs > 0 {
-                        Slider(value: $start, in: 0...Double(info.durationMs), step: 1000) { Text("Start position") }
-                            .accessibilityValue(time(start))
-                        LabeledContent("Start position", value: time(start))
+                        NamedSlider("Start position", value: $start, in: 0...Double(info.durationMs), step: 1000, spoken: time(start))
                     }
                 }
             }

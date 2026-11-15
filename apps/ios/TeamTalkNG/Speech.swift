@@ -332,12 +332,10 @@ struct SpeechView: View {
                             Text("\(v.name), \(Locale.current.localizedString(forIdentifier: v.language) ?? v.language)").tag(v.identifier)
                         }
                     }
-                    Slider(value: $b.rate, in: Double(AVSpeechUtteranceMinimumSpeechRate)...Double(AVSpeechUtteranceMaximumSpeechRate)) {
-                        Text("Speed")
-                    }
-                    .accessibilityValue("\(Int(speech.rate * 100)) percent")
-                    Slider(value: $b.volume, in: 0...1) { Text("Volume") }
-                        .accessibilityValue("\(Int(speech.volume * 100)) percent")
+                    NamedSlider("Speed", value: $b.rate,
+                                in: Double(AVSpeechUtteranceMinimumSpeechRate)...Double(AVSpeechUtteranceMaximumSpeechRate),
+                                step: 0.01, spoken: "\(Int(speech.rate * 100)) percent")
+                    NamedSlider("Volume", value: $b.volume, in: 0...1, step: 0.01, spoken: "\(Int(speech.volume * 100)) percent")
                     Button("Try it") { speech.speak("This is how events sound.") }
                 }
             }
@@ -383,7 +381,7 @@ private struct TemplateEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Message", text: $text, axis: .vertical)
+                    TextField("Message", text: $text, axis: .vertical).accessibilityLabel("Message")
                 } footer: {
                     Text("Empty goes back to the first message.")
                 }

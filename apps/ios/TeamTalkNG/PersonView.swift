@@ -161,7 +161,7 @@ struct PersonView: View {
                     if mod {
                         Toggle("Operator of their channel", isOn: Binding(get: { u.operator }, set: { connection.setOperator(u, $0) }))
                     } else if isMe || !u.operator {
-                        SecureField("Channel's operator password", text: $opPassword)
+                        SecureField("Channel's operator password", text: $opPassword).accessibilityLabel("Channel's operator password")
                         Button(isMe ? "Become operator" : "Make operator") { connection.setOperator(u, true, password: opPassword) }
                             .disabled(opPassword.isEmpty)
                     }
@@ -211,9 +211,7 @@ struct PersonView: View {
 
     private func volume(_ label: String, _ percent: Int32, set: @escaping (Int) -> Void) -> some View {
         // The desktop's scale: 0–100, 50 as sent, in steps of 1.
-        Slider(value: Binding(get: { Double(percent) }, set: { set(Int($0)) }), in: 0...100, step: 1) { Text(label) }
-            .accessibilityLabel(label)
-            .accessibilityValue("\(percent) percent")
+        NamedSlider(label, int: Binding(get: { Int(percent) }, set: { set($0) }), in: 0...100, spoken: "\(percent) percent")
     }
 
     private func subscription(_ u: User, _ sub: Subscription) -> some View {

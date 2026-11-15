@@ -143,7 +143,7 @@ struct ServerView: View {
         }
         .onAppear { connection.connect() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
-            SecureField("Password", text: $channelPassword)
+            SecureField("Password", text: $channelPassword).accessibilityLabel("Password")
             Button("Join") {
                 if let c = passwordFor { connection.join(c, password: channelPassword) }
                 channelPassword = ""
@@ -176,9 +176,9 @@ struct ServerView: View {
             ChannelInfoView(connection: connection, channelId: c.id)
         }
         .alert("Join a channel by its path", isPresented: $joiningByPath) {
-            TextField("Path, like /Lobby/Secret/", text: $joinPath)
+            TextField("Path, like /Lobby/Secret/", text: $joinPath).accessibilityLabel("Channel path")
                 .textInputAutocapitalization(.never)
-            SecureField("Password (if any)", text: $joinPassword)
+            SecureField("Password (if any)", text: $joinPassword).accessibilityLabel("Password (if any)")
             Button("Join") { connection.joinByPath(joinPath, password: joinPassword); joinPassword = "" }
             Button("Cancel", role: .cancel) { joinPassword = "" }
         } message: {
@@ -229,13 +229,13 @@ struct ServerView: View {
         .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
         .sheet(isPresented: $showOnline) { OnlineUsersView(connection: connection) { personFor = $0 } }
         .alert("Change nickname", isPresented: $renaming) {
-            TextField("Nickname", text: $newNickname)
+            TextField("Nickname", text: $newNickname).accessibilityLabel("Nickname")
             Button("Change") { connection.setNickname(newNickname) }
             Button("Cancel", role: .cancel) {}
         }
         .onChange(of: renaming) { if renaming { newNickname = connection.me?.nickname ?? "" } }
         .alert("Broadcast message", isPresented: $broadcasting) {
-            TextField("Message to everyone", text: $broadcastText)
+            TextField("Message to everyone", text: $broadcastText).accessibilityLabel("Message to everyone")
             Button("Send") { connection.broadcast(broadcastText); broadcastText = "" }
             Button("Cancel", role: .cancel) { broadcastText = "" }
         } message: {
@@ -407,7 +407,7 @@ private struct ChannelRow: View {
     let expanded: Bool
     let setExpanded: (Bool) -> Void
     var connection: ServerConnection? = nil
-    var style: AppModel.InfoStyle = .emoji
+    var style: AppModel.InfoStyle = .text
     var showCount = true
     var showIcons = true
     var maxLength = 50
@@ -544,7 +544,7 @@ private struct UserRow: View {
     let isMe: Bool
     let showUsername: Bool
     let connection: ServerConnection
-    var style: AppModel.InfoStyle = .emoji
+    var style: AppModel.InfoStyle = .text
     var showIcons = true
     var maxLength = 50
     var lastToTalk = false
@@ -735,7 +735,7 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
             HStack {
-                TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft, axis: .vertical)
+                TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft, axis: .vertical).accessibilityLabel(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)")
                     .textFieldStyle(.roundedBorder)
                     .focused($typing)
                     .onSubmit(send)
@@ -781,7 +781,7 @@ private struct StatusView: View {
                     Text("Away").tag(StatusMode.away)
                     Text("Question").tag(StatusMode.question)
                 }
-                TextField("Status message", text: $message)
+                TextField("Status message", text: $message).accessibilityLabel("Status message")
                 // The desktop's Change Status dialog checkbox.
                 Toggle("Display file name in status message when streaming", isOn: Binding(
                     get: { model.streamingStatus }, set: { model.streamingStatus = $0 }))
@@ -989,7 +989,7 @@ private struct DesktopDialogs: ViewModifier {
                 connection.retryChannelPassword = nil
             }
             .alert("Join channel error", isPresented: Binding(get: { askPassword != nil }, set: { if !$0 { askPassword = nil } })) {
-                SecureField("Password", text: $password)
+                SecureField("Password", text: $password).accessibilityLabel("Password")
                 Button("Join") {
                     if let c = askPassword { connection.join(c, password: password) }
                     password = ""
@@ -997,8 +997,8 @@ private struct DesktopDialogs: ViewModifier {
                 Button("Cancel", role: .cancel) { password = "" }
             } message: { Text("Incorrect channel password. Try again.") }
             .alert("Login error", isPresented: Binding(get: { connection.loginRetry }, set: { if !$0 { connection.loginRetry = false } })) {
-                TextField("Username", text: $username)
-                SecureField("Password", text: $password)
+                TextField("Username", text: $username).accessibilityLabel("Username")
+                SecureField("Password", text: $password).accessibilityLabel("Password")
                 Button("Login") { connection.retryLogin(username: username, password: password); password = "" }
                 Button("Cancel", role: .cancel) { password = "" }
             } message: { Text("Incorrect username or password. Try again.") }

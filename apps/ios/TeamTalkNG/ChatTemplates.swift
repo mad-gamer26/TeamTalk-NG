@@ -155,7 +155,7 @@ private struct ChatTemplateEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Template", text: $text, axis: .vertical)
+                    TextField("Template", text: $text, axis: .vertical).accessibilityLabel("Template")
                 } footer: {
                     Text("Empty goes back to the first template.")
                 }

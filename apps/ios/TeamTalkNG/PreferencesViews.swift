@@ -14,7 +14,7 @@ struct DisplaySettingsView: View {
                 Toggle("Show number of users in channel", isOn: $model.showUserCount)
                 Toggle("Show last to talk in yellow", isOn: $model.showLastTalk)
                 Toggle("Show user and channel icons", isOn: $model.showIcons)
-                Stepper("Maximum text length in channel list: \(model.maxTextLength)", value: $model.maxTextLength, in: 10...512, step: 10)
+                NumberField("Maximum text length in channel list", value: $model.maxTextLength, in: 1...1000)
                 Picker("Style of user and channel info", selection: $model.infoStyle) {
                     ForEach(AppModel.InfoStyle.allCases) { Text($0.label).tag($0) }
                 }
@@ -29,7 +29,7 @@ struct DisplaySettingsView: View {
             }
             Section("Chat") {
                 Toggle("Show the time of messages", isOn: $model.showTimestamps)
-                TextField("Timestamp format (empty: the system's)", text: $model.timestampFormat)
+                TextField("Timestamp format (empty: the system's)", text: $model.timestampFormat).accessibilityLabel("Timestamp format (empty: the system's)")
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityHint("Such as HH:mm:ss. Now: \(model.timestamp(.now))")
                 Toggle("Show the message of the day", isOn: $model.showMOTD)

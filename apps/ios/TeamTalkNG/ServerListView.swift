@@ -81,7 +81,7 @@ struct ServerListView: View {
                 if case .success(let url) = r { model.open(url) }
             }
             .alert("Open a tt:// link", isPresented: $linking) {
-                TextField("tt://", text: $link).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("tt://", text: $link).accessibilityLabel("tt:// link").textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("Open") {
                     if let u = URL(string: link.trimmingCharacters(in: .whitespaces)), u.scheme?.lowercased() == "tt" { model.open(u) } else { announce("That isn't a tt:// link") }
                     link = ""
@@ -177,13 +177,13 @@ struct ServerEditView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $server.name)
-                    TextField("Address", text: $server.host)
+                    TextField("Name", text: $server.name).accessibilityLabel("Name")
+                    TextField("Address", text: $server.host).accessibilityLabel("Address")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    TextField("TCP port", text: $tcp).keyboardType(.numberPad)
-                    TextField("UDP port", text: $udp).keyboardType(.numberPad)
+                    TextField("TCP port", text: $tcp).accessibilityLabel("TCP port").keyboardType(.numberPad)
+                    TextField("UDP port", text: $udp).accessibilityLabel("UDP port").keyboardType(.numberPad)
                     Toggle("Encrypted", isOn: $server.encrypted)
                 }
                 if server.encrypted {
@@ -202,32 +202,32 @@ struct ServerEditView: View {
                     Toggle("Log in with my BearWare.dk account", isOn: Binding(
                         get: { server.bearwareLogin },
                         set: { server.username = $0 ? "bearware" : "" }))
-                    TextField("Username", text: $server.username)
+                    TextField("Username", text: $server.username).accessibilityLabel("Username")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if showPassword {
-                        TextField("Password", text: $password)
+                        TextField("Password", text: $password).accessibilityLabel("Password")
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                     } else {
-                        SecureField("Password", text: $password)
+                        SecureField("Password", text: $password).accessibilityLabel("Password")
                     }
                     // The desktop's "Show password".
                     Toggle("Show password", isOn: $showPassword)
-                    TextField("Nickname (optional)", text: $server.nickname)
-                    TextField("Status message (optional)", text: $server.statusMessage)
+                    TextField("Nickname (optional)", text: $server.nickname).accessibilityLabel("Nickname (optional)")
+                    TextField("Status message (optional)", text: $server.statusMessage).accessibilityLabel("Status message (optional)")
                 }
                 Section {
                     Toggle("Connect when the app starts", isOn: Binding(get: { server.connectOnStart ?? false }, set: { server.connectOnStart = $0 }))
                     Toggle("Join the channel I was last in", isOn: Binding(get: { server.joinLastChannel ?? false }, set: { server.joinLastChannel = $0 }))
-                    TextField("Channel to join (optional), like /Lobby/", text: $server.joinChannel)
+                    TextField("Channel to join (optional), like /Lobby/", text: $server.joinChannel).accessibilityLabel("Channel to join (optional), like /Lobby/")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if !server.joinChannel.isEmpty {
                         if showChannelPassword {
-                            TextField("Its password (optional)", text: $server.channelPassword)
+                            TextField("Its password (optional)", text: $server.channelPassword).accessibilityLabel("Its password (optional)")
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                         } else {
-                            SecureField("Its password (optional)", text: $server.channelPassword)
+                            SecureField("Its password (optional)", text: $server.channelPassword).accessibilityLabel("Its password (optional)")
                         }
                         Toggle("Show channel password", isOn: $showChannelPassword)
                     }
@@ -285,27 +285,21 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nickname", text: $model.nickname)
+                    TextField("Nickname", text: $model.nickname).accessibilityLabel("Nickname")
                     Picker("Gender", selection: $model.gender) {
                         Text("Male").tag(Gender.male)
                         Text("Female").tag(Gender.female)
                         Text("Neutral").tag(Gender.neutral)
                     }
-                    TextField("Status message", text: $model.statusMessage)
+                    TextField("Status message", text: $model.statusMessage).accessibilityLabel("Status message")
                 } footer: {
                     Text("Used on servers that don't have their own.")
                 }
                 Section {
                     // The desktop's: seconds of inactivity, 0 means disabled.
-                    LabeledContent("Set away status after (seconds)") {
-                        TextField("Seconds", value: $model.awayAfterSeconds, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityHint("Seconds of inactivity; 0 means disabled.")
+                    NumberField("Set away status after (seconds)", value: $model.awayAfterSeconds, in: 0...86400)
                     if model.awayAfterSeconds > 0 {
-                        TextField("Status message during inactivity", text: $model.awayMessage)
+                        TextField("Status message during inactivity", text: $model.awayMessage).accessibilityLabel("Status message during inactivity")
                         Toggle("Disable voice activation during inactivity", isOn: $model.awayStopsVoiceActivation)
                     }
                 } header: {
@@ -321,10 +315,8 @@ struct SettingsView: View {
                         Toggle("Push To Talk Lock", isOn: $model.pttLock)
                     }
                     if model.talkMode == .voiceActivation {
-                        Slider(value: $model.voiceLevel, in: 0...20, step: 1) {
-                            Text("Voice activation level")
-                        }
-                        .accessibilityValue("\(Int(model.voiceLevel))")
+                        NamedSlider("Voice activation level", value: $model.voiceLevel, in: 0...20, step: 1,
+                                    spoken: "\(Int(model.voiceLevel))")
                     }
                 }
                 Section {

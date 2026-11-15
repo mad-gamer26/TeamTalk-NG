@@ -100,7 +100,8 @@ final class AppModel {
         var id: Self { self }
         var label: String { switch self { case .emoji: "Emoji"; case .text: "Text"; case .none: "None" } }
     }
-    var infoStyle = InfoStyle.emoji { didSet { save() } }
+    /// Text by default (the owner's choice; the desktop's default is emoji).
+    var infoStyle = InfoStyle.text { didSet { save() } }
     /// The desktop's "Show number of users in channel" (on).
     var showUserCount = true { didSet { save() } }
     /// The desktop's "Show last to talk in yellow" (on).
@@ -209,7 +210,12 @@ final class AppModel {
         showUsernames = defaults.bool(forKey: "showUsernames")
         showTopics = defaults.object(forKey: "showTopics") as? Bool ?? false
         sortChannelsByName = defaults.object(forKey: "sortChannelsByName") as? Bool ?? true
-        infoStyle = InfoStyle(rawValue: defaults.string(forKey: "infoStyle") ?? "") ?? .emoji
+        infoStyle = InfoStyle(rawValue: defaults.string(forKey: "infoStyle") ?? "") ?? .text
+        // Once: the earlier default (emoji) becomes Text.
+        if !defaults.bool(forKey: "infoStyleText") {
+            defaults.set(true, forKey: "infoStyleText")
+            if infoStyle == .emoji { infoStyle = .text; convertedSettings = true }
+        }
         showUserCount = defaults.object(forKey: "showUserCount") as? Bool ?? true
         showLastTalk = defaults.object(forKey: "showLastTalk") as? Bool ?? true
         showIcons = defaults.object(forKey: "showIcons") as? Bool ?? true
@@ -298,7 +304,7 @@ final class AppModel {
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .emoji; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
+        showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []

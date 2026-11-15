@@ -210,7 +210,7 @@ struct MonitorConversationView: View {
             .listStyle(.plain)
             if conversation.active {
                 HStack {
-                    TextField("Message \(name)", text: $draft, axis: .vertical)
+                    TextField("Message \(name)", text: $draft, axis: .vertical).accessibilityLabel("Message \(name)")
                         .textFieldStyle(.roundedBorder)
                     Button("Send") { send() }
                         .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

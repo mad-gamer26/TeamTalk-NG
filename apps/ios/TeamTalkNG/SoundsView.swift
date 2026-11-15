@@ -30,8 +30,7 @@ struct SoundsView: View {
                 Picker("Playback mode", selection: $b.playbackMode) {
                     ForEach(SoundStore.PlaybackMode.allCases) { Text($0.label).tag($0) }
                 }
-                Slider(value: $b.volume, in: 0...1, step: 0.05) { Text("Sound volume") }
-                    .accessibilityValue("\(Int(sounds.volume * 100)) percent")
+                NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: "\(Int(sounds.volume * 100)) percent")
             }
             Section {
                 ForEach(SoundEvent.allCases) { e in

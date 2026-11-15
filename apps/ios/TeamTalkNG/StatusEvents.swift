@@ -203,7 +203,7 @@ private struct StatusTemplateEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Message", text: $text, axis: .vertical)
+                    TextField("Message", text: $text, axis: .vertical).accessibilityLabel("Message")
                 } footer: {
                     Text("Empty goes back to the first message.")
                 }

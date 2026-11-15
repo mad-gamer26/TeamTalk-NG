@@ -41,11 +41,11 @@ struct ChannelEditView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $name)
-                    TextField("Topic", text: $topic)
+                    TextField("Name", text: $name).accessibilityLabel("Name")
+                    TextField("Topic", text: $topic).accessibilityLabel("Topic")
                     if editing != nil { Toggle("Change the password", isOn: $changePassword) }
                     if editing == nil || changePassword {
-                        SecureField("Password (empty for none)", text: $password)
+                        SecureField("Password (empty for none)", text: $password).accessibilityLabel("Password (empty for none)")
                     }
                     if editing == nil && !temporary {
                         Toggle("Join channel on exit", isOn: $joinOnExit)
@@ -55,16 +55,16 @@ struct ChannelEditView: View {
                     Section {
                         if editing != nil { Toggle("Change the operator password", isOn: $changeOpPassword) }
                         if editing == nil || changeOpPassword {
-                            SecureField("Operator password (empty for none)", text: $opPassword)
+                            SecureField("Operator password (empty for none)", text: $opPassword).accessibilityLabel("Operator password (empty for none)")
                         }
                     } footer: {
                         Text("Whoever knows it can make themselves an operator of the channel.")
                     }
                     Section("Limits") {
-                        TextField("Most people (empty: as it is)", text: $maxUsers).keyboardType(.numberPad)
-                        TextField("Disk space for files, in MB (empty: as it is)", text: $quotaMB).keyboardType(.decimalPad)
-                        TextField("Longest anyone may talk at once, in seconds (0: no limit)", text: $voiceLimit).keyboardType(.numberPad)
-                        TextField("Longest a media file may stream, in seconds (0: no limit)", text: $mediaLimit).keyboardType(.numberPad)
+                        TextField("Most people (empty: as it is)", text: $maxUsers).accessibilityLabel("Most people (empty: as it is)").keyboardType(.numberPad)
+                        TextField("Disk space for files, in MB (empty: as it is)", text: $quotaMB).accessibilityLabel("Disk space for files, in MB (empty: as it is)").keyboardType(.decimalPad)
+                        TextField("Longest anyone may talk at once, in seconds (0: no limit)", text: $voiceLimit).accessibilityLabel("Longest anyone may talk at once, in seconds (0: no limit)").keyboardType(.numberPad)
+                        TextField("Longest a media file may stream, in seconds (0: no limit)", text: $mediaLimit).accessibilityLabel("Longest a media file may stream, in seconds (0: no limit)").keyboardType(.numberPad)
                     }
                     Section("Type") {
                         Toggle("Stays when empty", isOn: $permanent)
@@ -79,8 +79,8 @@ struct ChannelEditView: View {
                     Section {
                         Toggle("Everyone at one fixed volume", isOn: $fixedVolume)
                         if fixedVolume {
-                            Slider(value: $fixedLevel, in: 0...100, step: 5) { Text("Fixed volume") }
-                                .accessibilityValue("\(Int(fixedLevel)) percent of the loudest")
+                            NamedSlider("Fixed volume", value: $fixedLevel, in: 0...100, step: 5,
+                                        spoken: "\(Int(fixedLevel)) percent of the loudest")
                         }
                     } header: {
                         Text("Volume")
@@ -124,14 +124,14 @@ struct ChannelEditView: View {
                     Text("Voice").tag(false)
                     Text("Music").tag(true)
                 }
-                Stepper("Bitrate: \(codec.bitrate / 1000) kbit/s", value: Binding(
-                    get: { Int(codec.bitrate / 1000) }, set: { codec.bitrate = Int32($0 * 1000) }), in: 6...510, step: 2)
+                NumberField("Bitrate (kbit/s)", value: Binding(
+                    get: { Int(codec.bitrate / 1000) }, set: { codec.bitrate = Int32($0 * 1000) }), in: 6...510)
                 Toggle("Variable bitrate", isOn: $codec.vbr)
                 Toggle("Don't send silence (DTX)", isOn: $codec.dtx)
                 Picker("Frame size", selection: $codec.frameSizeMs) {
                     ForEach(Self.frameSizes, id: \.self) { Text("\($0) ms").tag($0) }
                 }
-                Stepper("Sent every \(codec.transmitIntervalMs) ms", value: $codec.transmitIntervalMs, in: 20...500, step: 20)
+                NumberField("Transmit interval (ms)", int32: $codec.transmitIntervalMs, in: 20...500)
             } else if codec.kind != .noAudio {
                 Text(codecWords(codec)).foregroundStyle(.secondary)
             }

@@ -66,8 +66,8 @@ private struct ChangePasswordView: View {
     var body: some View {
         NavigationStack {
             Form {
-                SecureField("Current password", text: $current).textContentType(.password)
-                SecureField("New password", text: $new).textContentType(.newPassword)
+                SecureField("Current password", text: $current).accessibilityLabel("Current password").textContentType(.password)
+                SecureField("New password", text: $new).accessibilityLabel("New password").textContentType(.newPassword)
                 if let problem { Text(problem) }
             }
             .navigationTitle("Change password")
@@ -115,7 +115,7 @@ private struct SignInView: View {
                     .accessibilityLabel("Sign in or make an account")
                 Section {
                     emailField
-                    SecureField("Password", text: $password)
+                    SecureField("Password", text: $password).accessibilityLabel("Password")
                         .textContentType(mode == .signIn ? .password : .newPassword)
                 }
                 Section {
@@ -143,7 +143,7 @@ private struct SignInView: View {
                 Section {
                     Text("Type the code we emailed to \(email), and your new password.")
                     codeField
-                    SecureField("New password", text: $password).textContentType(.newPassword)
+                    SecureField("New password", text: $password).accessibilityLabel("New password").textContentType(.newPassword)
                     Button("Set password and sign in") { submit() }.disabled(busy || code.isEmpty || password.isEmpty)
                     Button("Back") { step = .form }
                 }
@@ -162,7 +162,7 @@ private struct SignInView: View {
     }
 
     private var emailField: some View {
-        TextField("Email", text: $email)
+        TextField("Email", text: $email).accessibilityLabel("Email")
             .textContentType(.emailAddress)
             .keyboardType(.emailAddress)
             .textInputAutocapitalization(.never)
@@ -170,7 +170,7 @@ private struct SignInView: View {
     }
 
     private var codeField: some View {
-        TextField("Code", text: $code)
+        TextField("Code", text: $code).accessibilityLabel("Code")
             .textContentType(.oneTimeCode)
             .keyboardType(.numberPad)
     }

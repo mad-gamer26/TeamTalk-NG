@@ -37,9 +37,9 @@ struct BearWareView: View {
         Form {
             if who.isEmpty {
                 Section {
-                    TextField("BearWare.dk username", text: $username)
+                    TextField("BearWare.dk username", text: $username).accessibilityLabel("BearWare.dk username")
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Password", text: $password)
+                    SecureField("Password", text: $password).accessibilityLabel("Password")
                     Button(busy ? "Signing in…" : "Sign in") { signIn() }
                         .disabled(busy || username.isEmpty || password.isEmpty)
                     if let problem { Text(problem) }
@@ -107,7 +107,7 @@ struct PublicServersView: View {
             List {
                 Section {
                     HStack {
-                        TextField("Join code", text: $code)
+                        TextField("Join code", text: $code).accessibilityLabel("Join code")
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                         Button("Add") { Task { await joinCode() } }.disabled(code.isEmpty)
                     }
@@ -115,9 +115,9 @@ struct PublicServersView: View {
                     Text("A server's owner can give you a join code instead of its address.")
                 }
                 Section("Filter Servers") {
-                    TextField("Name", text: $nameFilter)
+                    TextField("Name", text: $nameFilter).accessibilityLabel("Name")
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Stepper("Users: at least \(minUsers)", value: $minUsers, in: 0...1000)
+                    NumberField("Users", value: $minUsers, in: 0...100000)
                     Toggle("Include official servers", isOn: $official)
                     Toggle("Include unofficial servers", isOn: $unofficial)
                 }

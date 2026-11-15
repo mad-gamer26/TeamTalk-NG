@@ -145,17 +145,17 @@ struct AccountEditView: View {
             Form {
                 Section {
                     if new {
-                        TextField("Username", text: $account.username)
+                        TextField("Username", text: $account.username).accessibilityLabel("Username")
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                     } else {
                         LabeledContent("Username", value: account.username)
                     }
-                    SecureField("Password", text: $account.password)
+                    SecureField("Password", text: $account.password).accessibilityLabel("Password")
                     Picker("Type", selection: $account.admin) {
                         Text("Default user").tag(false)
                         Text("Administrator").tag(true)
                     }
-                    TextField("Note", text: $account.note, axis: .vertical)
+                    TextField("Note", text: $account.note, axis: .vertical).accessibilityLabel("Note")
                 }
                 Section {
                     Picker("Initial channel", selection: $account.initialChannel) {
@@ -193,9 +193,9 @@ struct AccountEditView: View {
                     Text("They become an operator whenever they join one (up to 16, permanent channels only).")
                 }
                 Section {
-                    TextField("Highest audio bitrate, kbit/s (0: no limit)", text: $bitrateKbps).keyboardType(.numberPad)
-                    TextField("Flood protection: at most this many commands (0: off)", text: $commands).keyboardType(.numberPad)
-                    TextField("… in this many seconds", text: $seconds).keyboardType(.numberPad)
+                    TextField("Highest audio bitrate, kbit/s (0: no limit)", text: $bitrateKbps).accessibilityLabel("Highest audio bitrate, kbit/s (0: no limit)").keyboardType(.numberPad)
+                    TextField("Flood protection: at most this many commands (0: off)", text: $commands).accessibilityLabel("Flood protection: at most this many commands (0: off)").keyboardType(.numberPad)
+                    TextField("… in this many seconds", text: $seconds).accessibilityLabel("Flood protection: in this many seconds").keyboardType(.numberPad)
                 } header: {
                     Text("Limits")
                 }
@@ -248,8 +248,8 @@ struct ServerSettingsView: View {
                 if let s {
                     let b = Binding(get: { self.s ?? s }, set: { self.s = $0 })
                     Section {
-                        TextField("Server name", text: b.name)
-                        TextField("Message of the day", text: b.motd, axis: .vertical).lineLimit(3...8)
+                        TextField("Server name", text: b.name).accessibilityLabel("Server name")
+                        TextField("Message of the day", text: b.motd, axis: .vertical).accessibilityLabel("Message of the day").lineLimit(3...8)
                     } footer: {
                         Text("The message can use %users% (people online), %admins%, %uptime% and %voicetx%, %voicerx%, %lastuser%.")
                     }
