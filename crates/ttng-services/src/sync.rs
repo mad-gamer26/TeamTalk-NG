@@ -206,7 +206,8 @@ pub fn sync_with_settings(
     let mut values: HashMap<String, Option<Value>> = settings.iter().cloned().collect();
     let mut setting_changes = Vec::new();
     let mut rekeyed = Vec::new();
-    let pulled = account.pull(state.last_rev)?;
+    let since = state.last_rev;
+    let pulled = account.pull(since)?;
     if pulled.reset {
         state.known.clear();
         state.hashes.clear();
@@ -215,6 +216,35 @@ pub fn sync_with_settings(
     }
     let mut changed = apply(state, &mut list, &pulled.records, &mut rekeyed);
     apply_settings(state, &mut values, &pulled.records, &mut setting_changes);
+    // Everything there is (since 0): the service leaves deleted records
+    // out, so what was synced before and isn't listed was deleted
+    // elsewhere. (A device that first synced an empty account asks from 0.)
+    if since == 0 && !pulled.reset {
+        let listed = |kind: &str, key: &str| pulled.records.iter().any(|r| r.kind == kind && r.key == key);
+        let gone: Vec<String> = state.known.keys().filter(|k| !listed("server", k)).cloned().collect();
+        for k in gone {
+            let before = list.len();
+            list.retain(|l| l.key != k);
+            changed |= list.len() != before;
+            state.known.remove(&k);
+            state.hashes.remove(&k);
+        }
+        let gone: Vec<String> = state
+            .setting_known
+            .keys()
+            .filter(|k| !listed("setting", k))
+            .cloned()
+            .collect();
+        for k in gone {
+            state.setting_known.remove(&k);
+            state.setting_hashes.insert(k.clone(), value_hash(&None));
+            if let Some(v) = values.get_mut(&k).filter(|v| v.is_some()) {
+                *v = None;
+                setting_changes.retain(|(key, _)| key != &k);
+                setting_changes.push((k, None));
+            }
+        }
+    }
     state.last_rev = pulled.rev;
 
     // The device's changes.

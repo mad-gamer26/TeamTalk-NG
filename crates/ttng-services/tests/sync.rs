@@ -244,3 +244,38 @@ fn settings_sync_between_devices_and_others_are_left_alone() {
     let all = phone.pull(0).unwrap();
     assert!(all.records.iter().any(|r| r.kind == "setting" && r.key == "other"));
 }
+
+/// A device that first synced an empty account asks for everything again
+/// (from revision 0), where the service leaves deleted records out: what
+/// it synced before and isn't listed was deleted elsewhere.
+#[test]
+fn a_deletion_reaches_a_device_that_started_on_an_empty_account() {
+    let Some(ng) = Ngmon::start() else { return };
+    let (phone, _) = signed_up(&ng, "deleted@example.com", "phone");
+    let ipad = signed_in(&ng, "deleted@example.com", "ipad");
+    let (mut sp, mut si) = (SyncState::default(), SyncState::default());
+    let p = sync(
+        &phone,
+        &mut sp,
+        vec![
+            local("a", server("Home", "home.example.com", "me")),
+            local("b", server("Work", "work.example.com", "me")),
+        ],
+    )
+    .unwrap();
+    assert_eq!(sp.last_rev, 0, "it pulled before anything was there");
+    let i = sync(&ipad, &mut si, vec![]).unwrap();
+    si.deleted("b");
+    sync(&ipad, &mut si, i.servers.into_iter().filter(|l| l.key != "b").collect()).unwrap();
+    let p = sync(&phone, &mut sp, p.servers).unwrap();
+    assert!(p.changed);
+    assert_eq!(names(&p), ["Home"], "Work is gone on the phone too");
+    // And it isn't sent back.
+    let i = sync(
+        &ipad,
+        &mut si,
+        vec![local("a", server("Home", "home.example.com", "me"))],
+    )
+    .unwrap();
+    assert_eq!(names(&i), ["Home"]);
+}
