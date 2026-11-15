@@ -87,8 +87,6 @@ enum AudioSession {
         if choice != .bottom, patterns.contains(.stereo) {
             try? source.setPreferredPolarPattern(.stereo)
             try? mic.setPreferredDataSource(source)
-            // Left and right as the phone is held upright.
-            try? s.setPreferredInputOrientation(.portrait)
             try? s.setPreferredInputNumberOfChannels(min(2, s.maximumInputNumberOfChannels))
         } else {
             if patterns.contains(.omnidirectional) { try? source.setPreferredPolarPattern(.omnidirectional) }
