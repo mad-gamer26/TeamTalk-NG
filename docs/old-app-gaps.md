@@ -25,7 +25,7 @@ The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
 - [x] Control Center control: "Connect to Server" with a saved server
       chosen (iOS 18 ControlWidget, iTeamTalkControls).
 - [x] Siri shortcuts: "Add to Siri" for connecting to a server.
-- [ ] iCloud sync of settings and the server list (opt-in).
+- [x] iCloud sync of settings and the server list (opt-in; Settings → iCloud sync, applied at the next start; passwords, sound packs and NG Account stay per device).
 - [ ] Headset button toggles talking (remote control events).
 - [x] Recordings list: play (the app's own player, in its audio session — not Quick Look, the owner's choice), share, delete the recordings in
       the app (now only through the Files app).

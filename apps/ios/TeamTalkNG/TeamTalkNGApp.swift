@@ -4,7 +4,13 @@ import SwiftUI
 @main
 struct TeamTalkNGApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
-    @State private var model = AppModel()
+    @State private var model: AppModel
+
+    init() {
+        // iCloud's newer settings first, before anything reads them.
+        ICloudSync.shared.startAtLaunch()
+        _model = State(initialValue: AppModel())
+    }
     @Environment(\.scenePhase) private var phase
 
     var body: some Scene {

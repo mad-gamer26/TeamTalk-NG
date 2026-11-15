@@ -328,6 +328,7 @@ struct SettingsView: View {
                     NavigationLink("Display") { DisplaySettingsView() }
                     NavigationLink("Connection") { ConnectionSettingsView() }
                     NavigationLink("Recording") { RecordingSettingsView() }
+                    NavigationLink("iCloud sync") { ICloudSyncView() }
                     NavigationLink {
                         NGAccountView()
                     } label: {

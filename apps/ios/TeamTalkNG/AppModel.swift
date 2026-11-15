@@ -297,7 +297,7 @@ final class AppModel {
     /// The desktop's "Reset preferences to default": every setting as it
     /// was at first (servers, accounts and sound packs stay).
     func resetPreferences() {
-        let keep: Set<String> = ["servers", "installId", "ngEmail", "ngSyncState", "soundPacks"]
+        let keep: Set<String> = ["servers", "installId", "ngEmail", "ngSyncState", "soundPacks", ICloudSync.enabledKey, "icloudAppliedTime"]
         for k in defaults.dictionaryRepresentation().keys where !keep.contains(k) && !k.hasPrefix("Apple") && !k.hasPrefix("NS") {
             defaults.removeObject(forKey: k)
         }

@@ -86,6 +86,8 @@ targets:
         # Monitor notifications (development builds: Apple's sandbox).
         aps-environment: development
         com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
+        # Settings sync through iCloud (opt-in).
+        com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)$(CFBundleIdentifier)"
     dependencies:
       - target: TeamTalkNGNotifications
         embed: true
