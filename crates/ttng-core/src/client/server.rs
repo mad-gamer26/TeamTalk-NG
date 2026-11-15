@@ -17,6 +17,12 @@ pub(super) enum ServerRequest {
         channel_path: String,
         reply: Reply,
     },
+    /// The desktop's "Ban Username" in Banned Users.
+    BanUsername {
+        username: String,
+        channel_path: String,
+        reply: Reply,
+    },
 }
 
 impl ServerRequest {
@@ -29,7 +35,8 @@ impl ServerRequest {
             | ServerRequest::DeleteAccount(_, r)
             | ServerRequest::UpdateSettings(_, r)
             | ServerRequest::SaveConfig(r)
-            | ServerRequest::BanAddress { reply: r, .. } => drop(r.send(Err(why))),
+            | ServerRequest::BanAddress { reply: r, .. }
+            | ServerRequest::BanUsername { reply: r, .. } => drop(r.send(Err(why))),
         }
     }
 }
@@ -137,6 +144,26 @@ impl Worker {
                 // SAFETY: inst is live; b is a valid BannedUser.
                 let cmd = unsafe { sys::TT_DoBan(self.inst, &b) };
                 self.track(cmd, Pending::Reply(reply), "Banning that address");
+            }
+            ServerRequest::BanUsername {
+                username,
+                channel_path,
+                reply,
+            } => {
+                let b = sys::BannedUser {
+                    szUsername: to_tt(username.trim()),
+                    szChannelPath: to_tt(&channel_path),
+                    uBanTypes: sys::BanType_BANTYPE_USERNAME
+                        | if channel_path.is_empty() {
+                            0
+                        } else {
+                            sys::BanType_BANTYPE_CHANNEL
+                        },
+                    ..Default::default()
+                };
+                // SAFETY: inst is live; b is a valid BannedUser.
+                let cmd = unsafe { sys::TT_DoBan(self.inst, &b) };
+                self.track(cmd, Pending::Reply(reply), "Banning that username");
             }
         }
     }

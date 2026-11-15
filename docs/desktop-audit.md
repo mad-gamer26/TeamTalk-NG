@@ -100,7 +100,9 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
       "Restore volume settings and subscriptions on login for Web Login
       users" (on; …@bearware.dk users, by username and client); voice
       activation level 0–20, 2 by default (passed to the SDK as is).
-- [ ] General: away after N seconds (NG counts minutes in the background).
+- [x] General: away after N seconds of inactivity (180; 0 means disabled),
+      "Status message during inactivity", "Disable voice activation during
+      inactivity" (inactivity: in the background or locked).
 - [x] Display, channel tree: the desktop's item texts exactly
       (channelstree.cpp: person "name, ✉ 😴 ❓ 🎤 💿 🎥 💻 - status, 👩 (🦸)
       (👮)", channel "name (n) or (n/all) - 👻 - 🔒: topic"), style emoji
@@ -134,12 +136,13 @@ keyboard shortcuts; dialogs that pop up are sheets or alerts.
 - [ ] Stream media file: audio preprocessor (none / TeamTalk / Speex /
       WebRTC), test playback, video codec bitrate (core work).
 - [x] Online users: "Keep disconnected users" (off).
-- [ ] File transfer: "Close when completed"; open the file when done.
-- [ ] Banned users: ban by hand with a ban type; unban lists.
-- [ ] Record: stream types, separate folders for channel and private logs.
-
-## G. Behaviour details (mainwindow.cpp) — reading in progress
-
+- [n/a] File transfer: "Close when completed" and Open: NG has no transfer
+      dialog; downloads go to the Files app.
+- [x] Banned users: ban by hand with the desktop's ban type ("Ban
+      IP-address" / "Ban Username"; core ban_username, tested).
+- [x] Record: stream types (voice, media files); chat logs as the
+      desktop's files: <channel>.clog in Channel logs, <name>.ulog in User
+      logs, lines as the chat shows them.
 - [x] Server errors in the desktop's words (every CMDERR_*, in the core,
       so all apps say the same); a wrong login opens "Login error" to
       correct the username and password and try again (saved); a wrong

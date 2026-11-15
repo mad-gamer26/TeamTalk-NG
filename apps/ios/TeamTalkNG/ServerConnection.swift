@@ -561,16 +561,34 @@ final class ServerConnection {
         return await Task.detached { try? c.clientStatistics() }.value
     }
 
-    /// Appends a chat line to today's log file (Settings → Recording).
+    /// Writes a chat line to its log, as the desktop's (Record
+    /// Conversations: "Folder for channel log files" with "<channel>.clog",
+    /// the server's name for the root channel; "Folder for user-to-user log
+    /// files" with "<name>.ulog"), in the Files app under Chat logs.
     private func log(_ line: ChatLine) {
         guard app?.saveChatLogs == true else { return }
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let safe = { (s: String) in s.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-") }
+        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Chat logs", isDirectory: true)
-            .appendingPathComponent(server.title.replacingOccurrences(of: "/", with: "-"), isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("\(line.time.formatted(.iso8601.year().month().day())).txt")
-        let who = line.privateWith.map { "\(line.from) (private, with \($0))" } ?? line.from
-        let text = "[\(line.time.formatted(date: .omitted, time: .standard))] \(who): \(line.text)\n"
+            .appendingPathComponent(safe(server.title), isDirectory: true)
+        let file: URL
+        if let with = line.privateWith {
+            file = base.appendingPathComponent("User logs", isDirectory: true).appendingPathComponent("\(safe(with)).ulog")
+        } else {
+            let snap = snapshot
+            let ch = snap?.channels.first { $0.id == snap?.myChannelId }
+            let name = ch.map { $0.parentId == 0 ? (snap?.server.name.nonEmpty ?? server.title) : $0.name } ?? server.title
+            file = base.appendingPathComponent("Channel logs", isDirectory: true).appendingPathComponent("\(safe(name)).clog")
+        }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // The line as the chat shows it with the desktop's templates.
+        let stamp = app?.timestamp(line.time) ?? ""
+        let text: String
+        if let kind = line.kind, let t = app?.chatTemplates {
+            text = t.format(kind, line.vars ?? [:], date: stamp) + "\n"
+        } else {
+            text = "\(stamp) <\(line.from)>\n\(line.text)\n"
+        }
         if let h = try? FileHandle(forWritingTo: file) {
             h.seekToEndOfFile()
             h.write(Data(text.utf8))
@@ -619,6 +637,13 @@ final class ServerConnection {
         run("Couldn't save the configuration") { try $0.saveServerConfig() }
         note("Server configuration saved")
         status(.serverConfigSaved, "Server configuration saved")
+    }
+
+    /// The desktop's "Ban Username" (by hand, in Banned Users).
+    func banUsername(_ username: String, channelPath: String = "") {
+        let u = username.trimmingCharacters(in: .whitespaces)
+        guard !u.isEmpty else { return }
+        run("Couldn't ban it") { try $0.banUsername(username: u, channelPath: channelPath) }
     }
 
     func banAddress(_ address: String, channelPath: String = "") {

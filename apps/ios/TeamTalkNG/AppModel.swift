@@ -65,7 +65,7 @@ final class AppModel {
     /// voice activation.
     var statusMessage = "" { didSet { save() } }
     /// The desktop's 180 seconds of inactivity (here: in the background or locked).
-    var awayAfterMinutes = 3 { didSet { save() } }
+    var awayAfterSeconds = 180 { didSet { save() } }
     var awayMessage = "" { didSet { save() } }
     var awayStopsVoiceActivation = false { didSet { save() } }
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
@@ -240,7 +240,9 @@ final class AppModel {
             PersonView.normal.first { "\($0)" == name }
         })
         statusMessage = defaults.string(forKey: "statusMessage") ?? ""
-        awayAfterMinutes = defaults.object(forKey: "awayAfterMinutes") as? Int ?? 3
+        // The desktop counts seconds (0: off); earlier this app counted minutes.
+        awayAfterSeconds = defaults.object(forKey: "awayAfterSeconds") as? Int
+            ?? (defaults.object(forKey: "awayAfterMinutes") as? Int).map { $0 * 60 } ?? 180
         awayMessage = defaults.string(forKey: "awayMessage") ?? ""
         awayStopsVoiceActivation = defaults.bool(forKey: "awayStopsVoiceActivation")
         // Once: settings still at this app's earlier defaults take the
@@ -248,7 +250,7 @@ final class AppModel {
         // (Version 2: the first didn't save its changes.)
         if !defaults.bool(forKey: "desktopDefaults2") {
             defaults.set(true, forKey: "desktopDefaults2")
-            if awayAfterMinutes == 0 { awayAfterMinutes = 3 }
+            if awayAfterSeconds == 0 { awayAfterSeconds = 180 }
             if showTopics { showTopics = false }
             if !eventsInChat { eventsInChat = true }
             convertedSettings = true
@@ -294,7 +296,7 @@ final class AppModel {
         nickname = ""
         audio = defaultAudioSettings()
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
-        statusMessage = ""; awayAfterMinutes = 3; awayMessage = ""; awayStopsVoiceActivation = false
+        statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
         showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .emoji; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
@@ -359,10 +361,10 @@ final class AppModel {
             for c in connections.values { c.setAutoAway(false) }
             return
         }
-        guard awayAfterMinutes > 0 else { return }
-        let minutes = awayAfterMinutes
+        guard awayAfterSeconds > 0 else { return }
+        let seconds = awayAfterSeconds
         awayTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(minutes * 60))
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self else { return }
             for c in self.connections.values { c.setAutoAway(true) }
         }
@@ -416,7 +418,7 @@ final class AppModel {
         defaults.set(joinRoot, forKey: "joinRoot")
         defaults.set(defaultSubscriptionsOff.map { "\($0)" }, forKey: "subscriptionsOff")
         defaults.set(statusMessage, forKey: "statusMessage")
-        defaults.set(awayAfterMinutes, forKey: "awayAfterMinutes")
+        defaults.set(awayAfterSeconds, forKey: "awayAfterSeconds")
         defaults.set(awayMessage, forKey: "awayMessage")
         defaults.set(awayStopsVoiceActivation, forKey: "awayStopsVoiceActivation")
     }

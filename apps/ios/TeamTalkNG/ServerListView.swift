@@ -296,18 +296,22 @@ struct SettingsView: View {
                     Text("Used on servers that don't have their own.")
                 }
                 Section {
-                    Picker("Go away after", selection: $model.awayAfterMinutes) {
-                        Text("Never").tag(0)
-                        ForEach([1, 2, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0) }
+                    // The desktop's: seconds of inactivity, 0 means disabled.
+                    LabeledContent("Set away status after (seconds)") {
+                        TextField("Seconds", value: $model.awayAfterSeconds, format: .number)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
                     }
-                    if model.awayAfterMinutes > 0 {
-                        TextField("Status message while away", text: $model.awayMessage)
-                        Toggle("No voice activation while away", isOn: $model.awayStopsVoiceActivation)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityHint("Seconds of inactivity; 0 means disabled.")
+                    if model.awayAfterSeconds > 0 {
+                        TextField("Status message during inactivity", text: $model.awayMessage)
+                        Toggle("Disable voice activation during inactivity", isOn: $model.awayStopsVoiceActivation)
                     }
                 } header: {
                     Text("Away")
                 } footer: {
-                    Text("When TeamTalk NG is in the background or the iPhone is locked that long, your status becomes Away; it comes back when you return.")
+                    Text("Inactivity here: TeamTalk NG in the background or the iPhone locked that long; your status becomes Away and comes back when you return. 0 means disabled.")
                 }
                 Section("Talking") {
                     Picker("Talk mode", selection: $model.talkMode) {

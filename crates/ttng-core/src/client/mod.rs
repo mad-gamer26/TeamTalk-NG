@@ -749,6 +749,16 @@ impl Client {
 
     /// Bans an address (also with wildcards, like 10.0.*), from the server
     /// or (`channel_path`) one channel.
+    /// Bans a username by hand (the desktop's "Ban Username"); with a
+    /// channel path, from that channel only.
+    pub fn ban_username(&self, username: &str, channel_path: &str) -> Result<()> {
+        self.server_call(|reply| ServerRequest::BanUsername {
+            username: username.into(),
+            channel_path: channel_path.into(),
+            reply,
+        })
+    }
+
     pub fn ban_address(&self, address: &str, channel_path: &str) -> Result<()> {
         self.server_call(|reply| ServerRequest::BanAddress {
             address: address.into(),

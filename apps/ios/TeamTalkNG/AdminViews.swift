@@ -49,6 +49,7 @@ struct BansView: View {
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     @State private var bans: [Ban]?
+    @State private var byUsername = false
     @State private var address = ""
     @State private var search = ""
 
@@ -75,12 +76,19 @@ struct BansView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                HStack {
-                    TextField("Ban an address, like 10.0.0.*", text: $address)
+                VStack(alignment: .leading) {
+                    // The desktop's ban type: "Ban IP-address" or "Ban Username".
+                    Picker("Ban type", selection: $byUsername) {
+                        Text("Ban IP-address").tag(false)
+                        Text("Ban Username").tag(true)
+                    }
+                    .pickerStyle(.menu)
+                    TextField(byUsername ? "Username" : "IP-address, like 10.0.0.*", text: $address)
                         .textFieldStyle(.roundedBorder)
-                        .keyboardType(.numbersAndPunctuation)
-                    Button("Ban") {
-                        connection.banAddress(address)
+                        .keyboardType(byUsername ? .default : .numbersAndPunctuation)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button("Add") {
+                        if byUsername { connection.banUsername(address) } else { connection.banAddress(address) }
                         address = ""
                         Task { try? await Task.sleep(for: .milliseconds(500)); bans = await connection.bans() ?? bans }
                     }

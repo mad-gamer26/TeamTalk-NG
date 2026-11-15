@@ -285,6 +285,11 @@ impl TtClient {
     }
 
     /// Bans an address (wildcards allowed), from the server or a channel.
+    /// Bans a username by hand (the desktop's "Ban Username").
+    pub fn ban_username(&self, username: String, channel_path: String) -> Result<()> {
+        Ok(self.inner.ban_username(&username, &channel_path)?)
+    }
+
     pub fn ban_address(&self, address: String, channel_path: String) -> Result<()> {
         Ok(self.inner.ban_address(&address, &channel_path)?)
     }

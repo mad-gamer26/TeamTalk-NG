@@ -126,7 +126,7 @@ struct RecordingSettingsView: View {
             Section {
                 Toggle("Save chat to text files", isOn: $model.saveChatLogs)
             } footer: {
-                Text("Each server's messages, a file a day, in Chat logs in the Files app.")
+                Text("As the desktop: a .clog file per channel (Channel logs) and a .ulog file per person (User logs), for each server, in Chat logs in the Files app.")
             }
         }
         .navigationTitle("Recording")

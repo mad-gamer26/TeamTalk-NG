@@ -198,7 +198,17 @@ fn statistics_and_address_bans() {
         channel_bans.iter().any(|b| b.ip_address == "10.9.9.9"),
         "{channel_bans:?}"
     );
-    for b in server_bans.iter().chain(&channel_bans) {
+
+    // A username by hand (the desktop's "Ban Username"): carol can't log in.
+    admin.client.ban_username("carol", "").expect("banned by username");
+    let carol = TestClient::new();
+    let refused = carol.client.connect(server.options("carol"));
+    assert!(
+        matches!(&refused, Err(Error::Server { message, .. }) if message == "Banned from server"),
+        "{refused:?}"
+    );
+    assert!(admin.client.list_bans().unwrap().iter().any(|b| b.username == "carol"));
+    for b in admin.client.list_bans().unwrap().iter().chain(&channel_bans) {
         admin.client.unban(b).unwrap();
     }
     assert!(admin.client.list_bans().unwrap().is_empty());
