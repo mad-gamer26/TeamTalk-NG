@@ -320,6 +320,9 @@ final class SpeechStore {
 
 /// Settings → Spoken events.
 struct SpeechView: View {
+    @AppStorage("speechVoiceLanguage") private var voiceLanguage = ""
+    private static let languages = Array(Set(AVSpeechSynthesisVoice.speechVoices().map(\.language)))
+        .sorted { (Locale.current.localizedString(forIdentifier: $0) ?? $0) < (Locale.current.localizedString(forIdentifier: $1) ?? $1) }
     @Environment(AppModel.self) private var model
     @State private var editing: SpeechEvent?
 
@@ -338,9 +341,18 @@ struct SpeechView: View {
             }
             if speech.output != .off {
                 Section("The system voice") {
+                    // The old app's language, then its voices.
+                    Picker("Language", selection: $voiceLanguage) {
+                        Text("All languages").tag("")
+                        ForEach(Self.languages, id: \.self) { l in
+                            Text(Locale.current.localizedString(forIdentifier: l) ?? l).tag(l)
+                        }
+                    }
                     Picker("Voice", selection: $b.voice) {
                         Text("The system's").tag("")
-                        ForEach(AVSpeechSynthesisVoice.speechVoices().sorted { $0.name < $1.name }, id: \.identifier) { v in
+                        ForEach(AVSpeechSynthesisVoice.speechVoices()
+                            .filter { voiceLanguage.isEmpty || $0.language == voiceLanguage || $0.identifier == speech.voice }
+                            .sorted { $0.name < $1.name }, id: \.identifier) { v in
                             Text("\(v.name), \(Locale.current.localizedString(forIdentifier: v.language) ?? v.language)").tag(v.identifier)
                         }
                     }

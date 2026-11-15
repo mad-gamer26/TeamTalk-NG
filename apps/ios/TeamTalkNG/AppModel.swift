@@ -141,6 +141,9 @@ final class AppModel {
     /// The desktop's "Display file name in status message when streaming" (off).
     var streamingStatus = false { didSet { save() } }
 
+    /// The old app's "Return sends message" (on by default).
+    var sendOnReturn = true { didSet { save() } }
+
     /// The desktop's "Push To Talk Lock" (off by default).
     var pttLock = false { didSet { save() } }
     var showTimestamps = true { didSet { save() } }
@@ -231,6 +234,7 @@ final class AppModel {
         autoExpandChannels = defaults.bool(forKey: "autoExpandChannels")
         restoreUserSettings = defaults.object(forKey: "restoreUserSettings") as? Bool ?? true
         pttLock = defaults.bool(forKey: "pttLock")
+        sendOnReturn = defaults.object(forKey: "sendOnReturn") as? Bool ?? true
         timestampFormat = defaults.string(forKey: "timestampFormat") ?? ""
         streamingStatus = defaults.bool(forKey: "streamingStatus")
         messagePopup = defaults.object(forKey: "messagePopup") as? Bool ?? true
@@ -304,7 +308,7 @@ final class AppModel {
         recordMP3 = true; recordOneFile = true; recordEachPerson = false; recordMediaFiles = false; saveChatLogs = false
         statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
         hearOwnStream = true
-        showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false
+        showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; pttLock = false; sendOnReturn = true
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
         showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
@@ -411,6 +415,7 @@ final class AppModel {
         defaults.set(autoExpandChannels, forKey: "autoExpandChannels")
         defaults.set(restoreUserSettings, forKey: "restoreUserSettings")
         defaults.set(pttLock, forKey: "pttLock")
+        defaults.set(sendOnReturn, forKey: "sendOnReturn")
         defaults.set(timestampFormat, forKey: "timestampFormat")
         defaults.set(streamingStatus, forKey: "streamingStatus")
         defaults.set(messagePopup, forKey: "messagePopup")

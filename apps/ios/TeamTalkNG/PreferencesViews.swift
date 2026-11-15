@@ -29,6 +29,7 @@ struct DisplaySettingsView: View {
             }
             Section("Chat") {
                 Toggle("Show the time of messages", isOn: $model.showTimestamps)
+                Toggle("Return sends message", isOn: $model.sendOnReturn)
                 TextField("Timestamp format (empty: the system's)", text: $model.timestampFormat).accessibilityLabel("Timestamp format (empty: the system's)")
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityHint("Such as HH:mm:ss. Now: \(model.timestamp(.now))")

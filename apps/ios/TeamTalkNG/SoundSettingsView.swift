@@ -107,6 +107,9 @@ struct RecordingSettingsView: View {
         @Bindable var model = model
         Form {
             Section {
+                NavigationLink("Recordings") { RecordingsView() }
+            }
+            Section {
                 Picker("Format", selection: $model.recordMP3) {
                     Text("MP3 (small)").tag(true)
                     Text("WAV (exact)").tag(false)

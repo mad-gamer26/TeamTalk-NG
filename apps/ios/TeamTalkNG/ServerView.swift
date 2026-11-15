@@ -738,10 +738,15 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
             HStack {
-                TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft, axis: .vertical).accessibilityLabel(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)")
+                // "Return sends message" (the old app's; on by default): one
+                // line, Return sends; off, Return starts a new line.
+                TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft,
+                          axis: model.sendOnReturn ? .horizontal : .vertical)
+                    .accessibilityLabel(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)")
                     .textFieldStyle(.roundedBorder)
                     .focused($typing)
-                    .onSubmit(send)
+                    .submitLabel(model.sendOnReturn ? .send : .return)
+                    .onSubmit { if model.sendOnReturn { send(); typing = true } }
                     .onChange(of: draft) {
                         if let p = privateWith { connection.setTyping(to: p, !draft.isEmpty) }
                     }
@@ -829,10 +834,21 @@ struct FilesView: View {
 
     private var channelId: Int32 { connection.snapshot?.myChannelId ?? 0 }
 
+    // The old app's file sorting: by name, size, owner or date, either way.
+    @AppStorage("filesSortField") private var sortField = "name"
+    @AppStorage("filesSortAscending") private var ascending = true
+
     private var files: [RemoteFile] {
-        (connection.snapshot?.files ?? [])
-            .filter { $0.channelId == channelId }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let mine = (connection.snapshot?.files ?? []).filter { $0.channelId == channelId }
+        let up = mine.sorted { a, b in
+            switch sortField {
+            case "size": a.size != b.size ? a.size < b.size : a.name.localizedStandardCompare(b.name) == .orderedAscending
+            case "owner": a.uploader.localizedStandardCompare(b.uploader) == .orderedAscending
+            case "date": a.uploaded < b.uploaded
+            default: a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+        }
+        return ascending ? up : up.reversed()
     }
 
     private var transfers: [Transfer] {
@@ -851,6 +867,15 @@ struct FilesView: View {
                     Text("Join a channel to see its files.").foregroundStyle(.secondary)
                 } else if files.isEmpty {
                     Text("This channel has no files.").foregroundStyle(.secondary)
+                }
+                if !files.isEmpty {
+                    Picker("Sort by", selection: $sortField) {
+                        Text("Name").tag("name")
+                        Text("Size").tag("size")
+                        Text("Owner").tag("owner")
+                        Text("Date").tag("date")
+                    }
+                    Toggle("Ascending", isOn: $ascending)
                 }
                 ForEach(files, id: \.id) { f in
                     let deletable = connection.canDelete(f)
