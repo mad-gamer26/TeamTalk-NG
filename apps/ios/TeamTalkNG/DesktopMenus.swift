@@ -146,10 +146,7 @@ struct UserMenu: View {
         }
         // Through the Monitor, Advanced has only moving people (no volumes, no relay).
         if audio || rights.moveUsers { m.append(.init("Advanced") { open(.advanced) }) }
-        if audio {
-            let all = connection.snapshot?.mutedAll ?? false
-            m.append(.init(all ? "Unmute All" : "Mute All") { connection.setMuteAll(!all) })
-        }
+        // Mute All is in the server screen's More menu (the owner's choice).
         return m
     }
 
