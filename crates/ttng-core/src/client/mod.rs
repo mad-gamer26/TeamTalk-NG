@@ -902,6 +902,8 @@ struct Worker {
     duplex: bool,
     /// Recording each person: the folder and format.
     record_each: Option<(String, RecordingFormat)>,
+    /// An MP3 recording being made as WAV first: the WAV and the MP3.
+    recording_mp3: Option<(String, String)>,
     /// Play my own stream here too, and its local playback session.
     hear_own_stream: bool,
     local_playback: i32,
@@ -945,6 +947,7 @@ impl Worker {
             audio_devices: None,
             duplex: false,
             record_each: None,
+            recording_mp3: None,
             hear_own_stream: false,
             local_playback: 0,
             web_login: None,
@@ -1399,11 +1402,13 @@ impl Worker {
                 } else if already {
                     refuse("Already recording.")
                 } else {
-                    let p = arg(&path);
-                    let aff = match format {
-                        RecordingFormat::Wave => sys::AudioFileFormat_AFF_WAVE_FORMAT,
-                        RecordingFormat::Mp3 => sys::AudioFileFormat_AFF_MP3_128KBIT_FORMAT,
+                    // The SDK makes MP3s only on Windows: record WAV, convert at the end.
+                    let file = match format {
+                        RecordingFormat::Wave => path.clone(),
+                        RecordingFormat::Mp3 => format!("{path}.recording.wav"),
                     };
+                    let p = arg(&file);
+                    let aff = sys::AudioFileFormat_AFF_WAVE_FORMAT;
                     let started = if include_media {
                         // Voice and media files mixed, with the channel's codec.
                         let mut c = sys::Channel::default();
@@ -1426,6 +1431,7 @@ impl Worker {
                         if let Ok(mut m) = self.model.lock() {
                             m.recording = Some((channel, path.clone(), include_media));
                         }
+                        self.recording_mp3 = (format == RecordingFormat::Mp3).then(|| (file, path.clone()));
                         self.emit(Event::RecordingChanged {
                             path,
                             active: true,
@@ -1497,11 +1503,25 @@ impl Worker {
                 sys::TT_StopRecordingMuxedAudioFileEx(self.inst, channel);
             }
         }
-        self.emit(Event::RecordingChanged {
-            path,
-            active: false,
-            error,
-        });
+        match self.recording_mp3.take() {
+            // Converting takes a while for a long recording: not on this thread.
+            Some((wav, mp3)) => {
+                let events = self.events.clone();
+                std::thread::spawn(move || {
+                    let converted = crate::mp3::wav_to_mp3(wav.as_ref(), mp3.as_ref(), 128, true).err();
+                    let _ = events.send(Event::RecordingChanged {
+                        path,
+                        active: false,
+                        error: error.or(converted),
+                    });
+                });
+            }
+            None => self.emit(Event::RecordingChanged {
+                path,
+                active: false,
+                error,
+            }),
+        }
         true
     }
 
@@ -2030,6 +2050,11 @@ impl Worker {
                 // SAFETY: checked ttType.
                 let info = unsafe { union.mediafileinfo };
                 self.on_stream(&info);
+            }
+            sys::ClientEvent_CLIENTEVENT_USER_RECORD_MEDIAFILE if msg.ttType == sys::TTType___MEDIAFILEINFO => {
+                // SAFETY: checked ttType.
+                let info = unsafe { union.mediafileinfo };
+                self.on_user_recorded(&info);
             }
             sys::ClientEvent_CLIENTEVENT_USER_AUDIOBLOCK if msg.ttType == sys::TTType___STREAMTYPE => {
                 // SAFETY: checked ttType.

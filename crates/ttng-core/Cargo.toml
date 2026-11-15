@@ -10,7 +10,14 @@ ttng-sys = { path = "../ttng-sys" }
 # .tt files and BearWare's server list (XML); BearWare's web services.
 roxmltree = "0.20"
 ureq = "3"
+# MP3 recordings: BearWare's SDK only encodes MP3 on Windows (Media
+# Foundation), so it records WAV and LAME (LGPL) makes the MP3.
+mp3lame-encoder = "0.3"
 
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Decodes the MP3 recordings in tests (pure Rust).
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }

@@ -3,9 +3,10 @@
 Read `docs/design.md` first: it records the decisions.
 
 - A rewrite from scratch (2026-11-14): nothing from the old TeamTalk NG or
-  BearWare's apps is reused. BearWare's **official** SDK (5.23a) only, never
-  rebuilt or patched unless there's no other way; it's downloaded, never
-  committed (license). Bindings are generated at build time.
+  BearWare's apps is reused. BearWare's SDK 5.23a: the official one,
+  and for iPhone and the Simulator built from their v5.23 source
+  (`scripts/build-sdk-apple.sh`, FFmpeg on, none of their files patched;
+  see docs/design.md). Downloaded or built, never committed (license). Bindings are generated at build time.
 - Rust workspace: `crates/ttng-sys` (bindgen), `crates/ttng-core` (the core).
   All SDK calls happen on the core's own thread; the UIs only see the core's
   API (UniFFI, later).
@@ -13,7 +14,9 @@ Read `docs/design.md` first: it records the decisions.
   users can do everything. The UIs are native (SwiftUI, Compose, …).
 - Checks: `cargo test`, `cargo fmt --all -- --check`,
   `cargo clippy --all-targets -- -D warnings`. Tests run a real `tt5srv`
-  from the SDK on a random local port; never a real server.
+  from the SDK on a random local port; never a real server. On the Mac,
+  `scripts/test-ios-sim.sh` runs the same tests inside the iOS Simulator
+  against the SDK built from source.
 - The official SDK is a trial (the owner chose to stay on it for now; see
   docs/design.md). Its trial check can segfault a test program at exit
   after every test passed: rerun; it isn't a test failure.

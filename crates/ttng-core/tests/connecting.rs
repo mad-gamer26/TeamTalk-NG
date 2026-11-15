@@ -21,7 +21,7 @@ impl Certs {
         let dir = std::env::temp_dir().join(format!("ttng-certs-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| {
-            let ok = Command::new("openssl")
+            let ok = Command::new(std::env::var("OPENSSL").unwrap_or_else(|_| "openssl".into()))
                 .args(args)
                 .current_dir(&dir)
                 .output()
@@ -100,7 +100,7 @@ struct TlsServer {
 impl TlsServer {
     fn start(certs: &Certs) -> TlsServer {
         let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        let child = Command::new("openssl")
+        let child = Command::new(std::env::var("OPENSSL").unwrap_or_else(|_| "openssl".into()))
             .args(["s_server", "-quiet", "-accept"])
             .arg(format!("127.0.0.1:{port}"))
             .args(["-cert", &certs.path("srv.pem"), "-key", &certs.path("srv.key")])

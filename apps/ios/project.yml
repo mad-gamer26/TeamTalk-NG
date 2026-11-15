@@ -59,10 +59,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID)"
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
-        # The SDK inside the core is C++ and uses zlib.
-        OTHER_LDFLAGS: ["-lc++", "-lz"]
-        # Device only (the official SDK has no Apple silicon simulator slice).
-        SUPPORTED_PLATFORMS: iphoneos
+        # iPhones and the Simulator (the Simulator needs the SDK built from
+        # source: scripts/build-sdk-apple.sh; see build-core.sh).
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        # The SDK inside the core is C++ and uses zlib (and FFmpeg in the
+        # SDK built from source, iconv).
+        OTHER_LDFLAGS: ["-lc++", "-lz", "-liconv"]
     dependencies:
       - framework: Generated/TeamTalkCore.xcframework
         embed: false

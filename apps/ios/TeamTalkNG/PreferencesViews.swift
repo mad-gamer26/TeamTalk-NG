@@ -23,6 +23,7 @@ struct DisplaySettingsView: View {
                 Toggle("Show the time of messages", isOn: $model.showTimestamps)
                 Toggle("Show the message of the day", isOn: $model.showMOTD)
                 Toggle("Show joins, leaves and logins in the chat", isOn: $model.eventsInChat)
+                NavigationLink("Message templates") { ChatTemplatesView() }
             }
             Section {
                 Toggle("Notify me of private messages", isOn: $model.notifyInBackground)

@@ -69,6 +69,7 @@ final class AppModel {
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
     let speech = SpeechStore()
+    let chatTemplates = ChatTemplateStore()
 
     // MARK: Display (the desktop's Display tab)
 
@@ -165,6 +166,7 @@ final class AppModel {
         sounds.volume = 0.8
         sounds.selectedId = InstalledPack.builtIn.id
         speech.revert()
+        chatTemplates.revert()
         AudioSession.activate()
     }
 

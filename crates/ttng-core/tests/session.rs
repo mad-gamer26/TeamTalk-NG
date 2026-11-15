@@ -2,6 +2,7 @@
 //! channels, people, messages, status, voice, reconnecting.
 
 mod common;
+mod mp3_check;
 
 use std::time::{Duration, Instant};
 
@@ -389,4 +390,48 @@ fn typing_reaches_the_person_written_to() {
             .iter()
             .any(|e| matches!(e, Event::MessageReceived(_)))
     );
+}
+
+#[test]
+fn recording_as_mp3_converts_when_it_ends() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    for c in [&a, &b] {
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+        c.client.join_channel_path("/", "").unwrap();
+    }
+    let path = std::env::temp_dir().join(format!("ttng-rec-{}-{}.mp3", std::process::id(), server.port));
+    a.client
+        .start_recording(path.to_str().unwrap(), RecordingFormat::Mp3)
+        .expect("recording");
+    a.wait_for("the recording starting", |e| {
+        matches!(e, Event::RecordingChanged { active: true, .. }).then_some(())
+    });
+    assert_eq!(a.client.snapshot().recording_path, path.to_str().unwrap());
+    b.client.set_test_tone(440).unwrap();
+    b.client.set_transmitting(true).unwrap();
+    std::thread::sleep(Duration::from_millis(2000));
+    b.client.set_transmitting(false).unwrap();
+    a.client.stop_recording().unwrap();
+    // It ends once the MP3 is made.
+    let (p, error) = a.wait_for("the recording ending", |e| match e {
+        Event::RecordingChanged {
+            path,
+            active: false,
+            error,
+        } => Some((path.clone(), error.clone())),
+        _ => None,
+    });
+    assert_eq!((p.as_str(), error), (path.to_str().unwrap(), None));
+    let leftovers = std::path::PathBuf::from(format!("{}.recording.wav", path.display()));
+    assert!(!leftovers.exists(), "the WAV it was made from is gone");
+    let (samples, _) = mp3_check::decode_mp3(&path);
+    let loud = samples.iter().filter(|s| s.unsigned_abs() > 1000).count();
+    assert!(
+        loud > 4800,
+        "Bob's tone is in it ({loud} loud samples of {})",
+        samples.len()
+    );
+    let _ = std::fs::remove_file(&path);
 }

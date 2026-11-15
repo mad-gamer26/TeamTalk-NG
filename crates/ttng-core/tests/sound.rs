@@ -2,6 +2,7 @@
 //! statistics, and recording each person to their own files.
 
 mod common;
+mod mp3_check;
 
 use std::time::Duration;
 
@@ -146,5 +147,67 @@ fn each_person_records_to_their_own_files() {
     // A talk can come in more than one file; the longest holds it.
     let longest = bobs.iter().map(|f| f.metadata().unwrap().len()).max().unwrap();
     assert!(longest > 10_000, "Bob's talk is in it ({longest} bytes)");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn each_person_can_be_recorded_as_mp3() {
+    let server = Server::start();
+    let v = in_root(&server, &["alice", "bob"]);
+    let (a, b) = (&v[0], &v[1]);
+    let dir = std::env::temp_dir().join(format!("ttng-each-mp3-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    a.client
+        .set_record_each(Some((dir.to_str().unwrap(), RecordingFormat::Mp3)))
+        .unwrap();
+    let bob = b.client.snapshot().my_user_id;
+    b.client.set_test_tone(440).unwrap();
+    b.client.set_transmitting(true).unwrap();
+    a.wait_for("Bob talking", |e| {
+        matches!(e, Event::TalkingChanged { user_id, talking: true } if *user_id == bob).then_some(())
+    });
+    std::thread::sleep(Duration::from_millis(1500));
+    b.client.set_transmitting(false).unwrap();
+    // Each file becomes an MP3 once the SDK finishes it.
+    let mp3s = || -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|f| f.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "mp3"))
+            .collect()
+    };
+    let start = std::time::Instant::now();
+    while mp3s().is_empty() && start.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The conversions running then get a moment to finish.
+    std::thread::sleep(Duration::from_millis(500));
+    a.client.set_record_each(None).unwrap();
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|f| f.file_name())
+        .collect();
+    let found = mp3s();
+    assert!(
+        found.iter().any(|p| p.to_string_lossy().contains("Bob")),
+        "files: {names:?}"
+    );
+    let loud = found
+        .iter()
+        .map(|p| {
+            mp3_check::decode_mp3(p)
+                .0
+                .iter()
+                .filter(|s| s.unsigned_abs() > 1000)
+                .count()
+        })
+        .max()
+        .unwrap();
+    assert!(
+        loud > 4800,
+        "Bob's talk is in an MP3 ({loud} loud samples); files: {names:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

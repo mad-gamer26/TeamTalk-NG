@@ -45,29 +45,41 @@ fn main() {
     } else {
         dll.clone()
     };
-    // BearWare's iOS library is "fat" (iPhone arm64 and simulator x86_64 in
-    // one file), which rustc can't bundle: link the target's slice alone,
-    // taken out with lipo (the SDK itself is unchanged).
+    // iOS: BearWare's official library is "fat" (iPhone arm64 and the
+    // Intel simulator in one file), which rustc can't bundle, so the
+    // target's slice is taken out with lipo (the SDK itself is unchanged).
+    // The SDK built from source (scripts/build-sdk-apple.sh) has one
+    // library per slice instead, Apple silicon simulator included.
     let lib_dir = if platform == "ios" {
+        let sim = target.ends_with("-sim");
         let slice = match arch.as_str() {
-            "aarch64" if !target.ends_with("-sim") => "arm64",
+            "aarch64" if sim => "arm64-simulator",
+            "aarch64" => "arm64",
             "x86_64" => "x86_64",
-            _ => panic!(
-                "BearWare's iOS SDK has no library for {target} (it has iPhone arm64 and the Intel simulator); build for aarch64-apple-ios"
-            ),
+            _ => panic!("no iOS SDK library for {target}"),
         };
         let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("teamtalk-slice");
         std::fs::create_dir_all(&out).unwrap();
-        let status = std::process::Command::new("lipo")
-            .arg(lib_dir.join("libTeamTalk5.a"))
-            .args(["-thin", slice, "-output"])
-            .arg(out.join("libTeamTalk5.a"))
-            .status()
-            .expect("lipo (Xcode's command line tools) is needed to build for iOS");
-        assert!(
-            status.success(),
-            "lipo couldn't take the {slice} slice out of libTeamTalk5.a"
-        );
+        let built = dll.join(format!("libTeamTalk5-{slice}.a"));
+        println!("cargo:rerun-if-changed={}", built.display());
+        if built.exists() {
+            std::fs::copy(&built, out.join("libTeamTalk5.a")).expect("copying the SDK's library");
+        } else {
+            assert!(
+                slice != "arm64-simulator",
+                "BearWare's official iOS SDK has no Apple silicon simulator library: build the SDK from source (scripts/build-sdk-apple.sh) and set TTNG_SDK_DIR to sdk/ios-src"
+            );
+            let status = std::process::Command::new("lipo")
+                .arg(lib_dir.join("libTeamTalk5.a"))
+                .args(["-thin", slice, "-output"])
+                .arg(out.join("libTeamTalk5.a"))
+                .status()
+                .expect("lipo (Xcode's command line tools) is needed to build for iOS");
+            assert!(
+                status.success(),
+                "lipo couldn't take the {slice} slice out of libTeamTalk5.a"
+            );
+        }
         out
     } else {
         lib_dir
@@ -99,7 +111,7 @@ fn main() {
 
     let mut builder = bindgen::Builder::default()
         .header(header.to_string_lossy())
-        .clang_arg(format!("--target={target}"))
+        .clang_arg(format!("--target={}", clang_target(&target)))
         .allowlist_function("TT_.*")
         .allowlist_type(".*")
         .allowlist_var(".*")
@@ -136,4 +148,15 @@ fn main() {
     bindings
         .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs"))
         .unwrap();
+}
+
+/// Rust's target name as clang wants it (clang has no "-sim" triples).
+fn clang_target(target: &str) -> String {
+    match target.strip_suffix("-sim") {
+        Some(base) => {
+            let min = env::var("IPHONEOS_DEPLOYMENT_TARGET").unwrap_or_else(|_| "17.0".into());
+            format!("{}{min}-simulator", base.replace("aarch64", "arm64"))
+        }
+        None => target.to_owned(),
+    }
 }

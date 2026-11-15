@@ -515,14 +515,18 @@ struct ChatView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 List(lines) { line in
+                    if model.chatTemplates.enabled, let kind = line.kind {
+                        // The desktop's look: one line from its template.
+                        Text(model.chatTemplates.format(kind, line.vars ?? [:], date: showTimes ? stamp(line.time) : ""))
+                            .id(line.id)
+                    } else {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
                                 .font(.caption.weight(.semibold))
                             Spacer()
                             if showTimes {
-                                Text(line.time, format: Calendar.current.isDateInToday(line.time)
-                                     ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
+                                Text(stamp(line.time))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -531,6 +535,7 @@ struct ChatView: View {
                     }
                     .accessibilityElement(children: .combine)
                     .id(line.id)
+                    }
                 }
                 .listStyle(.plain)
                 .overlay {
@@ -565,6 +570,10 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
+    }
+
+    private func stamp(_ t: Date) -> String {
+        t.formatted(Calendar.current.isDateInToday(t) ? .dateTime.hour().minute() : .dateTime.day().month().hour().minute())
     }
 
     private func send() {

@@ -11,6 +11,10 @@ struct ChatLine: Identifiable, Hashable, Codable {
     /// "private" lines are between me and one person.
     let privateWith: String?
     let time: Date
+    /// Its desktop template and variables (Settings → Display → Message
+    /// templates); lines saved before templates have none.
+    var kind: ChatTemplate? = nil
+    var vars: [String: String]? = nil
 }
 
 /// Hands the core's events (on its event thread) to the main thread.
@@ -196,7 +200,7 @@ final class ServerConnection {
             lastTypingSent[user.id] = (false, .now)
             run("Couldn't say you stopped typing") { try $0.setTyping(userId: user.id, typing: false) }
             // The server doesn't echo private messages back.
-            lines.append(ChatLine(from: "Me", text: text, privateWith: user.displayName, time: .now))
+            lines.append(ChatLine(from: "Me", text: text, privateWith: user.displayName, time: .now, kind: .privateMessage, vars: ["user": myName, "content": text]))
             sound(.privateMessageSent)
             say(.privateMessageSent, ["message": text])
         } else {
@@ -696,10 +700,26 @@ final class ServerConnection {
         ["user": u.displayName, "username": u.username]
     }
 
+    /// The desktop's lines on joining a channel: where, its topic, its
+    /// disk quota (with the templates on).
+    private func joinedLines(_ c: Channel, path: String) {
+        guard app?.chatTemplates.enabled == true else { return }
+        let quota = c.diskQuota > 0 ? ByteCountFormatter.string(fromByteCount: c.diskQuota, countStyle: .file) : "0 bytes"
+        let v = ["channelpath": path, "channelname": c.parentId == 0 ? "root" : c.name, "channeltopic": c.topic, "quota": quota]
+        lines.append(ChatLine(from: "Channel", text: "Joined channel \(path)", privateWith: nil, time: .now, kind: .joinedChannel, vars: v))
+        lines.append(ChatLine(from: "Channel", text: "Topic: \(c.topic)", privateWith: nil, time: .now, kind: .channelTopic, vars: v))
+        lines.append(ChatLine(from: "Channel", text: "Disk quota: \(quota)", privateWith: nil, time: .now, kind: .diskQuota, vars: v))
+    }
+
+    /// My name on this server, as others see it.
+    private var myName: String {
+        snapshot.flatMap { s in s.users.first { $0.id == s.myUserId }?.displayName } ?? "Me"
+    }
+
     /// An event line in the chat (Settings → Display).
     private func eventLine(_ text: String) {
         guard app?.eventsInChat == true else { return }
-        lines.append(ChatLine(from: "Event", text: text, privateWith: nil, time: .now))
+        lines.append(ChatLine(from: "Event", text: text, privateWith: nil, time: .now, kind: .logMessage, vars: ["content": text]))
     }
 
     private func channelName(_ id: Int32) -> String {
@@ -722,6 +742,10 @@ final class ServerConnection {
                     dropped = false
                     say(.connection, ["state": "reconnected"])
                     applyTalkMode()
+                }
+                if app?.chatTemplates.enabled == true, let name = snapshot?.server.name.nonEmpty ?? server.title.nonEmpty {
+                    lines.append(ChatLine(from: "Server", text: "Server name: \(name)", privateWith: nil, time: .now,
+                                          kind: .serverName, vars: ["server": name]))
                 }
                 if !loggedInOnce || app?.showMOTD == true {
                     loggedInOnce = true
@@ -750,12 +774,12 @@ final class ServerConnection {
             let mine = m.fromUserId == snapshot?.myUserId
             switch m.target {
             case .user:
-                lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now))
+                lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now, kind: .privateMessage, vars: ["user": from, "content": m.text]))
                 sound(.privateMessage)
                 say(.privateMessage, v)
                 notifyIfAway("Private message from \(from)", m.text)
             case .channel:
-                lines.append(ChatLine(from: mine ? "Me" : from, text: m.text, privateWith: nil, time: .now))
+                lines.append(ChatLine(from: mine ? "Me" : from, text: m.text, privateWith: nil, time: .now, kind: .channelMessage, vars: ["user": from, "content": m.text]))
                 if mine {
                     sound(.channelMessageSent)
                     say(.channelMessageSent, ["message": m.text])
@@ -764,7 +788,7 @@ final class ServerConnection {
                     say(.channelMessage, v)
                 }
             case .broadcast:
-                lines.append(ChatLine(from: "Broadcast from \(from)", text: m.text, privateWith: nil, time: .now))
+                lines.append(ChatLine(from: "Broadcast from \(from)", text: m.text, privateWith: nil, time: .now, kind: .broadcastMessage, vars: ["user": from, "content": m.text]))
                 if mine {
                     v = ["message": m.text]
                     say(.broadcastMessageSent, v)
@@ -776,7 +800,9 @@ final class ServerConnection {
         case .userJoined(let u, let ch):
             if u.id == snapshot?.myUserId, let c = snapshot?.channels.first(where: { $0.id == ch }) {
                 // The desktop's "last joined channel", per server.
-                UserDefaults.standard.set(c.parentId == 0 ? "/" : client.channelPath(channelId: ch), forKey: "lastChannel-\(server.id)")
+                let path = c.parentId == 0 ? "/" : client.channelPath(channelId: ch)
+                UserDefaults.standard.set(path, forKey: "lastChannel-\(server.id)")
+                joinedLines(c, path: path)
             }
             guard u.id != snapshot?.myUserId else { break }
             if ch == myChannel {
@@ -935,7 +961,7 @@ final class ServerConnection {
     private func showMOTD() {
         guard app?.showMOTD == true, let motd = snapshot?.server.motd.trimmingCharacters(in: .whitespacesAndNewlines), !motd.isEmpty else { return }
         if lines.last?.text == motd { return }
-        lines.append(ChatLine(from: "Message of the day", text: motd, privateWith: nil, time: .now))
+        lines.append(ChatLine(from: "Message of the day", text: motd, privateWith: nil, time: .now, kind: .motd, vars: ["MOTD": motd]))
     }
 
     /// The default subscriptions (Settings → Connection), for someone new.

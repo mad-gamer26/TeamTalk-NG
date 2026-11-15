@@ -248,6 +248,17 @@ fn a_stream_ends_by_itself_or_loops() {
 
 #[test]
 fn the_others_really_hear_a_streamed_file() {
+    others_hear_streamed("wav");
+}
+
+/// MP3s need FFmpeg in the SDK (BearWare's own iOS SDK has none, so it
+/// streamed WAV only; the one built from source has it).
+#[test]
+fn the_others_really_hear_a_streamed_mp3() {
+    others_hear_streamed("mp3");
+}
+
+fn others_hear_streamed(kind: &str) {
     let server = Server::start();
     let a = TestClient::logged_in(&server, "alice");
     let b = TestClient::logged_in(&server, "bob");
@@ -255,10 +266,17 @@ fn the_others_really_hear_a_streamed_file() {
         c.client.init_audio(AudioDevices::Virtual).unwrap();
         c.client.join_channel_path("/", "").unwrap();
     }
-    let dir = std::env::temp_dir().join(format!("ttng-hear-{}-{}", std::process::id(), server.port));
+    let dir = std::env::temp_dir().join(format!("ttng-hear-{kind}-{}-{}", std::process::id(), server.port));
     std::fs::create_dir_all(&dir).unwrap();
-    let wav = dir.join("tone.wav");
+    let mut wav = dir.join("tone.wav");
     tone_wav(&wav, 3);
+    if kind == "mp3" {
+        let mp3 = dir.join("tone.mp3");
+        ttng_core::mp3::wav_to_mp3(&wav, &mp3, 128, true).unwrap();
+        let info = media_file_info(mp3.to_str().unwrap()).expect("the SDK reads the MP3");
+        assert!(info.duration_ms > 2500, "{info:?}");
+        wav = mp3;
+    }
     // Bob records what arrives, media files included.
     let rec = dir.join("heard.wav");
     b.client

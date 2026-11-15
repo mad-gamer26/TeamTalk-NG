@@ -5,6 +5,7 @@ pub mod bearware;
 mod client;
 mod error;
 mod model;
+pub mod mp3;
 pub mod text;
 pub mod ttfile;
 

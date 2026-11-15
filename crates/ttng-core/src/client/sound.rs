@@ -123,9 +123,9 @@ impl Worker {
 
     /// Points someone's recording at the folder (or stops it).
     pub(super) fn record_user(&self, user_id: i32) {
+        // Always WAV: MP3s are converted when each file is done (see below).
         let (folder, aff) = match &self.record_each {
-            Some((f, RecordingFormat::Wave)) => (f.clone(), sys::AudioFileFormat_AFF_WAVE_FORMAT),
-            Some((f, RecordingFormat::Mp3)) => (f.clone(), sys::AudioFileFormat_AFF_MP3_128KBIT_FORMAT),
+            Some((f, _)) => (f.clone(), sys::AudioFileFormat_AFF_WAVE_FORMAT),
             None => (String::new(), sys::AudioFileFormat_AFF_NONE),
         };
         let f = arg(&folder);
@@ -205,5 +205,26 @@ impl Worker {
                 )
             };
         }
+    }
+}
+
+impl Worker {
+    /// Someone's recorded file is done: when recording each person as
+    /// MP3, it becomes an MP3 beside it (on another thread).
+    pub(super) fn on_user_recorded(&self, info: &sys::MediaFileInfo) {
+        if info.nStatus != sys::MediaFileStatus_MFS_FINISHED
+            || !matches!(self.record_each, Some((_, RecordingFormat::Mp3)))
+        {
+            return;
+        }
+        let wav = std::path::PathBuf::from(from_tt(&info.szFileName));
+        if wav.extension().is_none_or(|e| !e.eq_ignore_ascii_case("wav")) {
+            return;
+        }
+        let mp3 = wav.with_extension("mp3");
+        std::thread::spawn(move || {
+            // If it fails the WAV stays, so nothing is lost.
+            let _ = crate::mp3::wav_to_mp3(&wav, &mp3, 128, true);
+        });
     }
 }

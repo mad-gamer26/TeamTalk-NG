@@ -20,7 +20,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | New client instance | done: several servers at once |
 | Connect | done |
 | Preferences | partial: see Preferences |
-| Record conversations to disk | done: one file and/or a file per person, with media files, MP3 or WAV, chat logs as text files |
+| Record conversations to disk | done: one file and/or a file per person, with media files, MP3 or WAV, chat logs as text files. The SDK makes MP3s only on Windows, so the core records WAV and converts with LAME (tested by decoding the MP3s) |
 | Speak client statistics | done (Connection statistics, the ping announced) |
 | Exit | n/a (iOS apps aren't quit); Disconnect per server is done |
 
@@ -57,7 +57,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Messages | done (private messages) |
 | Allow desktop access | n/a with desktop sharing |
 | Op (channel operator) | done (also with the channel's operator password) |
-| Position users (Classic) | partial: left/right per person; todo: 3D positions |
+| Position users (Classic) | done: left/right per person; n/a: 3D positions (SDK 5.23 marks SOUNDDEVICEFEATURE_3DPOSITION deprecated: no sound system supports it any more, the desktop's included) |
 
 ## Channels menu
 
@@ -98,7 +98,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop tab | NG |
 |---|---|
 | General: nickname, gender, away after inactivity, status messages, BearWare web login, push to talk / voice activation, key combination | done: nickname, gender, status message, away after a while in the background or locked (its own message, voice activation paused), talk modes; n/a: global hotkeys (iOS); keyboard shortcuts done |
-| Display: language, timestamps, chat as list, window title, message templates, status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | done: timestamps, events in chat, usernames or nicknames, topics, sorting, the double-tap action, the MOTD in the chat, notifications for private messages in the background (the popup); chat is always a list; n/a: language (the system's), window title, tray, always on top, updates (the App Store) |
+| Display: language, timestamps, chat as list, window title, message templates (done), status events in chat, channel tree (user counts, username vs nickname, last to talk, topics, sort, double-tap action), popups, MOTD dialog, updates | done: timestamps, events in chat, usernames or nicknames, topics, sorting, the double-tap action, the MOTD in the chat, notifications for private messages in the background (the popup); chat is always a list; n/a: language (the system's), window title, tray, always on top, updates (the App Store) |
 | Connection: connect to last on start, reconnect, join root, max payload, default subscriptions, local ports | done: connect on start (per server), reconnect, join root, default subscriptions; n/a: local ports, max payload (the SDK handles it) |
 | Sound system: devices, AEC, AGC, denoise, media vs voice volume | done (plus microphone gain and output volume) |
 | Sound events: pack, volume, per-event files, enable all/clear all | done: every desktop event (31) with the desktop's sounds built in, packs, volume, a file of your own per event, all on, all off, revert |
@@ -122,7 +122,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 | Desktop | NG |
 |---|---|
 | Typing indicators | done (sent while writing privately, shown, sounded and spoken as on the desktop) |
-| Message templates and timestamps | partial: timestamps on or off; todo: the desktop's chat templates ({date} <{user}> …) |
+| Message templates and timestamps | done: timestamps on or off; the desktop's nine chat templates with its defaults and variables, editable, used when "Format the chat as the desktop does" is on (with its server name, joined channel, topic and disk quota lines) |
 | Message logs to files | done |
 
 ## Video and desktop
