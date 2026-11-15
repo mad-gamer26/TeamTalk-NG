@@ -67,8 +67,19 @@ pub fn start(devices: AudioDevices, s: &AudioSettings) -> Result<SoundLoop> {
         }
     };
     let effects = sys::SoundDeviceEffects::default();
+    // Stereo, so a stereo microphone (the iPhone's front or back one) is
+    // heard as it is; the Voice-Processing unit is mono.
+    let voice_processing = s.echo_cancellation && phone && devices != AudioDevices::Virtual;
+    crate::client::sound::configure_shared(voice_processing);
+    let channels = if voice_processing && cfg!(target_os = "ios") {
+        1
+    } else {
+        2
+    };
     // SAFETY: p and effects outlive the call; the SDK copies them.
-    let h = unsafe { sys::TT_StartSoundLoopbackTestEx(input, output, 48000, 1, duplex as sys::TTBOOL, &p, &effects) };
+    let h = unsafe {
+        sys::TT_StartSoundLoopbackTestEx(input, output, 48000, channels, duplex as sys::TTBOOL, &p, &effects)
+    };
     if h.is_null() {
         Err(Error::Refused("The sound devices couldn't be tested.".into()))
     } else {

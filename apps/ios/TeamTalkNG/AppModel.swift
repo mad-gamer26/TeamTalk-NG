@@ -33,8 +33,19 @@ final class AppModel {
         didSet {
             saveAudio()
             // Echo cancellation changes the audio session's mode first.
-            if audio.echoCancellation != oldValue.echoCancellation { AudioSession.activate() }
-            for c in connections.values { c.applyAudioSettings() }
+            if audio.echoCancellation != oldValue.echoCancellation {
+                // iPhone's echo cancellation is one Voice-Processing unit
+                // shared by every connection: all close, the audio session
+                // changes mode, then all open again.
+                let list = Array(connections.values)
+                Task {
+                    for c in list { await c.closeAudio() }
+                    AudioSession.activate()
+                    for c in list { await c.reopenAudio() }
+                }
+            } else {
+                for c in connections.values { c.applyAudioSettings() }
+            }
         }
     }
 

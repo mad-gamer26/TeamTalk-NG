@@ -60,7 +60,17 @@ enum AudioSession {
         try? s.setCategory(.playAndRecord, mode: echoCancellation ? .voiceChat : .default, options: options)
         try? s.setActive(true)
         let choice = UserDefaults.standard.string(forKey: "preferredInput") ?? ""
-        if let built = BuiltInMic(tag: choice) {
+        if echoCancellation {
+            // Voice chat: the iPhone's microphone as iOS sets it up for
+            // calls (mono, its own position); another microphone as chosen.
+            let builtIn = BuiltInMic(tag: choice) != nil || s.availableInputs?.first(where: { $0.uid == choice })?.portType == .builtInMic
+            if builtIn, let mic = s.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                try? s.setPreferredInput(mic)
+            } else if let port = s.availableInputs?.first(where: { $0.uid == choice }) {
+                try? s.setPreferredInput(port)
+            }
+            try? s.setPreferredInputNumberOfChannels(1)
+        } else if let built = BuiltInMic(tag: choice) {
             useBuiltIn(built, s)
         } else if let port = s.availableInputs?.first(where: { $0.uid == choice }) {
             // The built-in microphone picked before it had a submenu: the bottom one.
@@ -111,8 +121,11 @@ enum AudioSession {
     }
 
     /// What the microphone setting says, in words.
-    static func inputLabel(_ choice: String) -> String {
+    static func inputLabel(_ choice: String, echoCancellation: Bool = false) -> String {
         if choice.isEmpty { return "Automatic" }
+        if echoCancellation, BuiltInMic(tag: choice) != nil || inputs.first(where: { $0.uid == choice })?.portType == .builtInMic {
+            return inputs.first { $0.portType == .builtInMic }?.portName ?? "iPhone Microphone"
+        }
         if let m = BuiltInMic(tag: choice) {
             let name = inputs.first { $0.portType == .builtInMic }?.portName ?? "iPhone Microphone"
             return "\(name), \(m.label)"

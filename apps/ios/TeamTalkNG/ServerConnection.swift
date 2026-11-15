@@ -180,6 +180,7 @@ final class ServerConnection {
         Task {
             let allowed = await AudioSession.requestMicrophone()
             AudioSession.activate()
+            audioDevices = allowed ? .shared : .virtual
             let result: String? = await Task.detached {
                 do {
                     try client.connect(options: options)
@@ -714,6 +715,28 @@ final class ServerConnection {
         if let v = server.micGain { a.micGain = Int32(v) }
         if let v = server.mediaVolume { a.mediaVolume = Int32(v) }
         return a
+    }
+
+    /// The sound devices this connection opened (nil: none yet).
+    @ObservationIgnored private(set) var audioDevices: AudioDevices?
+
+    /// Closes the sound devices (echo cancellation turned on or off: every
+    /// connection closes before any opens again, see AppModel).
+    func closeAudio() async {
+        guard monitorId == nil, audioDevices != nil else { return }
+        let c = client
+        _ = await Task.detached { try? c.closeAudio() }.value
+    }
+
+    /// Opens them again with the settings as they are now.
+    func reopenAudio() async {
+        guard monitorId == nil, let d = audioDevices else { return }
+        let c = client, a = effectiveAudio
+        let failed: String? = await Task.detached {
+            do { try c.setAudioSettings(settings: a); try c.initAudio(devices: d); return nil } catch { return words(error) }
+        }.value
+        if let failed { announce("Couldn't open the sound devices: \(failed)") }
+        applyTalkMode()
     }
 
     func applyAudioSettings() {

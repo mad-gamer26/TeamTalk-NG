@@ -1237,6 +1237,12 @@ impl TtClient {
         Ok(self.inner.init_audio(devices.into())?)
     }
 
+    /// Closes the sound devices (iPhone echo cancellation: every connection
+    /// closes before any opens again).
+    pub fn close_audio(&self) -> Result<()> {
+        Ok(self.inner.close_audio()?)
+    }
+
     /// Push to talk: sending my voice (true) or not.
     pub fn set_transmitting(&self, on: bool) -> Result<()> {
         Ok(self.inner.set_transmitting(on)?)

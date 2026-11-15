@@ -20,15 +20,26 @@ struct SoundSystemView: View {
                 Toggle("Play through the speaker", isOn: $speaker)
                 Toggle("Use Bluetooth headset microphones", isOn: $bluetoothMic)
                 // A menu, with the iPhone's own microphone as a submenu:
-                // bottom (mono), or front or back in stereo.
+                // bottom (mono), or front or back in stereo. With echo
+                // cancellation (voice chat) it's just the iPhone's
+                // microphone, as iOS sets it up for calls.
+                let echo = model.audio.echoCancellation
+                let builtIn = AudioSession.inputs.first { $0.portType == .builtInMic }
+                // With echo cancellation a front/back/bottom choice reads as the microphone itself.
+                let selection = Binding<String>(
+                    get: {
+                        guard echo, let mic = builtIn, AudioSession.BuiltInMic(tag: preferredInput) != nil else { return preferredInput }
+                        return mic.uid
+                    },
+                    set: { preferredInput = $0 })
                 Menu {
-                    Picker("Microphone", selection: $preferredInput) {
+                    Picker("Microphone", selection: selection) {
                         Text("Automatic").tag("")
-                        ForEach(AudioSession.inputs.filter { $0.portType != .builtInMic }, id: \.uid) {
+                        ForEach(AudioSession.inputs.filter { echo || $0.portType != .builtInMic }, id: \.uid) {
                             Text($0.portName).tag($0.uid)
                         }
                     }
-                    if let mic = AudioSession.inputs.first(where: { $0.portType == .builtInMic }) {
+                    if !echo, let mic = builtIn {
                         Menu(mic.portName) {
                             Picker(mic.portName, selection: $preferredInput) {
                                 ForEach(AudioSession.BuiltInMic.allCases) { Text($0.label).tag($0.tag) }
@@ -36,20 +47,19 @@ struct SoundSystemView: View {
                         }
                     }
                 } label: {
-                    LabeledContent("Microphone", value: AudioSession.inputLabel(preferredInput))
+                    LabeledContent("Microphone", value: AudioSession.inputLabel(preferredInput, echoCancellation: echo))
                 }
-                .id(model.routeChanges)  // rebuilt when a device comes or goes
+                .id("\(model.routeChanges)-\(echo)")  // rebuilt when a device comes or goes
                 .accessibilityLabel("Microphone")
-                .accessibilityValue(AudioSession.inputLabel(preferredInput))
+                .accessibilityValue(AudioSession.inputLabel(preferredInput, echoCancellation: echo))
                 // The choices as VoiceOver actions, reversed; the chosen one
                 // says so.
                 .accessibilityActions {
-                    let builtIn = AudioSession.inputs.first { $0.portType == .builtInMic }
                     let choices: [(String, String)] = [("Automatic", "")]
-                        + AudioSession.inputs.filter { $0.portType != .builtInMic }.map { ($0.portName, $0.uid) }
-                        + (builtIn.map { m in AudioSession.BuiltInMic.allCases.map { ("\(m.portName), \($0.label)", $0.tag) } } ?? [])
+                        + AudioSession.inputs.filter { echo || $0.portType != .builtInMic }.map { ($0.portName, $0.uid) }
+                        + (echo ? [] : builtIn.map { m in AudioSession.BuiltInMic.allCases.map { ("\(m.portName), \($0.label)", $0.tag) } } ?? [])
                     ForEach(choices.reversed(), id: \.1) { c in
-                        Button(c.1 == preferredInput ? "\(c.0), on" : c.0) { preferredInput = c.1 }
+                        Button(c.1 == selection.wrappedValue ? "\(c.0), on" : c.0) { selection.wrappedValue = c.1 }
                     }
                 }
             } header: {
@@ -99,6 +109,7 @@ struct SoundSystemView: View {
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }
         .onChange(of: preferredInput) { AudioSession.activate() }
+        .onChange(of: model.audio.echoCancellation) { AudioSession.activate() }
         .onChange(of: mixWithOthers) { AudioSession.activate() }
     }
 

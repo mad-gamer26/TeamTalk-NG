@@ -224,3 +224,20 @@ impl Worker {
         });
     }
 }
+
+/// The shared sound devices' format (process-wide): on iPhone with echo
+/// cancellation, the Voice-Processing unit's (48 kHz mono, 40 ms, both
+/// sides, as the old app did); otherwise the SDK's defaults. Call while no
+/// shared device is open.
+pub(crate) fn configure_shared(voice_processing: bool) {
+    let (rate, channels, frame) = if voice_processing && cfg!(target_os = "ios") {
+        (48000, 1, 1920)
+    } else {
+        (0, 0, 0)
+    };
+    // SAFETY: plain calls; the SDK ignores them while a shared device is open.
+    unsafe {
+        sys::TT_InitSoundInputSharedDevice(rate, channels, frame);
+        sys::TT_InitSoundOutputSharedDevice(rate, channels, frame);
+    }
+}

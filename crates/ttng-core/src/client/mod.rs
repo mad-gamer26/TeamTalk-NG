@@ -133,6 +133,7 @@ enum Request {
     },
     SetNickname(String, Reply),
     InitAudio(AudioDevices, Reply),
+    CloseAudio(Reply),
     SetTransmitting(bool, Reply),
     SetVoiceActivation {
         on: bool,
@@ -371,6 +372,13 @@ impl Client {
     }
 
     /// Opens the sound devices (needed to hear and talk).
+    /// Closes the sound devices (opened again with init_audio). iPhone's
+    /// echo cancellation shares one Voice-Processing unit between every
+    /// connection: all close before any opens again with new settings.
+    pub fn close_audio(&self) -> Result<()> {
+        self.ask(Request::CloseAudio)
+    }
+
     pub fn init_audio(&self, devices: AudioDevices) -> Result<()> {
         self.ask(|r| Request::InitAudio(devices, r))
     }
@@ -1158,6 +1166,10 @@ impl Worker {
             Request::InitAudio(devices, reply) => {
                 let _ = reply.send(self.init_audio(devices));
             }
+            Request::CloseAudio(reply) => {
+                self.close_audio();
+                let _ = reply.send(Ok(()));
+            }
             Request::SetTransmitting(on, reply) => {
                 // SAFETY: inst is live.
                 let ok = unsafe { sys::TT_EnableVoiceTransmission(self.inst, on as sys::TTBOOL) } != 0;
@@ -1633,13 +1645,12 @@ impl Worker {
             }
         }
         let want_duplex = echo && !cfg!(any(target_os = "ios", target_os = "android"));
-        // SAFETY: inst is live.
-        unsafe {
-            sys::TT_CloseSoundDuplexDevices(self.inst);
-            sys::TT_CloseSoundInputDevice(self.inst);
-            sys::TT_CloseSoundOutputDevice(self.inst);
-        }
-        self.audio_open = false;
+        self.close_audio();
+        // iPhone's Voice-Processing I/O unit is one mono unit, shared (its
+        // device ID has the shared flag): both sides set to it before
+        // either opens, or it can give no processed microphone sound (the
+        // shared input otherwise defaults to stereo).
+        crate::client::sound::configure_shared(echo && devices != AudioDevices::Virtual);
         // Echo cancellation needs both devices together (duplex); without
         // it, or if duplex can't open, they're opened apart.
         // SAFETY: inst is live.
@@ -1659,6 +1670,16 @@ impl Worker {
         self.audio_devices = Some(devices);
         self.apply_audio();
         Ok(())
+    }
+
+    pub(super) fn close_audio(&mut self) {
+        // SAFETY: inst is live.
+        unsafe {
+            sys::TT_CloseSoundDuplexDevices(self.inst);
+            sys::TT_CloseSoundInputDevice(self.inst);
+            sys::TT_CloseSoundOutputDevice(self.inst);
+        }
+        self.audio_open = false;
     }
 
     fn send_message(&mut self, target: MessageTarget, text: &str, reply: Reply) {
@@ -2334,6 +2355,7 @@ fn reply_of(req: Request) -> Option<Reply> {
         | Request::LeaveChannel(r)
         | Request::SetNickname(_, r)
         | Request::InitAudio(_, r)
+        | Request::CloseAudio(r)
         | Request::SetTransmitting(_, r)
         | Request::TestTone(_, r) => r,
         Request::SetVoiceActivation { reply, .. } => reply,
