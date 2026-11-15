@@ -17,6 +17,10 @@ Read `docs/design.md` first: it records the decisions.
   from the SDK on a random local port; never a real server. On the Mac,
   `scripts/test-ios-sim.sh` runs the same tests inside the iOS Simulator
   against the SDK built from source.
+  NG Account end to end: `cargo test -p ttng-ffi --test ng_account_e2e`
+  (two devices through the app's calls, on a private ngmon; NGMON_BIN for
+  a freshly built one), and on the Mac `scripts/test-ng-account-ui.sh`
+  (the app itself in the Simulator, a UI test against a private ngmon).
 - The official SDK is a trial (the owner chose to stay on it for now; see
   docs/design.md). Its trial check can segfault a test program at exit
   after every test passed: rerun; it isn't a test failure.

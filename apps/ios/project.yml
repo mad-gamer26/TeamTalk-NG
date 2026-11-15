@@ -135,6 +135,21 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
 
+  # NG Account through the app (scripts/test-ng-account-ui.sh): Simulator only.
+  TeamTalkNGUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: TeamTalkNG
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID).UITests"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: TeamTalkNG
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+
   # AudioNet's Swift interface as a module of its own (its names, such as
   # Event, would meet the core's), over its pre-linked engine.
   AudioNetKit:
@@ -183,3 +198,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+
+schemes:
+  TeamTalkNG:
+    build:
+      targets:
+        TeamTalkNG: all
+    test:
+      targets:
+        - TeamTalkNGUITests
