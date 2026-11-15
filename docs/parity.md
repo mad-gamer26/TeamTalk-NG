@@ -121,7 +121,7 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 
 | Desktop | NG |
 |---|---|
-| Typing indicators | todo (8) |
+| Typing indicators | done (sent while writing privately, shown, sounded and spoken as on the desktop) |
 | Message templates and timestamps | todo (6) |
 | Message logs to files | done |
 
@@ -150,6 +150,6 @@ Status: **done**, **partial** (what's missing is said), **todo**, or **n/a**
 7. **Connecting** (done): encryption certificates, web login, join codes, tt:// and
    .tt files, public server list, status message and channel password per
    server.
-8. **Typing indicators.**
+8. **Typing indicators** (done).
 9. **Video**: seeing it, sending the camera, streaming video files.
 10. **Help and polish**: About, help, first-run setup, keyboard shortcuts.

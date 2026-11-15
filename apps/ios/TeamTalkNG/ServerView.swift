@@ -527,11 +527,21 @@ struct ChatView: View {
                     if let last = lines.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
+            if let p = privateWith, connection.isTyping(p) {
+                Text("\(p.displayName) is typing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
             HStack {
                 TextField(privateWith == nil ? "Message the channel" : "Message \(privateWith!.displayName)", text: $draft, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .focused($typing)
                     .onSubmit(send)
+                    .onChange(of: draft) {
+                        if let p = privateWith { connection.setTyping(to: p, !draft.isEmpty) }
+                    }
                 Button("Send", action: send)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

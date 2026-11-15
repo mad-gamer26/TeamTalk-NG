@@ -32,6 +32,21 @@ final class ServerConnection {
     private let client: TtClient
     /// For screens that call the core themselves (off the main thread).
     var coreClient: TtClient { client }
+    /// Who is writing to me privately right now (until when).
+    private(set) var typing: [Int32: Date] = [:]
+    private var lastTypingSent: [Int32: (Bool, Date)] = [:]
+
+    /// Tells someone I'm writing (at most every few seconds), or stopped.
+    func setTyping(to user: User, _ on: Bool) {
+        let last = lastTypingSent[user.id]
+        if let last, last.0 == on, !on || Date.now.timeIntervalSince(last.1) < 3 { return }
+        lastTypingSent[user.id] = (on, .now)
+        run("Couldn't say you're typing") { try $0.setTyping(userId: user.id, typing: on) }
+    }
+
+    func isTyping(_ user: User) -> Bool { isTypingId(user.id) }
+    private func isTypingId(_ id: Int32) -> Bool { (typing[id] ?? .distantPast) > .now }
+
     /// People who logged out while I was connected (Online users).
     private(set) var departed: [(user: User, at: Date)] = []
 
@@ -156,6 +171,8 @@ final class ServerConnection {
         let target: MessageTarget
         if let user {
             target = .user(userId: user.id)
+            lastTypingSent[user.id] = (false, .now)
+            run("Couldn't say you stopped typing") { try $0.setTyping(userId: user.id, typing: false) }
             // The server doesn't echo private messages back.
             lines.append(ChatLine(from: "Me", text: text, privateWith: user.displayName, time: .now))
             sound(.privateMessageSent)
@@ -821,6 +838,21 @@ final class ServerConnection {
                 announce("The recording stopped: \(error). Saved as \(name)")
             } else {
                 note("Recording saved as \(name), in the Files app")
+            }
+        case .typing(let userId, let on):
+            if on {
+                let first = !isTypingId(userId)
+                typing[userId] = .now.addingTimeInterval(6)
+                if first, let u = snapshot?.users.first(where: { $0.id == userId }) {
+                    sound(.typing)
+                    say(.typing, vars(u))
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(6.5))
+                    if (self.typing[userId] ?? .distantPast) <= .now { self.typing[userId] = nil }
+                }
+            } else {
+                typing[userId] = nil
             }
         case .voiceActivated(let on):
             voiceActive = on

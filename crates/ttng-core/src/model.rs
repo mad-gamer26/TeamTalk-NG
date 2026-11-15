@@ -1232,6 +1232,11 @@ pub enum Event {
         talking: bool,
     },
     MessageReceived(TextMessage),
+    /// Someone started (or stopped) writing to me privately.
+    Typing {
+        user_id: i32,
+        typing: bool,
+    },
     /// Voice activation started (true) or stopped (false) sending my voice.
     VoiceActivated(bool),
     /// Streaming a file to my channel started, moved on (about once a

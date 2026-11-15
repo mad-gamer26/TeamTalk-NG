@@ -365,3 +365,28 @@ fn recording_the_channel_saves_its_voices() {
         Err(Error::Refused("Nothing is being recorded.".into()))
     );
 }
+
+#[test]
+fn typing_reaches_the_person_written_to() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    let b = TestClient::logged_in(&server, "bob");
+    let alice = a.client.snapshot().my_user_id;
+    let bob = b.client.snapshot().my_user_id;
+    a.client.set_typing(bob, true).unwrap();
+    b.wait_for("Alice typing", |e| {
+        matches!(e, Event::Typing { user_id, typing: true } if *user_id == alice).then_some(())
+    });
+    a.client.set_typing(bob, false).unwrap();
+    b.wait_for("Alice stopping", |e| {
+        matches!(e, Event::Typing { user_id, typing: false } if *user_id == alice).then_some(())
+    });
+    // Not a message: nothing arrives in the conversation.
+    assert!(
+        !b.seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::MessageReceived(_)))
+    );
+}

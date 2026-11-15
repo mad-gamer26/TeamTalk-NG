@@ -213,6 +213,11 @@ enum Request {
     Server(ServerRequest),
     /// Sound settings (see sound.rs); `None` when it answers itself.
     Sound(SoundRequest, Option<Reply>),
+    Typing {
+        user_id: i32,
+        typing: bool,
+        reply: Reply,
+    },
     /// People (see people.rs); `None` when the request answers itself.
     People(PeopleRequest, Option<Reply>),
     Quit,
@@ -759,6 +764,12 @@ impl Client {
     pub fn set_record_each(&self, each: Option<(&str, RecordingFormat)>) -> Result<()> {
         let each = each.map(|(f, fmt)| (f.to_owned(), fmt));
         self.ask(|r| Request::Sound(SoundRequest::RecordEach(each), Some(r)))
+    }
+
+    /// Tells someone I'm writing to them (or stopped), as the desktop's
+    /// private message window does.
+    pub fn set_typing(&self, user_id: i32, typing: bool) -> Result<()> {
+        self.ask(|reply| Request::Typing { user_id, typing, reply })
     }
 
     /// Everything known right now.
@@ -1389,6 +1400,19 @@ impl Worker {
             }
             Request::People(req, reply) => self.handle_people(req, reply),
             Request::Channels(req, reply) => self.handle_channels(req, reply),
+            Request::Typing { user_id, typing, reply } => {
+                let me = self.model.lock().map(|m| m.my_user_id).unwrap_or(0);
+                let m = sys::TextMessage {
+                    nMsgType: sys::TextMsgType_MSGTYPE_CUSTOM,
+                    nFromUserID: me,
+                    nToUserID: user_id,
+                    szMessage: to_tt(&format!("typing\r\n{}", typing as u8)),
+                    ..Default::default()
+                };
+                // SAFETY: inst is live; m is a complete TextMessage.
+                let cmd = unsafe { sys::TT_DoTextMessage(self.inst, &m) };
+                self.track(cmd, Pending::Reply(reply), "Saying you're typing");
+            }
             Request::Server(req) => self.handle_server(req),
             Request::Sound(req, reply) => self.handle_sound(req, reply),
             Request::Quit => {}
@@ -2023,7 +2047,21 @@ impl Worker {
                 MessageTarget::User(if t.nToUserID > 0 { t.nToUserID } else { me })
             }
             sys::TextMsgType_MSGTYPE_BROADCAST => MessageTarget::Broadcast,
-            _ => return, // custom messages: not for people
+            sys::TextMsgType_MSGTYPE_CUSTOM => {
+                // The desktop's commands: "typing\r\n1" (or 0) while someone
+                // writes to me.
+                let text = from_tt(&t.szMessage);
+                let mut parts = text.split("\r\n");
+                if parts.next() == Some("typing") {
+                    let typing = parts.next() == Some("1");
+                    self.emit(Event::Typing {
+                        user_id: t.nFromUserID,
+                        typing,
+                    });
+                }
+                return;
+            }
+            _ => return,
         };
         let key = (t.nMsgType, t.nFromUserID, t.nChannelID);
         let part = from_tt(&t.szMessage);
@@ -2198,6 +2236,7 @@ fn reply_of(req: Request) -> Option<Reply> {
         Request::StopRecording(r) => r,
         Request::People(_, Some(r)) => r,
         Request::Channels(_, r) => r,
+        Request::Typing { reply, .. } => reply,
         Request::Server(req) => {
             req.fail(Error::Refused("The TeamTalk SDK couldn't start.".into()));
             return None;

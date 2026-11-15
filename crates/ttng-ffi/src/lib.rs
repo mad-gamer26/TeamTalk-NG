@@ -1042,6 +1042,11 @@ pub enum Event {
     MessageReceived {
         message: TextMessage,
     },
+    /// Someone started (or stopped) writing to me privately.
+    Typing {
+        user_id: i32,
+        typing: bool,
+    },
     /// Voice activation started (true) or stopped sending my voice.
     VoiceActivated {
         sending: bool,
@@ -1097,6 +1102,7 @@ impl From<core::Event> for Event {
             E::TalkingChanged { user_id, talking } => Self::TalkingChanged { user_id, talking },
             E::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             E::VoiceActivated(sending) => Self::VoiceActivated { sending },
+            E::Typing { user_id, typing } => Self::Typing { user_id, typing },
             E::StreamChanged(m) => Self::StreamChanged { stream: m.into() },
             E::RecordingChanged { path, active, error } => Self::RecordingChanged { path, active, error },
             E::FileAdded(f) => Self::FileAdded { file: f.into() },
@@ -1375,6 +1381,11 @@ impl TtClient {
     /// Pauses, resumes, moves (`offset_ms`) the stream.
     pub fn update_stream(&self, offset_ms: Option<u32>, paused: bool) -> Result<()> {
         Ok(self.inner.update_stream(offset_ms, paused)?)
+    }
+
+    /// Tells someone I'm writing to them (or stopped).
+    pub fn set_typing(&self, user_id: i32, typing: bool) -> Result<()> {
+        Ok(self.inner.set_typing(user_id, typing)?)
     }
 
     /// Whether I hear the files I stream myself (the SDK doesn't play my
