@@ -107,7 +107,8 @@ struct ServerView: View {
         .accessibilityAction(.magicTap) { if connection.hasAudio { connection.toggleTalking() } }
         // A hardware keyboard: the desktop's shortcuts (Help lists them).
         .background { DesktopShortcuts(run: perform) }
-        .onAppear { connection.connect() }
+        .onAppear { connection.screenOpen = true; connection.connect() }
+        .onDisappear { connection.screenOpen = false }
         // The Monitor's view is followed while it's on screen.
         .onDisappear { connection.leaveMonitorView() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
@@ -991,6 +992,8 @@ private struct StreamBar: View {
 /// when excluded from a channel or the server.
 private struct DesktopDialogs: ViewModifier {
     let connection: ServerConnection
+    /// Closes the server screen (back to the server list, or the Monitor's).
+    @Environment(\.dismiss) private var dismiss
     @Binding var privateWith: User?
     let busy: Bool
     @State private var askPassword: Channel?
@@ -1028,10 +1031,12 @@ private struct DesktopDialogs: ViewModifier {
             // Already refused before this screen opened (a tt:// link
             // connects at once): the username still filled in.
             .onAppear { if connection.loginRetry { username = connection.server.username } }
-            .alert("Excluded", isPresented: Binding(get: { connection.excludedMessage != nil },
-                                                    set: { if !$0 { connection.excludedMessage = nil } })) {
-                Button("OK") {}
-            } message: { Text(connection.excludedMessage ?? "") }
+            .alert(connection.excluded?.title ?? "", isPresented: Binding(get: { connection.excluded != nil },
+                                                    set: { if !$0 { connection.excluded = nil } })) {
+                Button("OK") { if connection.excluded?.leaves == true { connection.leaveScreen() } }
+            } message: { Text(connection.excluded?.text ?? "") }
+            // Disconnected or kicked from the server: back to the list, as the desktop.
+            .onChange(of: connection.leaveRequests) { dismiss() }
     }
 }
 
@@ -1097,7 +1102,7 @@ extension ServerView {
             m.append(.init("Save server configuration") { connection.saveServerConfig() })
         }
         m.append(.init("Clear chat history") { connection.clearHistory() })
-        var d = MenuItem("Disconnect") { connection.disconnect() }
+        var d = MenuItem("Disconnect") { connection.disconnect(); connection.leaveScreen() }
         d.destructive = true
         m.append(d)
         return m

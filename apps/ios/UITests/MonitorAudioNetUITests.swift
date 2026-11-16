@@ -7,7 +7,6 @@ final class MonitorAudioNetUITests: NGTestCase {
         // A saved server (as admin), the app itself not connected to it.
         connect("admin")
         more("Disconnect")
-        app.navigationBars.buttons["Servers"].tap()
         app.buttons["Monitor"].tap()
         app.buttons["Add a server"].tap()
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
@@ -32,10 +31,10 @@ final class MonitorAudioNetUITests: NGTestCase {
         button("User accounts").tap()
         waitFor(any("carol"), "the server's accounts, through the Monitor", timeout: 20)
         button("Done").tap()
-        // Disconnect: as a live one.
+        // Disconnect: as a live one, back to the list; opening it again connects.
         more("Disconnect")
-        waitFor(button("Connect"), "disconnected, with Connect")
-        button("Connect").tap()
+        waitFor(app.navigationBars["Monitor"], "back on the Monitor's list")
+        watched.tap()
         waitFor(any("Lobby"), "back, through the Monitor", timeout: 30)
     }
 

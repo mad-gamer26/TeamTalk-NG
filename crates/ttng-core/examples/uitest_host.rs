@@ -255,6 +255,31 @@ fn main() {
                         .id;
                     ok(c()?.client.send_message(MessageTarget::User(to), &q["text"]))
                 }
+                "/kick" => {
+                    // The admin bot kicks someone (by nickname or username) from
+                    // the server, or with channel=1 from their channel; ban=1 bans
+                    // their username first.
+                    let admin = &bots["admin"].client;
+                    let u = admin
+                        .snapshot()
+                        .users
+                        .into_iter()
+                        .find(|u| u.nickname == q["who"] || u.username == q["who"])
+                        .ok_or(format!("nobody called {}", q["who"]))?;
+                    let channel = q.get("channel").is_some_and(|v| v == "1");
+                    if q.get("ban").is_some_and(|v| v == "1") {
+                        admin.ban_user(u.id, BanKind::Username).map_err(|e| format!("{e:?}"))?;
+                    }
+                    ok(admin.kick_user(u.id, channel))
+                }
+                "/unban" => {
+                    // Every ban removed.
+                    let admin = &bots["admin"].client;
+                    for b in admin.list_bans().map_err(|e| format!("{e:?}"))? {
+                        admin.unban(&b).map_err(|e| format!("{e:?}"))?;
+                    }
+                    Ok(json!({ "ok": true }))
+                }
                 "/broadcast" => ok(bots["admin"].client.send_message(MessageTarget::Broadcast, &q["text"])),
                 "/talk" => {
                     let on = q.get("on").map(|v| v == "1").unwrap_or(true);
@@ -298,6 +323,12 @@ fn main() {
                 "/reset" => {
                     // Between tests: everyone logged in (kicked or not), back in the
                     // root channel, as themselves.
+                    // No bans left from a test (the app's account may be banned).
+                    if let Some(a) = bots.get("admin") {
+                        for b in a.client.list_bans().unwrap_or_default() {
+                            let _ = a.client.unban(&b);
+                        }
+                    }
                     let gone: Vec<String> = bots
                         .iter()
                         .filter(|(_, b)| {

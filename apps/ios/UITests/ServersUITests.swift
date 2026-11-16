@@ -104,15 +104,72 @@ final class ServersUITests: NGTestCase {
         Host.until("Bob seeing Alice in the root channel", timeout: 20) { (Host.user("alice")?["channel"] as? String) == "/" }
     }
 
+    var onTheServerList: XCUIElement { app.navigationBars["Servers"] }
+    var serverRow: XCUIElement { app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch }
+
+    /// Settings → Display → "Tell me in a dialog when I'm kicked", then back
+    /// on the server's screen (set after connecting: a tt:// link starts afresh).
+    func turnOnTheKickDialog() {
+        app.navigationBars.buttons["Servers"].tap()
+        app.buttons["Settings"].tap()
+        app.buttons["Display"].tap()
+        let sw = app.switches["Tell me in a dialog when I'm kicked"]
+        if !sw.waitForExistence(timeout: 3) || !sw.isHittable { app.swipeUp() }
+        waitFor(sw, "the kick dialog setting")
+        sw.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        Host.until("it on") { (sw.value as? String) == "1" }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        button("Done").tap()
+        serverRow.tap()
+        waitFor(any("Lobby"), "back on the server's screen")
+    }
+
     @MainActor
-    func testDisconnectAndConnectAgain() {
+    func testDisconnectGoesBackToTheServerList() {
         connect()
         more("Disconnect")
-        waitFor(button("Connect"), "disconnected, with Connect")
+        waitFor(onTheServerList, "the server list, as the desktop")
         Host.until("Bob seeing Alice go") { Host.user("alice") == nil }
-        button("Connect").tap()
+        // Opening it again connects.
+        serverRow.tap()
         waitFor(any("Lobby"), "connected again")
         Host.until("Bob seeing Alice back") { Host.user("alice") != nil }
+    }
+
+    @MainActor
+    func testKickedFromTheServerGoesStraightToTheList() {
+        // The dialog setting is off by default (as the desktop's).
+        connect()
+        Host.call("/kick", ["who": "alice"])
+        waitFor(onTheServerList, "the server list at once")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "no dialog with the setting off")
+    }
+
+    @MainActor
+    func testKickedAndBannedShowsTheDesktopsDialogThenTheList() {
+        connect()
+        turnOnTheKickDialog()
+        Host.call("/kick", ["who": "alice", "ban": "1"])
+        let alert = app.alerts["Kicked from server"]
+        waitFor(alert, "the desktop's dialog")
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'You have been kicked from server by'")).firstMatch.exists)
+        XCTAssertFalse(onTheServerList.exists, "still on the server's screen until it's dismissed")
+        alert.buttons["OK"].tap()
+        waitFor(onTheServerList, "the server list once dismissed")
+    }
+
+    @MainActor
+    func testKickedFromAChannelShowsItsDialogAndStays() {
+        connect()
+        turnOnTheKickDialog()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Lobby'")).firstMatch.tap()
+        Host.until("Alice in Lobby") { (Host.user("alice")?["channel"] as? String) == "/Lobby/" }
+        Host.call("/kick", ["who": "alice", "channel": "1"])
+        let alert = app.alerts["Kicked from channel"]
+        waitFor(alert, "the channel's dialog")
+        alert.buttons["OK"].tap()
+        XCTAssertFalse(onTheServerList.exists, "still connected, on the server's screen")
+        XCTAssertTrue(app.buttons["More"].exists)
     }
 
     @MainActor

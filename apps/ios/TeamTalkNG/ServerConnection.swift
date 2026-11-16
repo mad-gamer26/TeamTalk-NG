@@ -1123,7 +1123,17 @@ final class ServerConnection {
     /// A private conversation to open (the desktop's message popup).
     var popupConversation: User?
     /// Why I was excluded, for the desktop's dialog box.
-    var excludedMessage: String?
+    /// The desktop's dialog when I'm kicked (with "Tell me in a dialog
+    /// when I'm kicked" on); from the server, the screen closes after it.
+    var excluded: Excluded?
+    struct Excluded { let title: String; let text: String; let leaves: Bool }
+    /// Counts requests to close the server screen and go back to the list
+    /// (after Disconnect, or after being kicked from the server).
+    private(set) var leaveRequests = 0
+    func leaveScreen() { leaveRequests += 1 }
+    /// The server screen is showing (a kick's dialog only shows there; on
+    /// the list, the kick is said and there's nothing to leave).
+    var screenOpen = false
 
     /// Logins, joins and leaves are announced (the login has finished,
     /// set in event order: the refreshed snapshot runs ahead of the events).
@@ -1483,10 +1493,18 @@ final class ServerConnection {
         case .kicked(let by, let ch):
             // The desktop's words.
             let who = (known[by] ?? snapshot?.users.first { $0.id == by }).map { "by \($0.displayName)" } ?? "by unknown user"
-            let text = "Kicked from \(ch > 0 ? "channel" : "server") \(who)"
+            let place = ch > 0 ? "channel" : "server"
+            let text = "Kicked from \(place) \(who)"
+            // From the server (a ban kicks too): the desktop's server lost sound.
+            if ch == 0 { sound(.serverLost) }
             sayText(.connectivity, text)
             status(nil, text)
-            if app?.excludedDialog == true { excludedMessage = text }
+            if app?.excludedDialog == true && screenOpen {
+                // The desktop's dialog; the server list once it's dismissed.
+                excluded = Excluded(title: "Kicked from \(place)", text: "You have been kicked from \(place) \(who)", leaves: ch == 0)
+            } else if ch == 0 {
+                leaveScreen()
+            }
         default: break
         }
         refresh()
