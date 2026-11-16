@@ -101,9 +101,8 @@ struct SoundSystemView: View {
         }
         .navigationTitle("Sound system")
         .navigationBarTitleDisplayMode(.inline)
-        // So iOS lists the microphones (the session is otherwise set up
-        // only on connecting).
-        .onAppear { AudioSession.activate() }
+        // (The session is set up at launch, so iOS lists the microphones;
+        // opening this screen doesn't set it up again.)
         .onDisappear { soundTest?.stop(); soundTest = nil }
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }

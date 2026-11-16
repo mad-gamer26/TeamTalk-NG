@@ -34,6 +34,10 @@ struct TeamTalkShortcuts: AppShortcutsProvider {
             "Set my status to \(\.$status) in \(.applicationName)",
             "Set my \(.applicationName) status to \(\.$status)",
         ], shortTitle: "Set Status", systemImageName: "person.crop.circle")
+        AppShortcut(intent: RefreshSoundDevicesIntent(), phrases: [
+            "Refresh sound devices in \(.applicationName)",
+            "Refresh the sound in \(.applicationName)",
+        ], shortTitle: "Refresh Sound Devices", systemImageName: "arrow.clockwise")
         AppShortcut(intent: SendMessageIntent(), phrases: [
             "Send a message in \(.applicationName)",
             "Send a message to the channel in \(.applicationName)",

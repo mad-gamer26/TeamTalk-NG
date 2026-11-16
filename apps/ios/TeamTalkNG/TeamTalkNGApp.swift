@@ -44,7 +44,10 @@ struct TeamTalkNGApp: App {
         .onChange(of: phase) { _, p in
             // Away after a while in the background, as the desktop is after
             // a while without input.
-            if p == .active { model.activeChanged(true); AudioSession.activate() } else if p == .background { model.activeChanged(false) }
+            // Coming back leaves the sound as it is (the owner's choice: the
+            // audio was set up again each time). An interruption that ends
+            // (a phone call) makes the session active again (AppModel).
+            if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
         }
     }
 }

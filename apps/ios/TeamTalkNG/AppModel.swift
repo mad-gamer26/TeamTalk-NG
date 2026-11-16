@@ -282,6 +282,13 @@ final class AppModel {
         setUpHeadsetButton()
         // The desktop's "Sound device detected" status messages (a headset
         // in or out), and the microphone menu kept current.
+        // A phone call or another app's audio interrupted the session: when
+        // it ends, the session is active again, as it was (not set up anew;
+        // More → Refresh Sound Devices opens the devices again if need be).
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { n in
+            let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            if type == .ended { try? AVAudioSession.sharedInstance().setActive(true) }
+        }
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
             let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
             let text: String?

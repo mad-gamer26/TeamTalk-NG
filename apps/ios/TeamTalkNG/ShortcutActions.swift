@@ -34,6 +34,18 @@ enum ShortcutActions {
         c.snapshot?.server.name.nonEmpty ?? c.server.title
     }
 
+    /// The desktop's Refresh Sound Devices: the server named, or every
+    /// connected one (they share the sound devices).
+    static func refreshSoundDevices(_ serverId: String?) async throws -> String {
+        let list = try connections(serverId).filter(\.hasAudio)
+        guard !list.isEmpty else { throw ShortcutProblem("The Monitor has no sound.") }
+        AudioSession.activate()
+        var failed: [String] = []
+        for c in list where !(await c.reopenAudio()) { failed.append(name(c)) }
+        if !failed.isEmpty { throw ShortcutProblem("The sound devices couldn't be opened on \(failed.joined(separator: ", ")).") }
+        return "Sound devices refreshed."
+    }
+
     static func disconnect(_ serverId: String?) throws -> String {
         let c = try connection(serverId)
         let n = name(c)
@@ -127,6 +139,13 @@ extension ShortcutActions {
         do {
             let said: String
             switch q["do"] ?? "" {
+            case "refreshSoundDevices":
+                Task { @MainActor in
+                    do { AppModel.shared?.uiTestActionResult = try await refreshSoundDevices(server) } catch let p as ShortcutProblem {
+                        AppModel.shared?.uiTestActionResult = p.text
+                    } catch {}
+                }
+                return
             case "disconnect": said = try disconnect(server)
             case "disconnectAll": said = try disconnectAll()
             case "muteEveryone": said = try muteEveryone(server, sw)

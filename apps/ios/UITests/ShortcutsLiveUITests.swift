@@ -60,6 +60,14 @@ final class ShortcutsLiveUITests: NGTestCase {
         run("message", ["text": "Hi", "to": "nobody-here"], says: "Nobody called nobody-here")
     }
 
+    func testRefreshSoundDevicesThenTalking() {
+        connect()
+        run("refreshSoundDevices", says: "Sound devices refreshed.")
+        run("microphone", ["value": "on"], says: "Talking on")
+        Host.until("Bob hearing Alice after the refresh") { (Host.user("alice")?["talking"] as? Bool) == true }
+        run("microphone", ["value": "off"], says: "Stopped talking on")
+    }
+
     func testDisconnectGoesBackToTheList() {
         connect()
         run("disconnect", says: "Disconnected from")

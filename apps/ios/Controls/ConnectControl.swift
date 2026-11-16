@@ -13,6 +13,7 @@ struct TeamTalkControls: WidgetBundle {
         if #available(iOSApplicationExtension 18.0, *) {
             ConnectServerControl()
             DisconnectControl()
+            RefreshSoundDevicesControl()
             MicrophoneControl()
             MuteEveryoneControl()
             VoiceActivationControl()
@@ -59,6 +60,19 @@ struct DisconnectControl: ControlWidget {
         }
         .displayName("Disconnect")
         .description("Disconnects from the open server, or the only one connected.")
+    }
+}
+
+@available(iOSApplicationExtension 18.0, *)
+struct RefreshSoundDevicesControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "TeamTalkNG.refresh-sound-devices") {
+            ControlWidgetButton(action: RefreshSoundDevicesIntent()) {
+                Label("Refresh Sound Devices", systemImage: "arrow.clockwise")
+            }
+        }
+        .displayName("Refresh Sound Devices")
+        .description("Opens the sound devices again on every connected server.")
     }
 }
 

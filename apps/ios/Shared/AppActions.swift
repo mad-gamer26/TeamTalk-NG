@@ -73,6 +73,24 @@ struct DisconnectIntent: LiveActivityIntent {
     }
 }
 
+struct RefreshSoundDevicesIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Refresh Sound Devices"
+    static let description = IntentDescription("Opens the sound devices again (the desktop's Refresh Sound Devices): on the server chosen, or every connected one.")
+    @Parameter(title: "Server") var server: ServerEntity?
+    static var parameterSummary: some ParameterSummary { Summary("Refresh sound devices on \(\.$server)") }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let id = server?.id
+        #if TTNG_APP
+        let said = try await ShortcutActions.refreshSoundDevices(id)
+        #else
+        let said = "Open TeamTalk NG and try again."
+        #endif
+        return .result(dialog: "\(said)")
+    }
+}
+
 struct DisconnectAllIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Disconnect From Every Server"
     static let description = IntentDescription("Disconnects from every server you're connected to.")
