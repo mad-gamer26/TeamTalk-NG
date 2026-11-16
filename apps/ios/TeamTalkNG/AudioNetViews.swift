@@ -140,6 +140,12 @@ struct AudioNetDeviceView: View {
                     }
                 }
             }
+            Section {
+                NavigationLink("Sound settings") {
+                    AudioNetSoundSettingsView(nodeId: d.nodeId, account: account)
+                }
+                .accessibilityLabel("Sound settings of \(d.name)")
+            }
         }
         .disabled(busy)
         .navigationTitle(d.name)
@@ -155,6 +161,114 @@ struct AudioNetDeviceView: View {
             busy = false
             if let p { problem = p } else { announce("Streaming") }
         }
+    }
+}
+
+/// Another device's sound settings: its outputs and microphones (volume,
+/// mute, default, default for communications, disable), a phone's own
+/// volumes, and disabled devices to enable. Drawn from the account's live
+/// device list, so changes made anywhere show at once.
+struct AudioNetSoundSettingsView: View {
+    let nodeId: String
+    let account: AudioNetAccount
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let d = account.devices.first { $0.nodeId == nodeId }
+        Form {
+            if let d {
+                if !d.allowsControl {
+                    Text("\(d.name) doesn't let other devices change its sound settings.")
+                } else {
+                    content(d)
+                }
+            } else {
+                Text("This device is no longer visible.")
+            }
+        }
+        .navigationTitle("Sound settings of \(d?.name ?? "the device")")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder private func content(_ d: Device) -> some View {
+        let outputs = d.outputs.filter { $0.control != nil }
+        let microphones = d.sources.filter { $0.isInput && $0.control != nil }
+        if outputs.isEmpty && microphones.isEmpty && d.volumes.isEmpty && d.disabled.isEmpty {
+            Text(d.platform == "ios"
+                 ? "An iPhone's sound settings can't be changed from other devices."
+                 : "\(d.name) doesn't report its sound settings. It may need a newer AudioNet.")
+        }
+        if !outputs.isEmpty {
+            Section("Outputs") {
+                ForEach(outputs, id: \.id) { o in
+                    endpoint(d, name: o.name, target: o.id, isDefault: o.isDefault, control: o.control!)
+                }
+            }
+        }
+        if !microphones.isEmpty {
+            Section("Microphones") {
+                ForEach(microphones, id: \.id) { m in
+                    endpoint(d, name: m.name, target: m.id, isDefault: m.isDefault, control: m.control!)
+                }
+            }
+        }
+        if !d.volumes.isEmpty {
+            Section("Volumes") {
+                ForEach(d.volumes, id: \.id) { v in
+                    volume(d, name: v.name, target: v.id, value: v.volume)
+                    if v.canMute, let muted = v.muted {
+                        LiveToggle("Mute \(v.name.lowercased())", isOn: Binding(
+                            get: { muted }, set: { change(d, .mute(target: v.id, muted: $0)) }))
+                    }
+                }
+            }
+        }
+        if !d.disabled.isEmpty {
+            Section("Disabled") {
+                ForEach(d.disabled, id: \.id) { x in
+                    Button("Enable \(x.name) (\(x.isInput ? "microphone" : "output"))") {
+                        change(d, .enabled(target: x.id, enabled: true))
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func endpoint(_ d: Device, name: String, target: String, isDefault: Bool,
+                                       control c: SoundControl) -> some View {
+        let roles = [isDefault ? "default" : nil, c.isDefaultCommunications ? "default for communications" : nil]
+            .compactMap { $0 }
+        Text(roles.isEmpty ? name : "\(name) (\(roles.joined(separator: ", ")))").font(.headline)
+        if c.canSetVolume, let v = c.volume {
+            volume(d, name: name, target: target, value: v)
+        } else if let v = c.volume {
+            LabeledContent("Volume of \(name)", value: "\(Int((v * 100).rounded())) percent")
+        }
+        if c.canMute, let muted = c.muted {
+            LiveToggle("Mute \(name)", isOn: Binding(get: { muted }, set: { change(d, .mute(target: target, muted: $0)) }))
+        }
+        if c.canSetDefault && !isDefault {
+            Button("Make \(name) the default") { change(d, .default(target: target, communications: false)) }
+        }
+        if c.canSetDefaultCommunications && !c.isDefaultCommunications {
+            Button("Make \(name) the default for communications") {
+                change(d, .default(target: target, communications: true))
+            }
+        }
+        if c.canEnable {
+            Button("Disable \(name)") { change(d, .enabled(target: target, enabled: false)) }
+        }
+    }
+
+    private func volume(_ d: Device, name: String, target: String, value: Float) -> some View {
+        NamedSlider("Volume of \(name)", value: Binding(
+            get: { Double(value) },
+            set: { change(d, .volume(target: target, volume: Float($0))) }), in: 0...1, step: 0.05,
+            spoken: { "\(Int(($0 * 100).rounded())) percent" })
+    }
+
+    private func change(_ d: Device, _ c: SoundChange) {
+        model.audioNet.changeSound(account, d, c)
     }
 }
 

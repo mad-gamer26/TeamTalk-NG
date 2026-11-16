@@ -27,6 +27,26 @@ final class AudioNetUITests: NGTestCase {
         ((Host.state()["users"] as? [[String: Any]]) ?? []).filter { ($0["nickname"] as? String)?.hasPrefix(prefix) == true }
     }
 
+    /// Another device's sound settings: the Mac's real outputs and
+    /// microphones with their volumes and mute (only read: the Mac's own
+    /// volume isn't changed by the test).
+    func testAnotherDevicesSoundSettings() throws {
+        connect()
+        try signIn()
+        waitFor(macDevice, "the Mac test device listed", timeout: 40)
+        macDevice.tap()
+        let settings = app.buttons["Sound settings of Mac test device"]
+        if !settings.waitForExistence(timeout: 5) { app.swipeUp() }
+        settings.tap()
+        waitFor(app.navigationBars["Sound settings of Mac test device"], "its screen")
+        waitFor(app.staticTexts["Outputs"], "its outputs")
+        XCTAssertTrue(app.staticTexts["Microphones"].exists, "its microphones")
+        let volume = app.sliders.matching(NSPredicate(format: "label BEGINSWITH 'Volume of '")).firstMatch
+        waitFor(volume, "a volume slider")
+        XCTAssertTrue((volume.value as? String)?.hasSuffix("percent") == true, "its value in words: \(volume.value ?? "")")
+        XCTAssertTrue(app.switches.matching(NSPredicate(format: "label BEGINSWITH 'Mute '")).firstMatch.exists, "a mute switch")
+    }
+
     func testIntoTheChannelAsALoginThatFollowsMeAndToTheMac() throws {
         connect()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Lobby'")).firstMatch.tap()

@@ -186,12 +186,28 @@ final class AudioNetStore {
             if let s = streams.first(where: { $0.sessionId == session }) {
                 stop(s, said: reason.isEmpty ? "\(s.title) stopped." : "\(s.title) stopped: \(reason)")
             }
+        case .controlResult(_, _, let error):
+            // Done: the device's new state comes as deviceChanged.
+            if let error { announce(error) }
         case .serverProblem(let message):
             a.state = .problem(message)
         case .stopped(let error):
             if let error { a.state = .problem(error) }
         default:
             break
+        }
+    }
+
+    // MARK: Another device's sound settings
+
+    /// Asks a device to change one of its sound settings (the answer and
+    /// its new state come as events).
+    func changeSound(_ a: AudioNetAccount, _ d: Device, _ change: SoundChange) {
+        guard let c = a.client else { announce("This AudioNet account isn't connected."); return }
+        do {
+            _ = try c.control(nodeId: d.nodeId, change: change)
+        } catch {
+            announce("The change couldn't be sent: \(Self.words(error))")
         }
     }
 
