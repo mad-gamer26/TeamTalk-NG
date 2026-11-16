@@ -724,6 +724,7 @@ final class ServerConnection {
         }.value
         if let failed { announce("Couldn't open the sound devices: \(failed)") }
         applyTalkMode()
+        refresh()
     }
 
     func applyAudioSettings() {
@@ -888,6 +889,12 @@ final class ServerConnection {
     }
 
     /// Runs a core call off the main thread; failures are announced.
+    /// Every action on the core goes through here. When it's done the
+    /// screen shows the result at once (refresh), whether or not the core
+    /// sends an event for it: many local changes (mutes, volumes, stereo,
+    /// relaying, subscriptions) send none, and screens that waited for one
+    /// showed the old state (the owner's rule: the UI always updates
+    /// immediately).
     private func run(_ what: String, onFail: ((String) -> Void)? = nil, _ call: @escaping @Sendable (TtClient) throws -> Void) {
         // The Monitor can't do this (only what it routes above).
         if monitorId != nil { announce("\(what): the Monitor can't do that."); return }
@@ -901,6 +908,7 @@ final class ServerConnection {
                 onFail?(failed)
                 announce("\(what): \(failed)")
             }
+            refresh()
         }
     }
 

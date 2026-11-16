@@ -187,7 +187,7 @@ struct SubscriptionsDialog: View {
         NavigationStack {
             List {
                 ForEach(Subscription.desktopOrder.filter(connection.shows), id: \.self) { sub in
-                    Toggle(ServerConnection.subscriptionMenuName(sub), isOn: Binding(
+                    LiveToggle(ServerConnection.subscriptionMenuName(sub), isOn: Binding(
                         get: { u.mySubscriptions.on.contains(sub) },
                         set: { connection.setSubscription(user, sub, $0) }))
                 }
@@ -228,13 +228,13 @@ struct TransmitDialog: View {
         NavigationStack {
             List {
                 ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
-                    Toggle("Allow \(k.1)", isOn: Binding(
+                    LiveToggle("Allow \(k.1)", isOn: Binding(
                         get: { allowed(user.id, k.0) },
                         set: { connection.setTransmit(channel: user.channelId, user: user.id, k.0, $0) }))
                 }
                 if channel?.classroom == true {
                     ForEach(Self.kinds.filter { connection.shows($0.0) }, id: \.1) { k in
-                        Toggle("Allow All \(k.1)", isOn: Binding(
+                        LiveToggle("Allow All \(k.1)", isOn: Binding(
                             get: { allowed(0, k.0) },
                             set: { connection.setTransmit(channel: user.channelId, user: 0, k.0, $0) }))
                     }
@@ -261,13 +261,13 @@ struct UserVolumeDialog: View {
             Form {
                 Section("Voice Volume Settings") {
                     slider("Volume", u.voiceVolume) { connection.setVolume(u, percent: $0) }
-                    Toggle("Mute left", isOn: Binding(get: { !u.voiceLeft }, set: { connection.setStereo(u, .voice, left: !$0, right: u.voiceRight) }))
-                    Toggle("Mute right", isOn: Binding(get: { !u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: !$0) }))
+                    LiveToggle("Mute left", isOn: Binding(get: { !u.voiceLeft }, set: { connection.setStereo(u, .voice, left: !$0, right: u.voiceRight) }))
+                    LiveToggle("Mute right", isOn: Binding(get: { !u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: !$0) }))
                 }
                 Section("Media File Volume Settings") {
                     slider("Volume", u.mediaVolume) { connection.setMediaVolume(u, percent: $0) }
-                    Toggle("Mute left", isOn: Binding(get: { !u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: !$0, right: u.mediaRight) }))
-                    Toggle("Mute right", isOn: Binding(get: { !u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: !$0) }))
+                    LiveToggle("Mute left", isOn: Binding(get: { !u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: !$0, right: u.mediaRight) }))
+                    LiveToggle("Mute right", isOn: Binding(get: { !u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: !$0) }))
                 }
                 Section {
                     Button("Default") {
@@ -285,7 +285,7 @@ struct UserVolumeDialog: View {
     }
 
     private func slider(_ label: String, _ value: Int32, set: @escaping (Int) -> Void) -> some View {
-        NamedSlider(label, int: Binding(get: { Int(value) }, set: { set($0) }), in: 0...100, spoken: "\(value) percent")
+        NamedSlider(label, int: Binding(get: { Int(value) }, set: { set($0) }), in: 0...100, spoken: { "\($0) percent" })
     }
 }
 
@@ -389,7 +389,7 @@ struct StreamMediaFileDialog: View {
                         Text("Speex's").tag(2)
                     }
                     if kind == 1 {
-                        NamedSlider("Volume level", int: $ttGain, in: 0...100, spoken: "\(ttGain) percent")
+                        NamedSlider("Volume level", int: $ttGain, in: 0...100, spoken: { "\($0) percent" })
                         Toggle("Mute left channel", isOn: $ttLeft)
                         Toggle("Mute right channel", isOn: $ttRight)
                     }
@@ -409,7 +409,7 @@ struct StreamMediaFileDialog: View {
                         }
                     }
                     if info.durationMs > 0 {
-                        NamedSlider("Start position", value: $start, in: 0...Double(info.durationMs), step: 1000, spoken: time(start))
+                        NamedSlider("Start position", value: $start, in: 0...Double(info.durationMs), step: 1000, spoken: { time($0) })
                     }
                 }
             }
@@ -441,7 +441,7 @@ struct ServerVolumeView: View {
         let value = own ?? Int(global)
         return VStack(alignment: .leading) {
             NamedSlider(label, int: Binding(get: { value }, set: { set(key, $0) }), in: range,
-                        spoken: own == nil ? "\(value), as in Settings" : "\(value)")
+                        spoken: { own == nil && $0 == value ? "\($0), as in Settings" : "\($0)" })
             if own != nil {
                 Button("Use Settings' \(label.lowercased())") { set(key, nil) }
             }

@@ -13,6 +13,38 @@ final class PeopleTalkUITests: NGTestCase {
         action(item, on: p)
     }
 
+    /// A person's volume changed twice in a row shows each change at once
+    /// (as VoiceOver's swipes need: each starts from the value just set),
+    /// and a switch stays flipped. They used to spring back until the core
+    /// answered, so swipes were lost.
+    func testVolumesAndSwitchesShowChangesAtOnce() {
+        connect()
+        menu("Change Their Volume", on: "Bob")
+        let volume = app.sliders.firstMatch
+        waitFor(volume, "Bob's volume")
+        // The desktop's scale: 50 is as sent.
+        XCTAssertEqual(volume.value as? String, "50 percent")
+        // UI tests can't send VoiceOver's swipes: moved twice, read at once.
+        // (A drag lands near, not on, its position: what matters is that
+        // each change shows at once.)
+        volume.adjust(toNormalizedSliderPosition: 0.2)
+        let first = volume.value as? String
+        XCTAssertNotEqual(first, "50 percent", "the first change shows at once")
+        volume.adjust(toNormalizedSliderPosition: 0.8)
+        let second = volume.value as? String
+        XCTAssertNotEqual(second, first, "the second too")
+        let right = app.switches.matching(NSPredicate(format: "label == 'Mute right'")).firstMatch
+        right.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertEqual(right.value as? String, "1", "the switch stays on at once")
+        button("Done").tap()
+        // Kept: the volume screen again shows what was set.
+        menu("Change Their Volume", on: "Bob")
+        waitFor(app.sliders.firstMatch, "Bob's volume again")
+        Host.until("still \(second ?? "") and right muted") {
+            (self.app.sliders.firstMatch.value as? String) == second && (right.value as? String) == "1"
+        }
+    }
+
     func testRelayingSaysStopStraightAway() {
         connect()
         menu("Relay Their Voice to My Channel", on: "Bob")

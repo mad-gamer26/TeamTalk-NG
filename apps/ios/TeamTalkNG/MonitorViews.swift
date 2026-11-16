@@ -141,7 +141,7 @@ struct MonitorServerView: View {
             if let server {
                 Section {
                     Text(server.statusText)
-                    Toggle("Monitoring", isOn: Binding(get: { server.enabled }, set: { on in Task { await monitor.setEnabled(server, on) } }))
+                    LiveToggle("Monitoring", isOn: Binding(get: { server.enabled }, set: { on in Task { await monitor.setEnabled(server, on) } }))
                 }
             }
             Section("Private conversations") {

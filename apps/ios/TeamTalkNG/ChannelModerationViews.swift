@@ -52,7 +52,7 @@ struct ClassroomView: View {
                 if let channel {
                     Section {
                         ForEach(PersonView.streams, id: \.self) { st in
-                            Toggle(PersonView.streamLabel(st), isOn: Binding(
+                            LiveToggle(PersonView.streamLabel(st), isOn: Binding(
                                 get: { channel.transmit.contains { $0.userId == 0 && $0.allowed.contains(st) } },
                                 set: { connection.setTransmit(channel: channel.id, user: 0, st, $0) }))
                         }

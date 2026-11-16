@@ -80,7 +80,7 @@ struct ChannelEditView: View {
                         Toggle("Everyone at one fixed volume", isOn: $fixedVolume)
                         if fixedVolume {
                             NamedSlider("Fixed volume", value: $fixedLevel, in: 0...100, step: 5,
-                                        spoken: "\(Int(fixedLevel)) percent of the loudest")
+                                        spoken: { "\(Int($0)) percent of the loudest" })
                         }
                     } header: {
                         Text("Volume")

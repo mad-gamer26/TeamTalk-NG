@@ -15,6 +15,8 @@ sim=${1:-4E71316B-6C2E-4BC1-B888-04BA890DB70F}
 only=${2:-}
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
 export LIBCLANG_PATH="${LIBCLANG_PATH:-$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib}"
+# The UI rules a compiler can't check (the UI updates immediately).
+"$root/scripts/check-ui-rules.sh"
 work=$(mktemp -d)
 pids=""
 cleanup() { for p in $pids; do kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }

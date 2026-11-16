@@ -116,7 +116,7 @@ struct SoundSystemView: View {
         // The desktop's scale: 0–100 in steps of 1 (50: normal; media
         // files: 100 as loud as voices).
         NamedSlider(label, int: Binding(get: { Int(v.wrappedValue) }, set: { v.wrappedValue = Int32($0) }), in: 0...100,
-                    spoken: "\(v.wrappedValue) percent")
+                    spoken: { "\($0) percent" })
     }
 }
 

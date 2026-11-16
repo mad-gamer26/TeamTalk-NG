@@ -35,7 +35,7 @@ struct SoundsView: View {
                 Picker("Playback mode", selection: $b.playbackMode) {
                     ForEach(SoundStore.PlaybackMode.allCases) { Text($0.label).tag($0) }
                 }
-                NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: "\(Int(sounds.volume * 100)) percent")
+                NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: { "\(Int(($0 * 100).rounded())) percent" })
             } footer: {
                 Text("A desktop client's sound pack imports as it is: choose its folder (a zip opens into one in the Files app). Its sounds have the desktop's names, such as logged_on.wav and vox_me_enable.wav (microphone on). Its hotkey.wav is left out: it isn't used.")
             }

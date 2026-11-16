@@ -89,7 +89,7 @@ private struct StreamRow: View {
             NamedSlider("Volume of \(stream.title)", value: Binding(
                 get: { stream.volume },
                 set: { net.setVolume(stream, $0, muted: stream.muted) }), in: 0...1, step: 0.05,
-                spoken: "\(Int(stream.volume * 100)) percent")
+                spoken: { "\(Int(($0 * 100).rounded())) percent" })
             HStack {
                 Button(stream.muted ? "Unmute" : "Mute") { net.setVolume(stream, stream.volume, muted: !stream.muted) }
                     .accessibilityLabel(stream.muted ? "Unmute \(stream.title)" : "Mute \(stream.title)")

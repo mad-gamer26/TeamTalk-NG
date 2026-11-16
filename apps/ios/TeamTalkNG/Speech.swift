@@ -358,8 +358,8 @@ struct SpeechView: View {
                     }
                     NamedSlider("Speed", value: $b.rate,
                                 in: Double(AVSpeechUtteranceMinimumSpeechRate)...Double(AVSpeechUtteranceMaximumSpeechRate),
-                                step: 0.01, spoken: "\(Int(speech.rate * 100)) percent")
-                    NamedSlider("Volume", value: $b.volume, in: 0...1, step: 0.01, spoken: "\(Int(speech.volume * 100)) percent")
+                                step: 0.01, spoken: { "\(Int(($0 * 100).rounded())) percent" })
+                    NamedSlider("Volume", value: $b.volume, in: 0...1, step: 0.01, spoken: { "\(Int(($0 * 100).rounded())) percent" })
                     Button("Try it") { speech.speak("This is how events sound.") }
                 }
             }

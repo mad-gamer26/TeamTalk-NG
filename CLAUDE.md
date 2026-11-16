@@ -27,3 +27,10 @@ Read `docs/design.md` first: it records the decisions.
   `set_license(name, key)` turns trial mode off once there's a license.
 - Ask before pushing, before anything that touches the stores, the old app's
   users, or the live Monitor/NG Account services.
+- The UI updates immediately, everywhere (the owner's rule; it broke many
+  times): every core call in ServerConnection goes through `run()` (it
+  refreshes when done, since many core changes send no event) or calls
+  `refresh()` itself; switches bound to anything but local state are
+  `LiveToggle`; sliders are `NamedSlider` (spoken value from its own
+  position). `scripts/check-ui-rules.sh` checks this (run by
+  scripts/test-ios-ui.sh); new features must pass it.

@@ -130,7 +130,7 @@ struct GeneralSettingsView: View {
                 }
                 if model.talkMode == .voiceActivation {
                     NamedSlider("Voice activation level", value: $model.voiceLevel, in: 0...20, step: 1,
-                                spoken: "\(Int(model.voiceLevel))")
+                                spoken: { "\(Int($0))" })
                 }
             }
         }

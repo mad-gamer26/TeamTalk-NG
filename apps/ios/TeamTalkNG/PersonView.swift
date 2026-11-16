@@ -115,16 +115,16 @@ struct PersonView: View {
             }
             if connection.hasAudio {
             Section("Their voice, for me") {
-                Toggle("Mute their voice", isOn: Binding(get: { u.voiceMuted }, set: { connection.setMuted(u, $0) }))
+                LiveToggle("Mute their voice", isOn: Binding(get: { u.voiceMuted }, set: { connection.setMuted(u, $0) }))
                 volume("Voice volume", u.voiceVolume) { connection.setVolume(u, percent: $0) }
-                Toggle("Left speaker", isOn: Binding(get: { u.voiceLeft }, set: { connection.setStereo(u, .voice, left: $0, right: u.voiceRight) }))
-                Toggle("Right speaker", isOn: Binding(get: { u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: $0) }))
+                LiveToggle("Left speaker", isOn: Binding(get: { u.voiceLeft }, set: { connection.setStereo(u, .voice, left: $0, right: u.voiceRight) }))
+                LiveToggle("Right speaker", isOn: Binding(get: { u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: $0) }))
             }
             Section("Their media files, for me") {
-                Toggle("Mute their media files", isOn: Binding(get: { u.mediaMuted }, set: { connection.setMediaMuted(u, $0) }))
+                LiveToggle("Mute their media files", isOn: Binding(get: { u.mediaMuted }, set: { connection.setMediaMuted(u, $0) }))
                 volume("Media file volume", u.mediaVolume) { connection.setMediaVolume(u, percent: $0) }
-                Toggle("Left speaker", isOn: Binding(get: { u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: $0, right: u.mediaRight) }))
-                Toggle("Right speaker", isOn: Binding(get: { u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: $0) }))
+                LiveToggle("Left speaker", isOn: Binding(get: { u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: $0, right: u.mediaRight) }))
+                LiveToggle("Right speaker", isOn: Binding(get: { u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: $0) }))
             }
             }
             Section {
@@ -146,10 +146,10 @@ struct PersonView: View {
             if !isMe && connection.hasAudio {
                 Section {
                     let relaying = s?.relaying
-                    Toggle("Relay their voice into my channel", isOn: Binding(
+                    LiveToggle("Relay their voice into my channel", isOn: Binding(
                         get: { relaying?.userId == u.id && relaying?.stream == .voice },
                         set: { connection.setRelay($0 ? u : nil, .voice) }))
-                    Toggle("Relay their media files into my channel", isOn: Binding(
+                    LiveToggle("Relay their media files into my channel", isOn: Binding(
                         get: { relaying?.userId == u.id && relaying?.stream == .mediaFile },
                         set: { connection.setRelay($0 ? u : nil, .mediaFile) }))
                 } header: {
@@ -161,7 +161,7 @@ struct PersonView: View {
             if u.channelId > 0 {
                 Section {
                     if mod {
-                        Toggle("Operator of their channel", isOn: Binding(get: { u.operator }, set: { connection.setOperator(u, $0) }))
+                        LiveToggle("Operator of their channel", isOn: Binding(get: { u.operator }, set: { connection.setOperator(u, $0) }))
                     } else if isMe || !u.operator {
                         SecureField("Channel's operator password", text: $opPassword).accessibilityLabel("Channel's operator password")
                         Button(isMe ? "Become operator" : "Make operator") { connection.setOperator(u, true, password: opPassword) }
@@ -175,7 +175,7 @@ struct PersonView: View {
                 Section {
                     ForEach(Self.streams.filter(connection.shows), id: \.self) { st in
                         let allowed = connection.transmitAllowed(channel, user: u.id, st)
-                        Toggle(Self.streamLabel(st), isOn: Binding(
+                        LiveToggle(Self.streamLabel(st), isOn: Binding(
                             get: { allowed },
                             set: { connection.setTransmit(channel: channel.id, user: u.id, st, $0) }))
                     }
@@ -213,11 +213,11 @@ struct PersonView: View {
 
     private func volume(_ label: String, _ percent: Int32, set: @escaping (Int) -> Void) -> some View {
         // The desktop's scale: 0–100, 50 as sent, in steps of 1.
-        NamedSlider(label, int: Binding(get: { Int(percent) }, set: { set($0) }), in: 0...100, spoken: "\(percent) percent")
+        NamedSlider(label, int: Binding(get: { Int(percent) }, set: { set($0) }), in: 0...100, spoken: { "\($0) percent" })
     }
 
     private func subscription(_ u: User, _ sub: Subscription) -> some View {
-        Toggle(Self.label(sub), isOn: Binding(
+        LiveToggle(Self.label(sub), isOn: Binding(
             get: { u.mySubscriptions.on.contains(sub) },
             set: { connection.setSubscription(u, sub, $0) }))
     }

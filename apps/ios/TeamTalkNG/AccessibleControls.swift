@@ -11,9 +11,18 @@ struct NamedSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double = 1
-    let spoken: String
+    /// What VoiceOver says for a value (from the slider's own position).
+    let spoken: (Double) -> String
 
-    init(_ label: String, value: Binding<Double>, in range: ClosedRange<Double>, step: Double = 1, spoken: String) {
+    /// The value just chosen, shown at once until the source catches up.
+    /// Many sources (a person's volume, an AudioNet stream's) change only
+    /// after a round trip: without this the slider sprang back, VoiceOver
+    /// said the old value, and the next swipe started from it again.
+    @State private var chosen: Double?
+    @State private var settle: Task<Void, Never>?
+
+    init(_ label: String, value: Binding<Double>, in range: ClosedRange<Double>, step: Double = 1,
+         spoken: @escaping (Double) -> String) {
         self.label = label
         _value = value
         self.range = range
@@ -21,21 +30,83 @@ struct NamedSlider: View {
         self.spoken = spoken
     }
 
+    private var shown: Double { chosen ?? value }
+
+    /// A VoiceOver swipe's step: the slider's own, or a twentieth of its
+    /// range when that would take too many swipes (5 on 0 to 100).
+    private var swipeStep: Double {
+        let span = range.upperBound - range.lowerBound
+        guard step > 0, span / step > 20 else { return step }
+        let twentieth = span / 20
+        return max(step, (twentieth / step).rounded() * step)
+    }
+
+    private func set(_ v: Double) {
+        let v = min(range.upperBound, max(range.lowerBound, v))
+        chosen = v
+        value = v
+        // If the source never reports it (a failure), show it again after a while.
+        settle?.cancel()
+        settle = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { chosen = nil }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).accessibilityHidden(true)
-            Slider(value: $value, in: range, step: step)
+            Slider(value: Binding(get: { shown }, set: { set($0) }), in: range, step: step)
                 .accessibilityLabel(label)
-                .accessibilityValue(spoken)
+                .accessibilityValue(spoken(shown))
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: set(shown + swipeStep)
+                    case .decrement: set(shown - swipeStep)
+                    @unknown default: break
+                    }
+                }
         }
+        // The source caught up (or changed elsewhere): it's shown again.
+        .onChange(of: value) { if let c = chosen, abs(c - value) < step / 2 || abs(c - value) < 0.0001 { chosen = nil } }
     }
 }
 
 extension NamedSlider {
     /// An Int-valued slider (percentages and such).
-    init(_ label: String, int: Binding<Int>, in range: ClosedRange<Int>, spoken: String) {
-        self.init(label, value: Binding(get: { Double(int.wrappedValue) }, set: { int.wrappedValue = Int($0) }),
-                  in: Double(range.lowerBound)...Double(range.upperBound), step: 1, spoken: spoken)
+    init(_ label: String, int: Binding<Int>, in range: ClosedRange<Int>, spoken: @escaping (Int) -> String) {
+        self.init(label, value: Binding(get: { Double(int.wrappedValue) }, set: { int.wrappedValue = Int($0.rounded()) }),
+                  in: Double(range.lowerBound)...Double(range.upperBound), step: 1, spoken: { spoken(Int($0.rounded())) })
+    }
+}
+
+/// A switch whose change shows at once, whatever it's bound to: the value
+/// just chosen is shown until the source catches up (a connection's
+/// state changes after a round trip; without this the switch flipped back
+/// and VoiceOver said the old state). Use it for every switch bound to a
+/// connection, an AudioNet stream or anything else that isn't local state.
+struct LiveToggle: View {
+    let label: String
+    @Binding var isOn: Bool
+    @State private var chosen: Bool?
+    @State private var settle: Task<Void, Never>?
+
+    init(_ label: String, isOn: Binding<Bool>) {
+        self.label = label
+        _isOn = isOn
+    }
+
+    var body: some View {
+        Toggle(label, isOn: Binding(get: { chosen ?? isOn }, set: { v in
+            chosen = v
+            isOn = v
+            settle?.cancel()
+            settle = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled { chosen = nil }
+            }
+        }))
+        .onChange(of: isOn) { if chosen == isOn { chosen = nil } }
     }
 }
 
