@@ -7,26 +7,9 @@ docs/desktop-audit.md; this list is what the old app did beyond it.
 
 ## Larger
 
-The owner wants AudioNet and the mixing (2026-11-15), after the smaller items.
-
-- [x] AudioNet (AudioNet.swift): sign in as a visitor (no device added;
-      the token in the keychain), the devices that share their sound,
-      choose one's sound and send it to the channel, stop, sign out. The
-      engine comes from an AudioNet checkout (scripts/build-audionet.sh,
-      pre-linked so its libopus and Rust stay private), in its own Swift
-      module (AudioNetKit), from ~/audionet-ttng on the Mac (its own
-      checkout on origin/main: the server refuses engines older than its
-      minimum version). Needs the owner's AudioNet account to try.
-- [x] Audio mixing (LiveMix.swift): the AudioNet sound and an audio file
-      together, with the microphone still on, as the media file stream —
-      without patching BearWare's SDK (the old app patched in a live
-      source): the mix is written in real time, as a WAV, into a FIFO the
-      SDK streams (the core doesn't probe FIFOs; tested in the core against
-      tt5srv, and the Swift mix on the Mac). A file streamed while AudioNet
-      sends joins the mix (pause and stop work on it); a file already
-      streaming when AudioNet starts moves into it. Own volumes: AudioNet
-      and file (the desktop's curve). Not done: the old app's fallback of
-      sending as voice when you may not stream media files.
+- [n/a] AudioNet and audio mixing: built (2026-11-15), then removed at the
+      owner's request (2026-11-16): no other TeamTalk app has it, and its
+      mix took over media file streaming. The core no longer streams FIFOs.
 - [n/a] Translations: the owner chose English only (2026-11-15); the old
       app's 18 languages aren't carried over.
 - [x] Moving over from the old app (OldAppImport.swift, once, before

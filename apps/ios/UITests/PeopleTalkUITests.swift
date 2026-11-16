@@ -13,6 +13,24 @@ final class PeopleTalkUITests: NGTestCase {
         action(item, on: p)
     }
 
+    func testRelayingSaysStopStraightAway() {
+        connect()
+        menu("Relay Their Voice to My Channel", on: "Bob")
+        // At once: the next look says Stop, and the More menu has Stop relaying.
+        person("Bob").press(forDuration: 1.2)
+        waitFor(button("Stop Relaying Their Voice"), "Stop Relaying next", timeout: 5)
+        button("Stop Relaying Their Voice").tap()
+        person("Bob").press(forDuration: 1.2)
+        waitFor(button("Relay Their Voice to My Channel"), "Relay again", timeout: 5)
+        button("Relay Their Media Files to My Channel").tap()
+        app.buttons["More"].tap()
+        waitFor(button("Stop relaying"), "Stop relaying in More", timeout: 5)
+        button("Stop relaying").tap()
+        person("Bob").press(forDuration: 1.2)
+        waitFor(button("Relay Their Media Files to My Channel"), "relaying stopped from More", timeout: 5)
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+    }
+
     func testMutingSaysUnmuteStraightAway() {
         connect()
         menu("Mute Their Voice for Me", on: "Bob")

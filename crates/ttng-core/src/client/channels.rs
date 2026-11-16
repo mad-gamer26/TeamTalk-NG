@@ -176,18 +176,7 @@ impl Worker {
         if self.model.lock().map(|m| m.my_channel_id).unwrap_or(0) == 0 {
             return Err(Error::Refused("Join a channel to stream to it.".into()));
         }
-        // A live source (a FIFO the app writes a WAV into, such as its
-        // mix): opened once, by the SDK; probing it would take its header.
-        let live = is_live(path);
-        let info = if live {
-            MediaFileInfo {
-                sample_rate: 48000,
-                channels: 1,
-                ..Default::default()
-            }
-        } else {
-            media_file_info(path).ok_or_else(|| Error::Refused("That file can't be played.".into()))?
-        };
+        let info = media_file_info(path).ok_or_else(|| Error::Refused("That file can't be played.".into()))?;
         if info.sample_rate == 0 && info.video_width == 0 {
             return Err(Error::Refused("That file has no sound TeamTalk can play.".into()));
         }
@@ -304,20 +293,4 @@ pub fn media_file_info(path: &str) -> Option<MediaFileInfo> {
         video_width: info.videoFmt.nWidth,
         video_height: info.videoFmt.nHeight,
     })
-}
-
-/// A FIFO: a live source, read once as it's written.
-fn is_live(path: &str) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::FileTypeExt;
-        std::fs::metadata(path)
-            .map(|m| m.file_type().is_fifo())
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        false
-    }
 }

@@ -101,9 +101,6 @@ targets:
         embed: true
       - framework: Generated/TeamTalkCore.xcframework
         embed: false
-      # AudioNet (scripts/build-audionet.sh): its engine and Swift module.
-      - target: AudioNetKit
-        embed: false
       - sdk: AVFoundation.framework
       - sdk: AudioToolbox.framework
       - sdk: CoreAudio.framework
@@ -154,27 +151,6 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: TeamTalkNG
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
-
-  # AudioNet's Swift interface as a module of its own (its names, such as
-  # Event, would meet the core's), over its pre-linked engine.
-  AudioNetKit:
-    type: framework
-    platform: iOS
-    sources:
-      - path: AudioNet/audionet_ffi.swift
-    dependencies:
-      - framework: AudioNet/AudioNetCore.xcframework
-        embed: false
-    settings:
-      base:
-        MACH_O_TYPE: staticlib
-        PRODUCT_BUNDLE_IDENTIFIER: "$(TTNG_BUNDLE_ID).AudioNetKit"
-        GENERATE_INFOPLIST_FILE: YES
-        SKIP_INSTALL: YES
-        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
-        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/AudioNet/AudioNetCore.xcframework/ios-arm64/Headers/audionet_ffiFFI"
-        # Generated code: its warnings aren't ours.
-        SWIFT_SUPPRESS_WARNINGS: YES
 
   # Live Activities (iOS 17) and Control Center's controls (iOS 18).
   TeamTalkNGControls:

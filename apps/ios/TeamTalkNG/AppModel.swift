@@ -79,15 +79,6 @@ final class AppModel {
     var awayStopsVoiceActivation = false { didSet { save() } }
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
-    /// AudioNet: its sign-in, devices and what's being sent.
-    let audioNet = AudioNetStore()
-    /// The live mix's volumes (the desktop's scale, 50 unchanged).
-    var audioNetVolume = 50 { didSet { save(); applyMixGains() } }
-    var mixFileVolume = 50 { didSet { save(); applyMixGains() } }
-
-    private func applyMixGains() {
-        for c in connections.values { c.mix?.setGains(file: mixFileVolume, audioNet: audioNetVolume) }
-    }
     let speech = SpeechStore()
     let chatTemplates = ChatTemplateStore()
     let statusEvents = StatusEventStore()
@@ -224,8 +215,6 @@ final class AppModel {
         recordEachPerson = defaults.bool(forKey: "recordEachPerson")
         recordMediaFiles = defaults.bool(forKey: "recordMediaFiles")
         saveChatLogs = defaults.bool(forKey: "saveChatLogs")
-        audioNetVolume = defaults.object(forKey: "audioNetVolume") as? Int ?? 50
-        mixFileVolume = defaults.object(forKey: "mixFileVolume") as? Int ?? 50
         streamVideo = defaults.object(forKey: "streamVideo") as? Bool ?? true
         showUsernames = defaults.bool(forKey: "showUsernames")
         showTopics = defaults.object(forKey: "showTopics") as? Bool ?? false
@@ -455,8 +444,6 @@ final class AppModel {
         defaults.set(recordEachPerson, forKey: "recordEachPerson")
         defaults.set(recordMediaFiles, forKey: "recordMediaFiles")
         defaults.set(saveChatLogs, forKey: "saveChatLogs")
-        defaults.set(audioNetVolume, forKey: "audioNetVolume")
-        defaults.set(mixFileVolume, forKey: "mixFileVolume")
         defaults.set(streamVideo, forKey: "streamVideo")
         defaults.set(showUsernames, forKey: "showUsernames")
         defaults.set(showTopics, forKey: "showTopics")

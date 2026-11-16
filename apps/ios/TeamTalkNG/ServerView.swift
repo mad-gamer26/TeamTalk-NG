@@ -30,7 +30,6 @@ struct ServerView: View {
     @State private var showAccounts = false
     @State private var showStats = false
     @State private var showOnline = false
-    @State private var showAudioNet = false
     @State private var showServerVolume = false
     @State private var showMoveUsers = false
     @State private var showClientStats = false
@@ -94,13 +93,9 @@ struct ServerView: View {
                     // One list for the menu and its VoiceOver actions (reversed,
                     // the owner's choice); what's on says its opposite, so
                     // nothing needs a check mark.
-                    let items = moreItems
-                    Menu("More", systemImage: "ellipsis.circle") {
-                        ForEach(items) { i in Button(i.title, role: i.destructive ? .destructive : nil, action: i.action) }
-                    }
-                    .accessibilityActions {
-                        ForEach(items.reversed()) { i in Button(i.title, action: i.action) }
-                    }
+                    // Redrawn only when its items change (not with every
+                    // second of a streamed file).
+                    MoreMenu(items: moreItems).equatable()
                 }
             }
         }
@@ -193,7 +188,6 @@ struct ServerView: View {
             BansView(connection: connection)
         }
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
-        .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
         .sheet(isPresented: $showMoveUsers) { MoveUsersView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
@@ -1092,7 +1086,6 @@ extension ServerView {
         if connection.rights.broadcast { m.append(.init("Broadcast message") { broadcasting = true }) }
         if connection.rights.moveUsers { m.append(.init("Move users") { showMoveUsers = true }) }
         m.append(.init("Online users") { showOnline = true })
-        if audio { m.append(.init(connection.mix != nil ? "AudioNet (sending)" : "AudioNet") { showAudioNet = true }) }
         m.append(.init("Connection statistics") { showClientStats = true })
         if connection.rights.updateServer { m.append(.init("Server settings") { showServerSettings = true }) }
         if connection.rights.ban { m.append(.init("Bans") { showBans = true }) }
@@ -1176,6 +1169,30 @@ extension ServerView {
         case .saveConfig: connection.saveServerConfig()
         case .talk: connection.toggleTalking()
         case .tab(let t): tab = t
+        }
+    }
+}
+
+/// The server screen's More button: its items, and the same as VoiceOver
+/// actions, reversed (the owner's choice).
+private struct MoreMenu: View, Equatable {
+    let items: [MenuItem]
+    /// What it shows (compared; the actions can't be).
+    private let shown: [String]
+
+    init(items: [MenuItem]) {
+        self.items = items
+        shown = items.map { $0.destructive ? "!" + $0.title : $0.title }
+    }
+
+    nonisolated static func == (a: MoreMenu, b: MoreMenu) -> Bool { a.shown == b.shown }
+
+    var body: some View {
+        Menu("More", systemImage: "ellipsis.circle") {
+            ForEach(items) { i in Button(i.title, role: i.destructive ? .destructive : nil, action: i.action) }
+        }
+        .accessibilityActions {
+            ForEach(items.reversed()) { i in Button(i.title, action: i.action) }
         }
     }
 }

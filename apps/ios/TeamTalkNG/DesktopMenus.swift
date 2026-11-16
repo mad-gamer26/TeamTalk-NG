@@ -163,7 +163,9 @@ struct UserMenu: View {
 }
 
 struct MenuItem: Identifiable {
-    let id = UUID()
+    /// Its title: a menu redrawn with the same items keeps them (a new ID
+    /// each time rebuilt open menus every second while a file streamed).
+    var id: String { title }
     let title: String
     let action: () -> Void
     var destructive = false

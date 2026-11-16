@@ -1,13 +1,11 @@
 #!/bin/sh
 # Every UI test of the app, in the Simulator, on the Mac, against throwaway
 # servers on localhost only (never a real TeamTalk server, the live or dev
-# Monitor, or the live AudioNet):
+# Monitor):
 #   * a TeamTalk server with people who act on the tests' say
 #     (crates/ttng-core/examples/uitest_host.rs: admin, bob, carol);
 #   * a private ngmon (Monitor and NG Account; mail to an outbox) with an
 #     NG Account that has a server in it;
-#   * a private AudioNet server with an account and this Mac as a visible
-#     test device (its own sounds), when ~/audionet-ttng is built.
 #   scripts/test-ios-ui.sh [simulator id] [-only-testing:TeamTalkNGUITests/Class[/test]]
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -54,29 +52,6 @@ ng_email="ui-test@example.com"
 ng_password="ui test password 1"
 python3 "$root/scripts/uitest_seed_ng.py" "$ng_url" "$ng_email" "$ng_password" "$work/ngmon/outbox" "$work/ng-token"
 
-# AudioNet: a private server, an account, this Mac as a visible device.
-an_env=""
-an=$HOME/audionet-ttng
-if [ -x "$an/target/release/audionet-server" ] && [ -x "$an/target/release/audionet" ]; then
-    an_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
-    an_url="http://127.0.0.1:$an_port"
-    an_password="audionet test pass"
-    printf 'public_url = "%s"\nbind = "127.0.0.1:%s"\ndatabase = "%s"\nweb_root = "%s"\n' \
-        "$an_url" "$an_port" "$work/an.db" "$an/web" > "$work/an.toml"
-    printf '%s\n' "$an_password" | "$an/target/release/audionet-server" -c "$work/an.toml" user add tester >/dev/null 2>&1
-    "$an/target/release/audionet-server" -c "$work/an.toml" serve >"$work/an.log" 2>&1 &
-    pids="$pids $!"
-    for _ in $(seq 1 50); do curl -s "$an_url/api/v1/info" >/dev/null && break; sleep 0.2; done
-    printf '%s\n' "$an_password" | "$an/target/release/audionet" node sign-in --server "$an_url" --user tester \
-        --password-stdin --name "Mac test device" --config "$work/node.toml" >/dev/null
-    "$an/target/release/audionet" node run --config "$work/node.toml" >"$work/node.log" 2>&1 &
-    pids="$pids $!"
-    an_env="TEST_RUNNER_AN_URL=$an_url TEST_RUNNER_AN_USER=tester TEST_RUNNER_AN_PASSWORD=$an_password"
-    echo "AudioNet server on $an_port, this Mac its test device"
-else
-    echo "AudioNet not built in $an (cargo build --release -p audionet-server -p audionet-cli): its tests skip"
-fi
-
 cd "$root/apps/ios"
 xcodegen -q
 xcrun simctl boot "$sim" 2>/dev/null || true
@@ -85,7 +60,6 @@ xcrun simctl privacy "$sim" grant microphone com.matthewdovi.TeamTalk-NG.dev 2>/
 set +e
 env TEST_RUNNER_TT_PORT="$tt_port" TEST_RUNNER_CONTROL_PORT="$control_port" \
     TEST_RUNNER_NG_EMAIL="$ng_email" TEST_RUNNER_NG_PASSWORD="$ng_password" \
-    TEST_RUNNER_AN_URL="${an_url:-}" TEST_RUNNER_AN_USER=tester TEST_RUNNER_AN_PASSWORD="${an_password:-}" \
     xcodebuild test -project TeamTalkNG.xcodeproj -scheme TeamTalkNG \
     -destination "platform=iOS Simulator,id=$sim" -derivedDataPath build/uitest \
     ${only:+"$only"} TTNG_SERVICE_URL="$ng_url" >"$work/test.log" 2>&1
