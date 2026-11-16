@@ -1076,6 +1076,8 @@ extension ServerView {
             let muted = snap?.mutedAll ?? false
             m.append(.init(muted ? "Unmute Everyone for Me" : "Mute Everyone for Me") { connection.setMuteAll(!muted) })
             m.append(.init("Volume for this server") { showServerVolume = true })
+            // The desktop's Client → Sound Devices → Refresh Sound Devices.
+            m.append(.init("Refresh Sound Devices") { Task { await connection.refreshSoundDevices() } })
             let streaming = model.audioNet.streams.filter { $0.connection === connection }.count
             m.append(.init(streaming == 0 ? "AudioNet" : "AudioNet (\(streaming) streaming)") { showAudioNet = true })
             if snap?.relaying != nil { m.append(.init("Stop relaying") { connection.setRelay(nil) }) }

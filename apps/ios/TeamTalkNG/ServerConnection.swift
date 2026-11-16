@@ -715,9 +715,19 @@ final class ServerConnection {
         _ = await Task.detached { try? c.closeAudio() }.value
     }
 
+    /// More → Refresh Sound Devices (the desktop's): the audio session and
+    /// this connection's devices opened again (a headset plugged in, or
+    /// sound that stopped), said when done.
+    func refreshSoundDevices() async {
+        guard monitorId == nil, audioDevices != nil else { return }
+        AudioSession.activate()
+        if await reopenAudio() { announce("Sound devices refreshed") }
+    }
+
     /// Opens them again with the settings as they are now.
-    func reopenAudio() async {
-        guard monitorId == nil, let d = audioDevices else { return }
+    @discardableResult
+    func reopenAudio() async -> Bool {
+        guard monitorId == nil, let d = audioDevices else { return false }
         let c = client, a = effectiveAudio
         let failed: String? = await Task.detached {
             do { try c.setAudioSettings(settings: a); try c.initAudio(devices: d); return nil } catch { return words(error) }
@@ -725,6 +735,7 @@ final class ServerConnection {
         if let failed { announce("Couldn't open the sound devices: \(failed)") }
         applyTalkMode()
         refresh()
+        return failed == nil
     }
 
     func applyAudioSettings() {

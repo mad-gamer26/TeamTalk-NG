@@ -45,6 +45,18 @@ final class PeopleTalkUITests: NGTestCase {
         }
     }
 
+    /// More → Refresh Sound Devices (the desktop's): the devices open
+    /// again and talking still works.
+    func testRefreshSoundDevices() {
+        connect()
+        more("Refresh Sound Devices")
+        let talk = app.buttons["Talk"]
+        waitFor(talk, "the Talk button")
+        talk.tap()
+        Host.until("Bob hearing Alice after the refresh") { (Host.user("alice")?["talking"] as? Bool) == true }
+        talk.tap()
+    }
+
     func testRelayingSaysStopStraightAway() {
         connect()
         menu("Relay Their Voice to My Channel", on: "Bob")
