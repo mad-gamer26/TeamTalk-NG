@@ -100,11 +100,11 @@ struct MuteEveryoneControl: ControlWidget {
 struct VoiceActivationControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "TeamTalkNG.voice-activation", provider: StateValue { $0.voiceActivation }) { on in
-            ControlWidgetToggle("Voice Activation", isOn: on, action: VoiceActivationSwitchIntent()) { isOn in
+            ControlWidgetToggle("Talk Mode", isOn: on, action: VoiceActivationSwitchIntent()) { isOn in
                 Label(isOn ? "Voice activation" : "Push to talk", systemImage: "waveform")
             }
         }
-        .displayName("Voice Activation")
-        .description("Voice activation on, or push to talk.")
+        .displayName("Talk Mode")
+        .description("Switches between push to talk and voice activation.")
     }
 }

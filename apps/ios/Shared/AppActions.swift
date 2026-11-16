@@ -228,7 +228,7 @@ struct MuteEveryoneSwitchIntent: SetValueIntent, LiveActivityIntent {
 }
 
 struct VoiceActivationSwitchIntent: SetValueIntent, LiveActivityIntent {
-    static let title: LocalizedStringResource = "Voice Activation"
+    static let title: LocalizedStringResource = "Talk Mode"
     @Parameter(title: "On") var value: Bool
 
     @MainActor
