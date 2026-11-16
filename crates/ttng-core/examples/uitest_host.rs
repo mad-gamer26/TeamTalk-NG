@@ -300,7 +300,12 @@ fn main() {
                     // root channel, as themselves.
                     let gone: Vec<String> = bots
                         .iter()
-                        .filter(|(_, b)| b.client.snapshot().state != Some(ConnectionState::LoggedIn))
+                        .filter(|(_, b)| {
+                            // Kicked ones too: a kicked connection may still say logged in,
+                            // or be trying again on its own.
+                            b.client.snapshot().state != Some(ConnectionState::LoggedIn)
+                                || b.seen.lock().unwrap().iter().any(|e| matches!(e, Event::Kicked { .. }))
+                        })
                         .map(|(n, _)| n.clone())
                         .collect();
                     for name in gone {
@@ -308,7 +313,15 @@ fn main() {
                         bots.insert(name, nc);
                     }
                     for (name, b) in &bots {
-                        let _ = b.client.join_channel_path("/", "");
+                        // In the root channel for certain (others only see
+                        // people who are in a channel).
+                        for _ in 0..50 {
+                            let _ = b.client.join_channel_path("/", "");
+                            if b.client.snapshot().my_channel_id > 0 {
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
                         let nick = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
                         let _ = b.client.set_nickname(&nick);
                         let _ = b.client.set_transmitting(false);
