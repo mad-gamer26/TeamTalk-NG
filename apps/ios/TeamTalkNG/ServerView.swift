@@ -177,7 +177,7 @@ struct ServerView: View {
                 Button("Ban by username") {
                     if b.fromChannel { connection.banFromChannel(b.user, by: .username) } else { connection.ban(b.user, by: .username) }
                 }
-                Button("Ban by IP-address") {
+                Button("Ban by IP address") {
                     if b.fromChannel { connection.banFromChannel(b.user, by: .ipAddress) } else { connection.ban(b.user, by: .ipAddress) }
                 }
             }
@@ -482,17 +482,17 @@ private struct ChannelRow: View {
         m.append(.init("View Channel Info", info))
         if let connection {
             m.append(.init("Speak Channel Info") { connection.speakChannelInfo(channel) })
-            if here { m.append(.init("Speak Channel State") { connection.speakChannelState() }) }
+            if here { m.append(.init("Read What's Happening Here") { connection.speakChannelState() }) }
         }
-        m.append(.init("Generate tt:// URL to Clipboard", copyLink))
-        if rights.modifyChannels || rights.createTemporaryChannels { m.append(.init("Create Channel", newSub)) }
-        if rights.modifyChannels || moderate { m.append(.init("Update Channel", edit)) }
+        m.append(.init("Copy a Link to This Channel", copyLink))
+        if rights.modifyChannels || rights.createTemporaryChannels { m.append(.init("New Channel Inside This One", newSub)) }
+        if rights.modifyChannels || moderate { m.append(.init("Edit Channel", edit)) }
         if rights.modifyChannels && channel.parentId != 0 { m.append(.init("Delete Channel", delete)) }
-        if moderate { m.append(.init("Banned Users From Channel", bans)) }
+        if moderate { m.append(.init("Channel Bans", bans)) }
         if here {
-            if connection?.hasAudio != false { m.append(.init("Stream Media File to Channel", stream)) }
+            if connection?.hasAudio != false { m.append(.init("Stream a File to the Channel", stream)) }
             if let connection, connection.hasAudio, let st = snapshot.streaming {
-                m.append(.init("Pause/Resume Stream") { connection.pauseStream(st.status != .paused) })
+                m.append(.init("Pause or Resume the File") { connection.pauseStream(st.status != .paused) })
             }
             if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
         }
@@ -784,7 +784,7 @@ private struct StatusView: View {
                 TextField("Status message", text: $message).accessibilityLabel("Status message")
                 // The desktop's Change Status dialog checkbox.
                 if connection.hasAudio {
-                    Toggle("Display file name in status message when streaming", isOn: Binding(
+                    Toggle("Show the file's name in my status while streaming", isOn: Binding(
                         get: { model.streamingStatus }, set: { model.streamingStatus = $0 }))
                 }
                 Picker("Gender", selection: $gender) {
@@ -852,7 +852,7 @@ struct FilesView: View {
     var body: some View {
         List {
             if !transfers.isEmpty {
-                Section("Under way") {
+                Section("In progress") {
                     ForEach(transfers, id: \.id) { t in TransferRow(transfer: t) { connection.cancel(t) } }
                 }
             }
@@ -1063,7 +1063,7 @@ extension ServerView {
         m.append(.init("Change nickname") { renaming = true })
         m.append(.init("Join a channel by its path") { joiningByPath = true })
         if audio && inChannel && snap?.streaming == nil {
-            m.append(.init("Stream a media file to the channel") { pickingStream = true })
+            m.append(.init("Stream a File to the Channel") { pickingStream = true })
         }
         let question = connection.me?.status == .question
         m.append(.init(question ? "Leave question mode" : "Question mode") {
@@ -1073,7 +1073,7 @@ extension ServerView {
             let hearing = connection.hearingMyself
             m.append(.init(hearing ? "Stop hearing myself" : "Hear myself") { connection.setHearMyself(!hearing) })
             let muted = snap?.mutedAll ?? false
-            m.append(.init(muted ? "Unmute everyone" : "Mute everyone") { connection.setMuteAll(!muted) })
+            m.append(.init(muted ? "Unmute Everyone for Me" : "Mute Everyone for Me") { connection.setMuteAll(!muted) })
             m.append(.init("Volume for this server") { showServerVolume = true })
             if snap?.relaying != nil { m.append(.init("Stop relaying") { connection.setRelay(nil) }) }
             if inChannel {
@@ -1123,7 +1123,7 @@ extension ServerView {
             connection.setStatus(q ? .available : .question, connection.me?.statusMessage ?? "")
         case .hearMyself: connection.setHearMyself(!connection.hearingMyself)
         case .pushToTalk: model.talkMode = model.talkMode == .pushToTalk ? .voiceActivation : .pushToTalk
-            connection.noteMenu(model.talkMode == .pushToTalk ? "Push-To-Talk enabled" : "Push-To-Talk disabled")
+            connection.noteMenu(model.talkMode == .pushToTalk ? "Push to talk on" : "Push to talk off")
         case .voiceActivation: model.talkMode = model.talkMode == .voiceActivation ? .pushToTalk : .voiceActivation
             connection.noteMenu(model.talkMode == .voiceActivation ? "Voice activation enabled" : "Voice activation disabled")
         case .speechEvents: model.speech.toggleEnabled()

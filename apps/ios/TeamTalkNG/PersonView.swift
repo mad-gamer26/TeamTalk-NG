@@ -39,7 +39,7 @@ struct PersonView: View {
         lines.append("Status mode: " + (u.status == .away ? "Away" : u.status == .question ? "Question" : "Available"))
         if !u.statusMessage.isEmpty { lines.append("Status message: \(u.statusMessage)") }
         lines.append("User type: " + (u.admin ? "Administrator" : "Default"))
-        if !u.ipAddress.isEmpty { lines.append("IP-address: \(u.ipAddress)") }
+        if !u.ipAddress.isEmpty { lines.append("IP address: \(u.ipAddress)") }
         if let st {
             lines.append("Voice packet loss: \(st.voicePacketsLost)/\(st.voicePacketsReceived + st.voicePacketsLost)")
             lines.append("Video frame loss: \(st.videoFramesLost)/\(st.videoFramesReceived + st.videoFramesLost)")
@@ -138,7 +138,7 @@ struct PersonView: View {
                 Section {
                     ForEach(Self.intercepts.filter(connection.shows), id: \.self) { sub in subscription(u, sub) }
                 } header: {
-                    Text("Intercept (administrators)")
+                    Text("Listen In (administrators)")
                 } footer: {
                     Text(connection.hasAudio ? "Their messages and audio, even in other channels or to other people." : "Their messages, even in other channels or to other people.")
                 }
@@ -153,7 +153,7 @@ struct PersonView: View {
                         get: { relaying?.userId == u.id && relaying?.stream == .mediaFile },
                         set: { connection.setRelay($0 ? u : nil, .mediaFile) }))
                 } header: {
-                    Text("Relay")
+                    Text("Relay to my channel")
                 } footer: {
                     Text("What you hear from them goes on to your channel, as if you were saying it. From another channel, intercept their voice first.")
                 }

@@ -50,7 +50,7 @@ final class AdminUITests: NGTestCase {
             ["bob", "admin", "alice"].allSatisfy { (Host.user($0, seenBy: "bob")?["channel"] as? String) == "/" }
         }
         action("Subscriptions", on: row("Bob"))
-        let sub = app.switches.matching(NSPredicate(format: "label CONTAINS[c] 'channel' AND label CONTAINS[c] 'message' AND NOT (label CONTAINS[c] 'intercept')")).firstMatch
+        let sub = app.switches["Channel Messages"]
         waitFor(sub, "the channel messages subscription")
         XCTAssertEqual(sub.value as? String, "1", "subscribed by default")
         sub.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()

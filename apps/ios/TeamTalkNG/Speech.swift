@@ -331,7 +331,7 @@ struct SpeechView: View {
         @Bindable var b = speech
         Form {
             Section {
-                Toggle("Enable Text-To-Speech Events", isOn: Binding(get: { speech.enabled }, set: { speech.enabled = $0 }))
+                Toggle("Speak events", isOn: Binding(get: { speech.enabled }, set: { speech.enabled = $0 }))
             }
             Section {
                 Picker("Say events with", selection: $b.output) {

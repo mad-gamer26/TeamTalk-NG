@@ -44,8 +44,8 @@ final class ServerConnection {
 
     func togglePicked(_ u: User) {
         if pickedToMove.contains(u.id) { pickedToMove.remove(u.id) } else { pickedToMove.insert(u.id) }
-        // The desktop's words ("Store User(s) for Move").
-        note(pickedToMove.contains(u.id) ? "\(u.displayName) selected for move" : "\(u.displayName) no longer selected for move")
+        // The desktop's "Store User(s) for Move", in plainer words.
+        note(pickedToMove.contains(u.id) ? "\(u.displayName) picked for moving" : "\(u.displayName) no longer picked for moving")
     }
 
     /// Moves everyone picked into a channel.
@@ -55,7 +55,7 @@ final class ServerConnection {
         run("Couldn't move everyone") { cl in
             for id in ids { try cl.moveUser(userId: id, channelId: c.id) }
         }
-        note("Selected users has been moved to channel \(c.parentId == 0 ? "root" : c.name)")
+        note("Moved to \(c.parentId == 0 ? "the root channel" : c.name)")
     }
 
     /// Who is writing to me privately right now (until when).
@@ -1058,15 +1058,15 @@ final class ServerConnection {
         case .broadcastMessages: ("Broadcast messages", .subBroadcastMessages)
         case .voice: ("Voice", .subVoice)
         case .video: ("Video", .subVideo)
-        case .desktop: ("Desktop", .subDesktop)
-        case .desktopAccess: ("Desktop input", .subDesktopInput)
+        case .desktop: ("Shared screen", .subDesktop)
+        case .desktopAccess: ("Control of my shared screen", .subDesktopInput)
         case .mediaFile: ("Media files", .subMediaFile)
-        case .interceptUserMessages: ("Intercept private messages", .subInterceptUserMessages)
-        case .interceptChannelMessages: ("Intercept channel messages", .subInterceptChannelMessages)
-        case .interceptVoice: ("Intercept voice", .subInterceptVoice)
-        case .interceptVideo: ("Intercept video capture", .subInterceptVideo)
-        case .interceptDesktop: ("Intercept desktop", .subInterceptDesktop)
-        case .interceptMediaFile: ("Intercept media files", .subInterceptMediaFile)
+        case .interceptUserMessages: ("Listen in on private messages", .subInterceptUserMessages)
+        case .interceptChannelMessages: ("Listen in on channel messages", .subInterceptChannelMessages)
+        case .interceptVoice: ("Listen in on voice", .subInterceptVoice)
+        case .interceptVideo: ("Listen in on video", .subInterceptVideo)
+        case .interceptDesktop: ("Listen in on shared screens", .subInterceptDesktop)
+        case .interceptMediaFile: ("Listen in on media files", .subInterceptMediaFile)
         }
     }
 
@@ -1074,20 +1074,20 @@ final class ServerConnection {
     /// changes theirs to me).
     static func subscriptionMenuName(_ s: Subscription) -> String {
         switch s {
-        case .userMessages: "User Messages"
+        case .userMessages: "Private Messages"
         case .channelMessages: "Channel Messages"
         case .broadcastMessages: "Broadcast Messages"
         case .voice: "Voice"
         case .video: "Video"
-        case .desktop: "Desktop"
-        case .desktopAccess: "Desktop Access"
-        case .mediaFile: "Media File Stream"
-        case .interceptUserMessages: "Intercept User Messages"
-        case .interceptChannelMessages: "Intercept Channel Messages"
-        case .interceptVoice: "Intercept Voice"
-        case .interceptVideo: "Intercept Video"
-        case .interceptDesktop: "Intercept Desktop"
-        case .interceptMediaFile: "Intercept Media File Stream"
+        case .desktop: "Shared Screen"
+        case .desktopAccess: "Control of My Shared Screen"
+        case .mediaFile: "Media Files"
+        case .interceptUserMessages: "Listen In on Private Messages"
+        case .interceptChannelMessages: "Listen In on Channel Messages"
+        case .interceptVoice: "Listen In on Voice"
+        case .interceptVideo: "Listen In on Video"
+        case .interceptDesktop: "Listen In on Shared Screens"
+        case .interceptMediaFile: "Listen In on Media Files"
         }
     }
 

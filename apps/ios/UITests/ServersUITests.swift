@@ -53,8 +53,8 @@ final class ServersUITests: NGTestCase {
         XCTAssertTrue(any("Secret").exists, "the password channel is listed")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Hidden'")).firstMatch.exists, "the hidden channel isn't")
         // The keyboard shortcuts' buttons are for keys only: nothing VoiceOver can land on.
-        XCTAssertFalse(app.buttons["Record Conversations to Disk"].exists, "no shortcut buttons in the accessibility tree")
-        XCTAssertFalse(app.staticTexts["Mute All"].exists)
+        XCTAssertFalse(app.buttons["Record Conversations"].exists, "no shortcut buttons in the accessibility tree")
+        XCTAssertFalse(app.staticTexts["Mute Everyone for Me"].exists)
         // The others see Alice.
         Host.until("Bob seeing Alice") { Host.user("alice") != nil }
     }

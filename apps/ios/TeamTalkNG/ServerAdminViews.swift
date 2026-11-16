@@ -280,7 +280,7 @@ struct ServerSettingsView: View {
                         number("Logins per address (0: no limit)", b.maxLoginsPerAddress)
                         number("Time between logins, ms (0: none)", b.loginDelayMs)
                     } header: {
-                        Text("Abuse")
+                        Text("Protection against abuse")
                     }
                     Section {
                         number("Voice, KB/s", kb(b.voiceLimit))
@@ -289,7 +289,7 @@ struct ServerSettingsView: View {
                         number("Desktops, KB/s", kb(b.desktopLimit))
                         number("Everything together, KB/s", kb(b.totalLimit))
                     } header: {
-                        Text("Bandwidth limits (0: none)")
+                        Text("Speed limits, KB/s (0: none)")
                     }
                     Section {
                         LabeledContent("Server version", value: s.version)
@@ -409,7 +409,7 @@ struct OnlineUsersView: View {
                     }
                 }
                 // The desktop's "Keep disconnected users" (off by default).
-                Toggle("Keep disconnected users", isOn: $keepDisconnected)
+                Toggle("Keep people in Online users after they log out", isOn: $keepDisconnected)
                 if keepDisconnected && !connection.departed.isEmpty {
                     Section("Left while you were here") {
                         ForEach(connection.departed.reversed(), id: \.at) { d in

@@ -54,7 +54,7 @@ struct BearWareView: View {
             }
             Section {
                 @Bindable var model = model
-                Toggle("Restore volume settings and subscriptions on login for Web Login users", isOn: $model.restoreUserSettings)
+                Toggle("Remember volumes and subscriptions for BearWare.dk accounts", isOn: $model.restoreUserSettings)
             } footer: {
                 Text("People logged in with a BearWare.dk account (…@bearware.dk) get back the volume, mute, stereo and subscriptions you gave them, when they log in again while you're connected.")
             }
@@ -114,10 +114,10 @@ struct PublicServersView: View {
                 } footer: {
                     Text("A server's owner can give you a join code instead of its address.")
                 }
-                Section("Filter Servers") {
+                Section("Search Servers") {
                     TextField("Name", text: $nameFilter).accessibilityLabel("Name")
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    NumberField("Users", value: $minUsers, in: 0...100000)
+                    NumberField("At least this many people online", value: $minUsers, in: 0...100000)
                     Toggle("Include official servers", isOn: $official)
                     Toggle("Include unofficial servers", isOn: $unofficial)
                 }

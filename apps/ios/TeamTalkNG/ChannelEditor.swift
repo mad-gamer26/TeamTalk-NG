@@ -48,7 +48,7 @@ struct ChannelEditView: View {
                         SecureField("Password (empty for none)", text: $password).accessibilityLabel("Password (empty for none)")
                     }
                     if editing == nil && !temporary {
-                        Toggle("Join channel on exit", isOn: $joinOnExit)
+                        Toggle("Join it once it's made", isOn: $joinOnExit)
                     }
                 }
                 if !temporary {
@@ -61,13 +61,13 @@ struct ChannelEditView: View {
                         Text("Whoever knows it can make themselves an operator of the channel.")
                     }
                     Section("Limits") {
-                        TextField("Most people (empty: as it is)", text: $maxUsers).accessibilityLabel("Most people (empty: as it is)").keyboardType(.numberPad)
-                        TextField("Disk space for files, in MB (empty: as it is)", text: $quotaMB).accessibilityLabel("Disk space for files, in MB (empty: as it is)").keyboardType(.decimalPad)
+                        TextField("Most people allowed in (leave empty to keep it)", text: $maxUsers).accessibilityLabel("Most people allowed in (leave empty to keep it)").keyboardType(.numberPad)
+                        TextField("Disk space for files, in MB (leave empty to keep it)", text: $quotaMB).accessibilityLabel("Disk space for files, in MB (leave empty to keep it)").keyboardType(.decimalPad)
                         TextField("Longest anyone may talk at once, in seconds (0: no limit)", text: $voiceLimit).accessibilityLabel("Longest anyone may talk at once, in seconds (0: no limit)").keyboardType(.numberPad)
                         TextField("Longest a media file may stream, in seconds (0: no limit)", text: $mediaLimit).accessibilityLabel("Longest a media file may stream, in seconds (0: no limit)").keyboardType(.numberPad)
                     }
                     Section("Type") {
-                        Toggle("Stays when empty", isOn: $permanent)
+                        Toggle("Keep it when everyone leaves", isOn: $permanent)
                         Toggle("No interruptions: one person talks at a time", isOn: $soloTransmit)
                         Toggle("Classroom: operators choose who may send", isOn: $classroom)
                         Toggle("Only operators see and hear the others", isOn: $operatorReceiveOnly)
@@ -120,7 +120,7 @@ struct ChannelEditView: View {
                     Text("Mono").tag(Int32(1))
                     Text("Stereo").tag(Int32(2))
                 }
-                Picker("Tuned for", selection: $codec.music) {
+                Picker("Best for", selection: $codec.music) {
                     Text("Voice").tag(false)
                     Text("Music").tag(true)
                 }

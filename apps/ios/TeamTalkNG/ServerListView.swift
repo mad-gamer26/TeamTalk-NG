@@ -70,7 +70,7 @@ struct ServerListView: View {
                         Button("Import a .tt file") { importing = true }
                         // The desktop's "Export Server list to .tt File".
                         if !model.servers.isEmpty {
-                            Button("Export Server list to .tt File") { presentShareSheet([ttFileURL(for: model.servers)]) }
+                            Button("Save the Server List as a File") { presentShareSheet([ttFileURL(for: model.servers)]) }
                         }
                         Button("Open a tt:// link") { linking = true }
                     }
@@ -78,7 +78,7 @@ struct ServerListView: View {
                     .accessibilityActions {
                         Button("Open a tt:// link") { linking = true }
                         if !model.servers.isEmpty {
-                            Button("Export Server list to .tt File") { presentShareSheet([ttFileURL(for: model.servers)]) }
+                            Button("Save the Server List as a File") { presentShareSheet([ttFileURL(for: model.servers)]) }
                         }
                         Button("Import a .tt file") { importing = true }
                         Button("Public servers and join codes") { showPublic = true }

@@ -48,7 +48,7 @@ extension ServerConnection {
         speakAlways(s)
     }
 
-    /// The desktop's "Speak Channel State": who's talking, streaming, on
+    /// The desktop's "Speak Channel State" (here "Read What's Happening Here"): who's talking, streaming, on
     /// webcam, sharing a desktop in my channel.
     func speakChannelState() {
         guard let snap = snapshot else { return }
@@ -118,16 +118,16 @@ struct UserMenu: View {
         var m: [MenuItem] = [
             .init("View User Information") { open(.info) },
             .init("Speak User Information") { connection.speakUserInfo(user) },
-            .init("Messages") { open(.messages) },
+            .init("Send Private Message") { open(.messages) },
         ]
         if connection.canModerate(channel: user.channelId) || rights.admin {
-            m.append(.init(user.operator ? "Remove Op" : "Op") { connection.setOperator(user, !user.operator) })
+            m.append(.init(user.operator ? "Remove Channel Operator" : "Make Channel Operator") { connection.setOperator(user, !user.operator) })
         }
         let audio = connection.hasAudio
         if audio {
-            m.append(.init("Volume") { open(.volume) })
-            m.append(.init(user.voiceMuted ? "Unmute Voice" : "Mute Voice") { connection.toggleMuteVoice(user) })
-            m.append(.init(user.mediaMuted ? "Unmute Media File" : "Mute Media File") { connection.toggleMuteMedia(user) })
+            m.append(.init("Change Their Volume") { open(.volume) })
+            m.append(.init(user.voiceMuted ? "Unmute Their Voice for Me" : "Mute Their Voice for Me") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.mediaMuted ? "Unmute Their Media Files for Me" : "Mute Their Media Files for Me") { connection.toggleMuteMedia(user) })
         }
         if rights.kick || connection.canModerate(channel: user.channelId) {
             if user.channelId > 0 {
@@ -149,8 +149,8 @@ struct UserMenu: View {
             let relaying = connection.snapshot?.relaying
             let voice = relaying?.userId == user.id && relaying?.stream == .voice
             let media = relaying?.userId == user.id && relaying?.stream == .mediaFile
-            m.append(.init(voice ? "Stop Relaying Voice Stream" : "Relay Voice Stream") { connection.setRelay(voice ? nil : user, .voice) })
-            m.append(.init(media ? "Stop Relaying Media File Stream" : "Relay Media File Stream") { connection.setRelay(media ? nil : user, .mediaFile) })
+            m.append(.init(voice ? "Stop Relaying Their Voice" : "Relay Their Voice to My Channel") { connection.setRelay(voice ? nil : user, .voice) })
+            m.append(.init(media ? "Stop Relaying Their Media Files" : "Relay Their Media Files to My Channel") { connection.setRelay(media ? nil : user, .mediaFile) })
         }
         // Mute All is in the server screen's More menu (the owner's choice).
         return m
@@ -276,7 +276,7 @@ struct UserVolumeDialog: View {
                     }
                 }
             }
-            .navigationTitle("Volume: \(user.displayName)")
+            .navigationTitle("Volume for \(user.displayName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
@@ -378,26 +378,26 @@ struct StreamMediaFileDialog: View {
                     LabeledContent("Audio format", value: info.sampleRate > 0 ? "\(info.sampleRate) Hz, \(info.channels == 1 ? "Mono" : "Stereo")" : "None")
                     LabeledContent("Video format", value: info.videoWidth > 0 ? "\(info.videoWidth)x\(info.videoHeight)" : "None")
                     LabeledContent("Duration", value: time(Double(info.durationMs)))
-                    Toggle("Continuously play media file", isOn: $loop)
+                    Toggle("Repeat the file", isOn: $loop)
                 }
                 Section("Playback Settings") {
                     Picker("Audio preprocessor", selection: $kind) {
-                        Text("No Audio Preprocessor").tag(0)
-                        Text("TeamTalk Audio Preprocessor").tag(1)
-                        Text("Speex DSP Audio Preprocessor").tag(2)
+                        Text("None").tag(0)
+                        Text("TeamTalk's").tag(1)
+                        Text("Speex's").tag(2)
                     }
                     if kind == 1 {
-                        NamedSlider("Gain Level", int: $ttGain, in: 0...100, spoken: "\(ttGain) percent")
+                        NamedSlider("Volume level", int: $ttGain, in: 0...100, spoken: "\(ttGain) percent")
                         Toggle("Mute left channel", isOn: $ttLeft)
                         Toggle("Mute right channel", isOn: $ttRight)
                     }
                     if kind == 2 {
-                        Toggle("Enable AGC", isOn: $spAGC)
-                        NumberField("Gain Level", value: $spGain, in: 0...32000)
+                        Toggle("Even out the volume (AGC)", isOn: $spAGC)
+                        NumberField("Volume level", value: $spGain, in: 0...32000)
                         NumberField("Max Gain dB", value: $spMaxGain, in: 0...100)
                         NumberField("Max Gain Increase Per Sec (dB)", value: $spInc, in: 0...100)
                         NumberField("Max Gain Decrease Per Sec (dB)", value: $spDec, in: -100...0)
-                        Toggle("Enable Denoising", isOn: $spDenoise)
+                        Toggle("Reduce background noise", isOn: $spDenoise)
                         NumberField("Max Attenuation of noise (dB)", value: $spAtten, in: -100...0)
                     }
                     if kind != 0 {
@@ -518,7 +518,7 @@ struct MoveUsersView: View {
                         let name = c.parentId == 0 ? "Root channel" : c.name
                         Button {
                             for u in people where picked.contains(u.id) && u.channelId != c.id { connection.move(u, to: c) }
-                            connection.noteMenu("Selected users has been moved to channel \(c.parentId == 0 ? "root" : c.name)")
+                            connection.noteMenu("Moved to \(c.parentId == 0 ? "the root channel" : c.name)")
                             dismiss()
                         } label: {
                             Text(name).padding(.leading, CGFloat(depth) * 16)

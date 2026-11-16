@@ -25,7 +25,7 @@ final class MonitorAudioNetUITests: NGTestCase {
         // No audio at all (a text-only client).
         XCTAssertFalse(app.buttons["Talk"].exists, "no Talk button")
         app.buttons["More"].tap()
-        XCTAssertFalse(button("Mute everyone").exists, "no Mute everyone")
+        XCTAssertFalse(button("Mute Everyone for Me").exists, "no Mute everyone")
         XCTAssertFalse(button("Record conversations").exists, "no recording")
         XCTAssertFalse(button("AudioNet").exists, "no AudioNet")
         // Admin through the Monitor: its accounts.

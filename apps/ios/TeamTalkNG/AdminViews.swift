@@ -79,11 +79,11 @@ struct BansView: View {
                 VStack(alignment: .leading) {
                     // The desktop's ban type: "Ban IP-address" or "Ban Username".
                     Picker("Ban type", selection: $byUsername) {
-                        Text("Ban IP-address").tag(false)
-                        Text("Ban Username").tag(true)
+                        Text("By IP address").tag(false)
+                        Text("By username").tag(true)
                     }
                     .pickerStyle(.menu)
-                    TextField(byUsername ? "Username" : "IP-address, like 10.0.0.*", text: $address).accessibilityLabel(byUsername ? "Username" : "IP-address")
+                    TextField(byUsername ? "Username" : "IP address, like 10.0.0.*", text: $address).accessibilityLabel(byUsername ? "Username" : "IP address")
                         .textFieldStyle(.roundedBorder)
                         .keyboardType(byUsername ? .default : .numbersAndPunctuation)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()

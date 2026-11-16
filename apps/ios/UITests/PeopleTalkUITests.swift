@@ -15,16 +15,16 @@ final class PeopleTalkUITests: NGTestCase {
 
     func testMutingSaysUnmuteStraightAway() {
         connect()
-        menu("Mute Voice", on: "Bob")
+        menu("Mute Their Voice for Me", on: "Bob")
         // At once: the next look says Unmute (no muting twice).
         person("Bob").press(forDuration: 1.2)
-        waitFor(button("Unmute Voice"), "Unmute Voice next", timeout: 5)
-        button("Unmute Voice").tap()
+        waitFor(button("Unmute Their Voice for Me"), "Unmute Voice next", timeout: 5)
+        button("Unmute Their Voice for Me").tap()
         person("Bob").press(forDuration: 1.2)
-        waitFor(button("Mute Voice"), "Mute Voice again", timeout: 5)
-        button("Mute Media File").tap()
+        waitFor(button("Mute Their Voice for Me"), "Mute Voice again", timeout: 5)
+        button("Mute Their Media Files for Me").tap()
         person("Bob").press(forDuration: 1.2)
-        waitFor(button("Unmute Media File"), "Unmute Media File next", timeout: 5)
+        waitFor(button("Unmute Their Media Files for Me"), "Unmute Media File next", timeout: 5)
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
     }
 
@@ -33,19 +33,19 @@ final class PeopleTalkUITests: NGTestCase {
         // The desktop's keyboard shortcut (Command-M) first.
         shortcut("m", .command)
         app.buttons["More"].tap()
-        waitFor(button("Unmute everyone"), "muted by Command-M", timeout: 5)
-        button("Unmute everyone").tap()
+        waitFor(button("Unmute Everyone for Me"), "muted by Command-M", timeout: 5)
+        button("Unmute Everyone for Me").tap()
         app.buttons["More"].tap()
-        waitFor(button("Mute everyone"), "Mute everyone next", timeout: 5)
-        button("Mute everyone").tap()
+        waitFor(button("Mute Everyone for Me"), "Mute everyone next", timeout: 5)
+        button("Mute Everyone for Me").tap()
         app.buttons["More"].tap()
-        waitFor(button("Unmute everyone"), "Unmute everyone next", timeout: 5)
+        waitFor(button("Unmute Everyone for Me"), "Unmute everyone next", timeout: 5)
         closeMenu()
         // The keys still work after the menu (Command-M unmutes); and the
         // app's own Control-2 opens the chat.
         shortcut("m", .command)
         app.buttons["More"].tap()
-        waitFor(button("Mute everyone"), "unmuted by Command-M after using the menu", timeout: 5)
+        waitFor(button("Mute Everyone for Me"), "unmuted by Command-M after using the menu", timeout: 5)
         closeMenu()
         shortcut("2", .control)
         waitFor(app.textFields["Message the channel"], "the chat, by Control-2", timeout: 5)
@@ -66,9 +66,9 @@ final class PeopleTalkUITests: NGTestCase {
     func testOpKickAndBanAsAdmin() {
         connect("admin")
         Host.until("Carol here") { Host.user("carol", seenBy: "admin") != nil }
-        menu("Op", on: "Bob")
+        menu("Make Channel Operator", on: "Bob")
         Host.until("Bob an operator") { (Host.user("bob", seenBy: "carol")?["operator"] as? Bool) == true }
-        menu("Remove Op", on: "Bob")
+        menu("Remove Channel Operator", on: "Bob")
         Host.until("Bob not an operator") { (Host.user("bob", seenBy: "carol")?["operator"] as? Bool) == false }
         menu("Kick From Server", on: "Carol")
         Host.until("Carol kicked") { (Host.state("carol")["kicked"] as? Bool) == true }

@@ -24,7 +24,7 @@ struct SoundsView: View {
         @Bindable var b = sounds
         Form {
             Section {
-                Toggle("Enable Sound Events", isOn: Binding(get: { sounds.enabled }, set: { sounds.enabled = $0 }))
+                Toggle("Play sounds", isOn: Binding(get: { sounds.enabled }, set: { sounds.enabled = $0 }))
             }
             Section {
                 Picker("Sound pack", selection: $b.selectedId) {

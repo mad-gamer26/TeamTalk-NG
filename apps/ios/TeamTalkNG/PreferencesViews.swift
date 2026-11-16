@@ -12,17 +12,17 @@ struct DisplaySettingsView: View {
                 Toggle("Show usernames instead of nicknames", isOn: $model.showUsernames)
                 Toggle("Show channel topics", isOn: $model.showTopics)
                 Toggle("Show number of users in channel", isOn: $model.showUserCount)
-                Toggle("Show last to talk in yellow", isOn: $model.showLastTalk)
+                Toggle("Highlight who talked last", isOn: $model.showLastTalk)
                 Toggle("Show user and channel icons", isOn: $model.showIcons)
                 NumberField("Maximum text length in channel list", value: $model.maxTextLength, in: 1...1000)
-                Picker("Style of user and channel info", selection: $model.infoStyle) {
+                Picker("Show states as", selection: $model.infoStyle) {
                     ForEach(AppModel.InfoStyle.allCases) { Text($0.label).tag($0) }
                 }
                 Picker("Sort channels by", selection: $model.sortChannelsByName) {
                     Text("Ascending").tag(true)
                     Text("Popularity").tag(false)
                 }
-                Picker("Double-tapping a channel", selection: $model.channelTap) {
+                Picker("When I double-tap a channel", selection: $model.channelTap) {
                     ForEach(AppModel.ChannelTap.allCases) { Text($0.label).tag($0) }
                 }
                 Toggle("Expand channels automatically", isOn: $model.autoExpandChannels)
@@ -39,9 +39,9 @@ struct DisplaySettingsView: View {
                 NavigationLink("Message templates") { ChatTemplatesView() }
             }
             Section("Dialogs") {
-                Toggle("Popup dialog when receiving text message", isOn: $model.messagePopup)
-                Toggle("Show dialog box when excluded from channel or server", isOn: $model.excludedDialog)
-                Toggle("Show dialog box with server list on startup", isOn: $model.serverListOnStart)
+                Toggle("Open private messages as they arrive", isOn: $model.messagePopup)
+                Toggle("Tell me in a dialog when I'm kicked", isOn: $model.excludedDialog)
+                Toggle("Show the server list when the app starts", isOn: $model.serverListOnStart)
             }
             Section {
                 Toggle("Notify me of private messages", isOn: $model.notifyInBackground)
@@ -117,7 +117,7 @@ struct GeneralSettingsView: View {
                 NumberField("Set away status after (seconds)", value: $model.awayAfterSeconds, in: 0...86400)
                 if model.awayAfterSeconds > 0 {
                     TextField("Status message during inactivity", text: $model.awayMessage).accessibilityLabel("Status message during inactivity")
-                    Toggle("Disable voice activation during inactivity", isOn: $model.awayStopsVoiceActivation)
+                    Toggle("Turn off voice activation while I'm away", isOn: $model.awayStopsVoiceActivation)
                 }
             } header: {
                 Text("Away")
