@@ -48,6 +48,9 @@ struct TeamTalkNGApp: App {
             // audio was set up again each time). An interruption that ends
             // (a phone call) makes the session active again (AppModel).
             if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
+            // NG Account: what changed on other devices meanwhile (their
+            // push may not have come, or came while the app wasn't running).
+            if p == .active, model.account.email != nil { Task { await model.account.sync() } }
         }
     }
 }

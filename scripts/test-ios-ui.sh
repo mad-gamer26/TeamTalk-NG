@@ -86,7 +86,7 @@ xcrun simctl boot "$sim" 2>/dev/null || true
 xcrun simctl privacy "$sim" grant microphone com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
 set +e
 env TEST_RUNNER_TT_PORT="$tt_port" TEST_RUNNER_CONTROL_PORT="$control_port" \
-    TEST_RUNNER_NG_EMAIL="$ng_email" TEST_RUNNER_NG_PASSWORD="$ng_password" TEST_RUNNER_NG_URL="$ng_url" \
+    TEST_RUNNER_NG_EMAIL="$ng_email" TEST_RUNNER_NG_PASSWORD="$ng_password" TEST_RUNNER_NG_URL="$ng_url" TEST_RUNNER_NG_OUTBOX="$work/ngmon/outbox" \
     TEST_RUNNER_AN_URL="${an_url:-}" TEST_RUNNER_AN_USER=tester TEST_RUNNER_AN_PASSWORD="${an_password:-}" \
     xcodebuild test -project TeamTalkNG.xcodeproj -scheme TeamTalkNG \
     -destination "platform=iOS Simulator,id=$sim" -derivedDataPath build/uitest \

@@ -87,6 +87,11 @@ fn apply_settings(
 ) {
     for r in records.iter().filter(|r| r.kind == "setting") {
         let Some(mine) = local.get_mut(&r.key) else { continue };
+        // Already known: this device's own last push, back in its next pull
+        // (it was applied over a newer choice made since, undoing it).
+        if state.setting_known.get(&r.key).is_some_and(|known| r.rev <= *known) {
+            continue;
+        }
         let value = if r.deleted { None } else { r.data.clone() };
         // Kept when deleted too: a change is made from the latest revision.
         state.setting_known.insert(r.key.clone(), r.rev);

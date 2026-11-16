@@ -279,3 +279,41 @@ fn a_deletion_reaches_a_device_that_started_on_an_empty_account() {
     .unwrap();
     assert_eq!(names(&i), ["Home"]);
 }
+
+/// A device's own last push comes back in its next pull: it isn't applied
+/// over a newer choice made since (the chosen pack sprang back to the old
+/// one and never reached the account), and the newer choice is sent.
+#[test]
+fn a_settings_own_echo_does_not_undo_a_newer_choice() {
+    use serde_json::json;
+    let Some(ng) = Ngmon::start() else { return };
+    let (phone, _) = signed_up(&ng, "echo@example.com", "phone");
+    let ipad = signed_in(&ng, "echo@example.com", "ipad");
+    let mut sp = SyncState::default();
+    let keys = |chosen: &str| vec![("chosen".to_string(), Some(json!(chosen)))];
+
+    let p = sync_with_settings(&phone, &mut sp, vec![], keys("default")).unwrap();
+    assert!(p.settings.is_empty());
+    // Chosen anew here: nothing comes back to undo it, and it's sent.
+    let p = sync_with_settings(&phone, &mut sp, vec![], keys("local:own-1")).unwrap();
+    assert!(
+        p.settings.is_empty(),
+        "its own earlier push isn't applied over the new choice: {:?}",
+        p.settings
+    );
+    let mut si = SyncState::default();
+    let i = sync_with_settings(&ipad, &mut si, vec![], vec![("chosen".to_string(), None)]).unwrap();
+    assert!(
+        i.settings.contains(&("chosen".into(), Some(json!("local:own-1")))),
+        "the account has it: {:?}",
+        i.settings
+    );
+    // And a change made on the iPad still reaches the phone.
+    sync_with_settings(&ipad, &mut si, vec![], keys("catalog:rain")).unwrap();
+    let p = sync_with_settings(&phone, &mut sp, vec![], keys("local:own-1")).unwrap();
+    assert!(
+        p.settings.contains(&("chosen".into(), Some(json!("catalog:rain")))),
+        "{:?}",
+        p.settings
+    );
+}

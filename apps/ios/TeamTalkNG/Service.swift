@@ -57,4 +57,15 @@ final class PushDelegate: NSObject, UIApplicationDelegate {
             if let f = Self.tokenArrived { f(hex) } else { Self.pendingToken = hex }
         }
     }
+
+    /// NG Account's silent notice that the account changed on another
+    /// device ({"ttng": {"sync": rev}}): synced now, in the background too.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard (userInfo["ttng"] as? [String: Any])?["sync"] != nil else { completionHandler(.noData); return }
+        Task { @MainActor in
+            await AppModel.shared?.account.sync()
+            completionHandler(.newData)
+        }
+    }
 }

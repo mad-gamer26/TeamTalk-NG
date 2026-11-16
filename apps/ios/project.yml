@@ -45,7 +45,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         # Stays connected, and keeps talking and listening, when locked.
-        UIBackgroundModes: [audio]
+        # NG Account's silent "changed elsewhere" notices sync in the background.
+        UIBackgroundModes: [audio, remote-notification]
         NSMicrophoneUsageDescription: "TeamTalk NG sends your voice to the channel you're in when you talk."
         NSLocalNetworkUsageDescription: "TeamTalk NG connects to TeamTalk servers on your network."
         ITSAppUsesNonExemptEncryption: false
