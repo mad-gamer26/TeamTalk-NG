@@ -232,6 +232,8 @@ fn muting_someone_shows_at_once() {
     let v = in_root(&server, &["alice", "bob"]);
     let (a, b) = (&v[0], &v[1]);
     let bob = me(b);
+    // Alice knows Bob first (under load, he may not be listed yet).
+    a.wait_until(|s| s.users.iter().any(|u| u.id == bob));
     a.client.set_user_muted(bob, true).unwrap();
     assert!(person(a, bob).voice_muted, "voice muted at once");
     a.client.set_user_media_muted(bob, true).unwrap();

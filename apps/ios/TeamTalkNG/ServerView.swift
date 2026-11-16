@@ -11,6 +11,7 @@ struct ServerView: View {
     @State private var privateWith: User?
     @State private var personFor: User?
     @State private var showStatus = false
+    @State private var showAudioNet = false
     @State private var channelSheet: ChannelSheet?
     @State private var movingUser: User?
     /// The desktop's Users submenus and Volume dialog.
@@ -189,6 +190,7 @@ struct ServerView: View {
         }
         .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
         .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
+        .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showMoveUsers) { MoveUsersView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
         .sheet(isPresented: $showClientStats) { ClientStatisticsView(connection: connection) }
@@ -1074,6 +1076,8 @@ extension ServerView {
             let muted = snap?.mutedAll ?? false
             m.append(.init(muted ? "Unmute Everyone for Me" : "Mute Everyone for Me") { connection.setMuteAll(!muted) })
             m.append(.init("Volume for this server") { showServerVolume = true })
+            let streaming = model.audioNet.streams.filter { $0.connection === connection }.count
+            m.append(.init(streaming == 0 ? "AudioNet" : "AudioNet (\(streaming) streaming)") { showAudioNet = true })
             if snap?.relaying != nil { m.append(.init("Stop relaying") { connection.setRelay(nil) }) }
             if inChannel {
                 m.append(connection.recording ? .init("Stop recording") { connection.stopRecording() }

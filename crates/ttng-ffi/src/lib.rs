@@ -574,6 +574,32 @@ impl From<core::Subscriptions> for Subscriptions {
     }
 }
 
+/// What can be captured for the app (AudioNet's sending).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Capture {
+    /// Everyone I hear, mixed, as it's played.
+    Channel,
+    /// My microphone.
+    Microphone,
+}
+
+impl From<Capture> for core::Capture {
+    fn from(c: Capture) -> Self {
+        match c {
+            Capture::Channel => Self::Channel,
+            Capture::Microphone => Self::Microphone,
+        }
+    }
+}
+
+/// Captured audio: 16-bit samples, interleaved.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct CapturedAudio {
+    pub samples: Vec<i16>,
+    pub sample_rate: u32,
+    pub channels: u32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum AudioStream {
     Voice,
@@ -862,6 +888,8 @@ pub struct MyRights {
     pub upload_files: bool,
     pub download_files: bool,
     pub update_server: bool,
+    /// More than one login with this account at once.
+    pub multi_login: bool,
 }
 
 impl From<core::MyRights> for MyRights {
@@ -877,6 +905,7 @@ impl From<core::MyRights> for MyRights {
             upload_files: r.upload_files,
             download_files: r.download_files,
             update_server: r.update_server,
+            multi_login: r.multi_login,
         }
     }
 }
@@ -1429,6 +1458,34 @@ impl TtClient {
             video_frames_received: s.video_frames_received,
             video_frames_lost: s.video_frames_lost,
         })
+    }
+
+    /// Sends the app's audio (16-bit, interleaved) as this login's voice, in
+    /// place of the microphone: for a login of its own (AudioNet into a
+    /// channel). A full queue refuses; drop the block.
+    pub fn insert_audio(&self, samples: Vec<i16>, sample_rate: u32, channels: u32) -> Result<()> {
+        Ok(self.inner.insert_audio(samples, sample_rate, channels)?)
+    }
+
+    /// Ends the inserted audio.
+    pub fn end_inserted_audio(&self) -> Result<()> {
+        Ok(self.inner.end_inserted_audio()?)
+    }
+
+    /// Starts or stops capturing the channel's sound or my microphone (in a
+    /// channel, with the sound devices open).
+    pub fn set_capture(&self, what: Capture, on: bool) -> Result<()> {
+        Ok(self.inner.set_capture(what.into(), on)?)
+    }
+
+    /// What's been captured since the last read.
+    pub fn read_captured(&self, what: Capture) -> CapturedAudio {
+        let c = self.inner.read_captured(what.into());
+        CapturedAudio {
+            samples: c.samples,
+            sample_rate: c.sample_rate,
+            channels: c.channels,
+        }
     }
 
     /// Relays someone's audio into my channel; nil stops.

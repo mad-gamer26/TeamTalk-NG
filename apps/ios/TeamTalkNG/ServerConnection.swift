@@ -243,6 +243,8 @@ final class ServerConnection {
             monitorAct(.join(channelPath: path, password: password)); return
         }
         let path = channel.parentId == 0 ? "/" : client.channelPath(channelId: channel.id)
+        // Remembered for AudioNet streams' logins, which follow me there.
+        if !password.isEmpty { channelPasswords[channel.id] = password }
         run("Couldn't join", onFail: { [weak self] why in
             self?.status(nil, "Cannot join channel \(path)")
             // The desktop asks again: "Incorrect channel password. Try again."
@@ -250,6 +252,39 @@ final class ServerConnection {
         }) {
             try $0.joinChannel(channelId: channel.id, password: password)
         }
+    }
+
+    // MARK: For AudioNet streams' own logins
+
+    /// Channel passwords that were given (the server's own one too).
+    @ObservationIgnored private var channelPasswords: [Int32: String] = [:]
+
+    func knownPassword(_ channelId: Int32) -> String {
+        if let p = channelPasswords[channelId] { return p }
+        let path = channelId > 0 ? client.channelPath(channelId: channelId) : ""
+        return !path.isEmpty && path == server.joinChannel ? server.channelPassword : ""
+    }
+
+    /// My channel's path ("/" for the root), or empty.
+    var myChannelPath: String {
+        guard let s = snapshot, s.myChannelId > 0 else { return "" }
+        return s.channels.first { $0.id == s.myChannelId }?.parentId == 0 ? "/" : client.channelPath(channelId: s.myChannelId)
+    }
+
+    /// My name as others see it.
+    var nameForOthers: String { me?.displayName ?? app?.nickname.nonEmpty ?? server.username }
+
+    /// A second login to this server, as me (an AudioNet stream's).
+    func companionOptions(nickname: String, channelPath: String, channelPassword: String) -> ConnectOptions {
+        let s = server
+        return ConnectOptions(
+            host: s.host, tcpPort: s.tcpPort, udpPort: s.udpPort, encrypted: s.encrypted,
+            nickname: nickname, username: s.username,
+            password: Passwords.get(s.id), clientName: "TeamTalk NG AudioNet",
+            joinChannelPath: channelPath, joinChannelPassword: channelPassword, reconnect: true,
+            caPem: s.encrypted ? s.caPem : "", certPem: s.encrypted ? s.certPem : "", keyPem: s.encrypted ? s.keyPem : "",
+            verifyPeer: s.encrypted && s.verifyPeer,
+            webLoginUsername: s.bearwareLogin ? BearWare.username : "", webLoginToken: s.bearwareLogin ? BearWare.token : "")
     }
 
     func leaveChannel() {
@@ -741,7 +776,7 @@ final class ServerConnection {
 
     // MARK: Administration
 
-    var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false) }
+    var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false, multiLogin: false) }
 
     func kick(_ user: User, fromChannel: Bool) {
         if monitorId != nil { monitorAct(.kick(userId: Int64(user.id), channelId: fromChannel ? Int64(user.channelId) : nil)); return }
@@ -933,8 +968,10 @@ final class ServerConnection {
             refreshPending = false
             snapshot = monitorId == nil ? client.snapshot() : monitorSnapshot
             state = snapshot?.state ?? .disconnected
-            // Live Activities and Control Center follow.
+            // Live Activities and Control Center follow, and AudioNet
+            // streams' logins follow me to my channel.
             LiveActivities.shared.changed(self)
+            app?.audioNet.follow(self)
             // My channel changed: in view, its parents open (as the
             // desktop's join does; the channel I left was just collapsed,
             // and it may be one of them).
@@ -1601,7 +1638,7 @@ extension ServerConnection {
         func has(_ b: Int64) -> Bool { admin || bits & b != 0 }
         return MyRights(admin: admin, createTemporaryChannels: false, modifyChannels: false, broadcast: has(0x10),
                         kick: has(0x20), ban: has(0x40), moveUsers: has(0x80), uploadFiles: false, downloadFiles: false,
-                        updateServer: has(0x800))
+                        updateServer: has(0x800), multiLogin: false)
     }
 
     /// The Monitor's view as the core's snapshot.

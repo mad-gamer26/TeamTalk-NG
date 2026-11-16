@@ -15,11 +15,14 @@ use std::time::{Duration, Instant};
 
 use ttng_sys as sys;
 
+mod audio_io;
 mod channels;
 mod people;
 mod server;
 pub(crate) mod sound;
 mod video;
+use audio_io::{AudioIoRequest, Captured};
+pub use audio_io::{Capture, CapturedAudio};
 use channels::ChannelRequest;
 pub use channels::media_file_info;
 use people::PeopleRequest;
@@ -111,6 +114,7 @@ type Reply = Sender<Result<()>>;
 
 enum Request {
     Connect(Box<ConnectOptions>, Reply),
+    AudioIo(AudioIoRequest, Reply),
     Disconnect(Reply),
     JoinChannel {
         id: i32,
@@ -265,6 +269,7 @@ pub struct Client {
     model: Arc<Mutex<Model>>,
     level: Arc<std::sync::atomic::AtomicI32>,
     frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
+    captured: Arc<Captured>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -297,17 +302,52 @@ impl Client {
         let l = Arc::clone(&level);
         let frames = Arc::new(Mutex::new(HashMap::new()));
         let fr = Arc::clone(&frames);
+        let captured = Arc::new(Captured::default());
+        let ca = Arc::clone(&captured);
         let worker = thread::Builder::new()
             .name("ttng-sdk".into())
-            .spawn(move || Worker::new(rx, etx, m, l, fr).run())
+            .spawn(move || Worker::new(rx, etx, m, l, fr, ca).run())
             .expect("can't start the SDK thread");
         Client {
             tx,
             model,
             level,
             frames,
+            captured,
             worker: Some(worker),
         }
+    }
+
+    /// Sends audio the app gives (16-bit, interleaved) as this login's
+    /// voice, in place of the microphone (for a login of its own: AudioNet
+    /// into a channel). A full queue refuses; the caller drops the block.
+    pub fn insert_audio(&self, samples: Vec<i16>, sample_rate: u32, channels: u32) -> Result<()> {
+        self.ask(|r| {
+            Request::AudioIo(
+                AudioIoRequest::Insert {
+                    samples,
+                    sample_rate,
+                    channels,
+                },
+                r,
+            )
+        })
+    }
+
+    /// Ends the inserted audio (the voice is free again).
+    pub fn end_inserted_audio(&self) -> Result<()> {
+        self.ask(|r| Request::AudioIo(AudioIoRequest::EndInsert, r))
+    }
+
+    /// Starts or stops capturing the channel's sound or my microphone for
+    /// `read_captured` (in a channel, with the sound devices open).
+    pub fn set_capture(&self, what: Capture, on: bool) -> Result<()> {
+        self.ask(|r| Request::AudioIo(AudioIoRequest::Capture(what, on), r))
+    }
+
+    /// What's been captured since the last read (empty when not capturing).
+    pub fn read_captured(&self, what: Capture) -> CapturedAudio {
+        self.captured.read(what)
     }
 
     fn ask(&self, make: impl FnOnce(Reply) -> Request) -> Result<()> {
@@ -946,6 +986,8 @@ struct Worker {
     /// and when each was last announced.
     frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
     last_frame_note: HashMap<(i32, VideoKind), Instant>,
+    /// The channel's sound and my microphone, captured for the app.
+    captured: Arc<Captured>,
     /// Stream media files' video too (VP8).
     stream_video: bool,
     /// BearWare's answer to a web login, when it comes.
@@ -959,6 +1001,7 @@ impl Worker {
         model: Arc<Mutex<Model>>,
         level: Arc<std::sync::atomic::AtomicI32>,
         frames: Arc<Mutex<HashMap<(i32, VideoKind), VideoFrame>>>,
+        captured: Arc<Captured>,
     ) -> Worker {
         // SAFETY: creates an SDK instance; it's used and closed on this thread only.
         let inst = unsafe { sys::TT_InitTeamTalkPoll() };
@@ -988,6 +1031,7 @@ impl Worker {
             stream_preprocessor: StreamPreprocessor::None,
             web_login: None,
             frames,
+            captured,
             last_frame_note: HashMap::new(),
             stream_video: false,
         }
@@ -1527,6 +1571,9 @@ impl Worker {
             }
             Request::Server(req) => self.handle_server(req),
             Request::Sound(req, reply) => self.handle_sound(req, reply),
+            Request::AudioIo(req, reply) => {
+                let _ = reply.send(self.handle_audio_io(req));
+            }
             Request::Quit => {}
         }
     }
@@ -2124,7 +2171,9 @@ impl Worker {
             sys::ClientEvent_CLIENTEVENT_USER_AUDIOBLOCK if msg.ttType == sys::TTType___STREAMTYPE => {
                 // SAFETY: checked ttType.
                 let stream = unsafe { union.nStreamType };
-                self.on_audio_block(msg.nSource, stream);
+                if !self.on_captured_block(msg.nSource, stream) {
+                    self.on_audio_block(msg.nSource, stream);
+                }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_USERACCOUNT if msg.ttType == sys::TTType___USERACCOUNT => {
                 // SAFETY: checked ttType.
@@ -2369,6 +2418,7 @@ impl Worker {
 fn reply_of(req: Request) -> Option<Reply> {
     Some(match req {
         Request::Connect(_, r)
+        | Request::AudioIo(_, r)
         | Request::Disconnect(r)
         | Request::LeaveChannel(r)
         | Request::SetNickname(_, r)

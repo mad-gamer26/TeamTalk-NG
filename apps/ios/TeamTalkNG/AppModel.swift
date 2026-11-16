@@ -79,6 +79,8 @@ final class AppModel {
     var awayStopsVoiceActivation = false { didSet { save() } }
     @ObservationIgnored private var awayTimer: Task<Void, Never>?
     let sounds = SoundStore()
+    /// AudioNet: accounts, devices and streams.
+    let audioNet = AudioNetStore()
     let speech = SpeechStore()
     let chatTemplates = ChatTemplateStore()
     let statusEvents = StatusEventStore()

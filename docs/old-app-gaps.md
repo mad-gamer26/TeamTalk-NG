@@ -7,9 +7,16 @@ docs/desktop-audit.md; this list is what the old app did beyond it.
 
 ## Larger
 
-- [n/a] AudioNet and audio mixing: built (2026-11-15), then removed at the
-      owner's request (2026-11-16): no other TeamTalk app has it, and its
-      mix took over media file streaming. The core no longer streams FIFOs.
+- [x] AudioNet, again (2026-11-16), in a new way (the first version,
+      a mix in the media file stream, took over file streaming and was
+      removed): any number of accounts, each signed in as a visitor (tokens
+      in the keychain); a device's sound into a channel as a TeamTalk login
+      of its own per stream (named from a template, it follows me between
+      channels and sends as its voice: core insert_audio), so talking and
+      file streaming are untouched; the channel's sound or my microphone to
+      a device's output (core capture of the muxed and local audio); each
+      stream's volume and mute shown while it streams. Needs the account to
+      allow multiple logins (checked first). AudioNet.swift, AudioNetViews.swift.
 - [n/a] Translations: the owner chose English only (2026-11-15); the old
       app's 18 languages aren't carried over.
 - [x] Moving over from the old app (OldAppImport.swift, once, before

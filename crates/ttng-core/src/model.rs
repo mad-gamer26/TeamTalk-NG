@@ -750,6 +750,9 @@ pub struct MyRights {
     pub upload_files: bool,
     pub download_files: bool,
     pub update_server: bool,
+    /// More than one login with this account at once (otherwise a second
+    /// login ends the first).
+    pub multi_login: bool,
 }
 
 impl MyRights {
@@ -765,6 +768,7 @@ impl MyRights {
             move_users: has(sys::UserRight_USERRIGHT_MOVE_USERS),
             upload_files: has(sys::UserRight_USERRIGHT_UPLOAD_FILES),
             download_files: has(sys::UserRight_USERRIGHT_DOWNLOAD_FILES),
+            multi_login: has(sys::UserRight_USERRIGHT_MULTI_LOGIN),
             update_server: has(sys::UserRight_USERRIGHT_UPDATE_SERVERPROPERTIES),
         }
     }

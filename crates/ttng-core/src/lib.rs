@@ -11,7 +11,9 @@ pub mod text;
 pub mod ttfile;
 pub mod volume;
 
-pub use client::{AudioDevices, Client, ConnectOptions, Encryption, EventListener, WebLogin, media_file_info};
+pub use client::{
+    AudioDevices, Capture, CapturedAudio, Client, ConnectOptions, Encryption, EventListener, WebLogin, media_file_info,
+};
 pub use error::{Error, Result};
 pub use model::*;
 

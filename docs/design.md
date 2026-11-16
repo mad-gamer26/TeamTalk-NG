@@ -36,7 +36,7 @@
 ## Milestones
 
 1. **The core**: connect, log in, channels, users, text messages, voice, status, reconnect; then files, administration, recording. Headless tests.
-2. **iPhone app** at parity with the old one: servers, channels, users, messages, settings, sound packs, Monitor, NG Account, recording, admin (not AudioNet: removed 2026-11-16, see docs/old-app-gaps.md); migration from the old app.
+2. **iPhone app** at parity with the old one: servers, channels, users, messages, settings, sound packs, Monitor, NG Account, recording, admin (AudioNet in a new way since 2026-11-16, see docs/old-app-gaps.md); migration from the old app.
 3. **Android app** on the same core.
 4. **Mac and Windows apps**, and what neither old app had: voice activation, connection statistics, audio tuning, a microphone test, server statistics, channel operators, the full ban tools, the SDK's multi-track recording, 3D positioning.
 
