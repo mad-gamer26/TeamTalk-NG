@@ -891,6 +891,8 @@ pub struct MyRights {
     pub update_server: bool,
     /// More than one login with this account at once.
     pub multi_login: bool,
+    /// Make anyone an operator without the channel's operator password.
+    pub operator_enable: bool,
 }
 
 impl From<core::MyRights> for MyRights {
@@ -907,6 +909,7 @@ impl From<core::MyRights> for MyRights {
             download_files: r.download_files,
             update_server: r.update_server,
             multi_login: r.multi_login,
+            operator_enable: r.operator_enable,
         }
     }
 }
@@ -1032,6 +1035,8 @@ pub struct Snapshot {
     pub my_user_id: i32,
     pub my_channel_id: i32,
     pub my_rights: MyRights,
+    /// The channels I'm an operator of (I needn't be in them).
+    pub my_operator_channels: Vec<i32>,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
     pub files: Vec<RemoteFile>,
@@ -1052,6 +1057,7 @@ impl From<core::Snapshot> for Snapshot {
             my_user_id: s.my_user_id,
             my_channel_id: s.my_channel_id,
             my_rights: s.my_rights.into(),
+            my_operator_channels: s.my_operator_channels,
             channels: s.channels.into_iter().map(Into::into).collect(),
             users: s.users.into_iter().map(Into::into).collect(),
             files: s.files.into_iter().map(Into::into).collect(),

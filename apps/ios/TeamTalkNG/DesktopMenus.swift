@@ -110,7 +110,7 @@ struct UserMenu: View {
     /// For VoiceOver: one flat list, reversed; submenus open a list.
     var flatReversed = false
 
-    enum UserSheet { case info, messages, volume, move, subscriptions, transmit, banServer, banChannel }
+    enum UserSheet { case info, messages, volume, move, subscriptions, transmit, banServer, banChannel, operatorPassword }
 
     private var rights: MyRights { connection.rights }
 
@@ -120,20 +120,22 @@ struct UserMenu: View {
             .init("Speak User Information") { connection.speakUserInfo(user) },
             .init("Send Private Message") { open(.messages) },
         ]
-        if connection.canModerate(channel: user.channelId) || rights.admin {
-            m.append(.init(user.operator ? "Remove Channel Operator" : "Make Channel Operator") { connection.setOperator(user, !user.operator) })
-        }
+        // The desktop's Op: for anyone; without the right to make operators,
+        // the channel's operator password is asked for.
+        m.append(.init(user.operator ? "Remove Channel Operator" : "Make Channel Operator") {
+            if rights.operatorEnable { connection.setOperator(user, !user.operator) } else { open(.operatorPassword) }
+        })
         let audio = connection.hasAudio
         if audio {
             m.append(.init("Change Their Volume") { open(.volume) })
             m.append(.init(user.voiceMuted ? "Unmute Their Voice for Me" : "Mute Their Voice for Me") { connection.toggleMuteVoice(user) })
             m.append(.init(user.mediaMuted ? "Unmute Their Media Files for Me" : "Mute Their Media Files for Me") { connection.toggleMuteMedia(user) })
         }
-        if rights.kick || connection.canModerate(channel: user.channelId) {
-            if user.channelId > 0 {
-                m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
-                m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
-            }
+        // The desktop offers these for anyone in a channel (the server
+        // refuses unless I'm its operator or may kick and ban).
+        if user.channelId > 0 {
+            m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
+            m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
         }
         if rights.kick { m.append(.init("Kick From Server") { connection.kick(user, fromChannel: false) }) }
         if rights.ban { m.append(.init("Kick and Ban From Server") { open(.banServer) }) }
@@ -145,7 +147,9 @@ struct UserMenu: View {
         // The desktop's Advanced submenu's relay items, here instead of it
         // (moving people is the More menu's "Move users"; the volume steps
         // are keyboard shortcuts and the Volume screen).
-        if audio && user.id != connection.snapshot?.myUserId {
+        // The desktop: not while voice activation is on or I'm talking.
+        let sending = connection.appModel?.talkMode == .voiceActivation || connection.transmitting
+        if audio && !sending && user.id != connection.snapshot?.myUserId {
             let relaying = connection.snapshot?.relaying
             let voice = relaying?.userId == user.id && relaying?.stream == .voice
             let media = relaying?.userId == user.id && relaying?.stream == .mediaFile
@@ -531,6 +535,41 @@ struct MoveUsersView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
             .onAppear { picked = connection.pickedToMove }
+        }
+    }
+}
+
+/// The desktop's Op without the right to make operators: the channel's
+/// operator password ("Specify password"), filled in when it's known.
+struct OperatorPasswordView: View {
+    let connection: ServerConnection
+    let user: User
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Operator password", text: $password).accessibilityLabel("Operator password")
+                } footer: {
+                    Text("Specify the channel's operator password.")
+                }
+            }
+            .navigationTitle(user.operator ? "Remove Channel Operator" : "Make Channel Operator")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK") {
+                        connection.setOperator(user, !user.operator, password: password)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                password = connection.snapshot?.channels.first { $0.id == user.channelId }?.operatorPassword ?? ""
+            }
         }
     }
 }

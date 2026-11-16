@@ -373,3 +373,52 @@ fn statistics_and_relaying() {
     a.client.set_relay(None).unwrap();
     assert_eq!(a.client.snapshot().relaying, None);
 }
+
+/// Operator of a channel I'm not in (the desktop's TT_IsChannelOperator
+/// for myself, its me_op): known, so its menus offer what an operator may;
+/// and the right to make operators without the password.
+#[test]
+fn operator_of_a_channel_im_not_in_is_known() {
+    let server = Server::start();
+    let admin = TestClient::logged_in(&server, "admin");
+    let root = admin
+        .wait_until(|s| s.channels.iter().any(|c| c.parent_id == 0))
+        .channels
+        .iter()
+        .find(|c| c.parent_id == 0)
+        .unwrap()
+        .id;
+    admin
+        .client
+        .make_channel(&ChannelSpec {
+            parent_id: root,
+            name: "Lobby".into(),
+            permanent: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let alice = TestClient::logged_in(&server, "alice");
+    alice.client.join_channel_path("/", "").unwrap();
+    let lobby = alice
+        .wait_until(|s| s.channels.iter().any(|c| c.name == "Lobby"))
+        .channels
+        .iter()
+        .find(|c| c.name == "Lobby")
+        .unwrap()
+        .id;
+    assert!(!alice.client.snapshot().my_operator_channels.contains(&lobby));
+    assert!(
+        !alice.client.snapshot().my_rights.operator_enable,
+        "an ordinary account"
+    );
+    assert!(admin.client.snapshot().my_rights.operator_enable, "an admin may");
+    let a = me(&alice);
+    admin.wait_until(|s| s.users.iter().any(|u| u.id == a));
+    admin
+        .client
+        .set_operator(a, lobby, "", true)
+        .expect("made operator of Lobby");
+    alice.wait_until(|s| s.my_operator_channels.contains(&lobby));
+    admin.client.set_operator(a, lobby, "", false).unwrap();
+    alice.wait_until(|s| !s.my_operator_channels.contains(&lobby));
+}

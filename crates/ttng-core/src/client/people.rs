@@ -325,8 +325,24 @@ impl Worker {
         self.emit(Event::UserUpdated(u));
     }
 
+    /// Whether I'm an operator of a channel (in it or not), kept in the
+    /// model for the menus (the desktop's me_op).
+    pub(super) fn refresh_my_operator(&self, channel_id: i32) {
+        let me = self.model.lock().map(|m| m.my_user_id).unwrap_or(0);
+        // SAFETY: inst is live.
+        let op = me > 0 && unsafe { sys::TT_IsChannelOperator(self.inst, me, channel_id) } != 0;
+        if let Ok(mut m) = self.model.lock() {
+            if op {
+                m.my_operator_channels.insert(channel_id);
+            } else {
+                m.my_operator_channels.remove(&channel_id);
+            }
+        }
+    }
+
     /// A channel changed: its people's operator flags may have.
     pub(super) fn refresh_operators(&self, channel_id: i32) {
+        self.refresh_my_operator(channel_id);
         let people: Vec<User> = self
             .model
             .lock()

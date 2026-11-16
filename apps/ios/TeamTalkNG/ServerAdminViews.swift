@@ -256,24 +256,39 @@ struct ServerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     let connection: ServerConnection
     @State private var s: ServerSettings?
+    /// The desktop's Server Properties: everyone sees them; only those who
+    /// may update the server change them (read-only otherwise, the message
+    /// of the day as shown, a Close button only).
+    private var editable: Bool { connection.rights.updateServer }
 
     var body: some View {
         NavigationStack {
             Form {
                 if let s {
                     let b = Binding(get: { self.s ?? s }, set: { self.s = $0 })
-                    Section {
-                        TextField("Server name", text: b.name).accessibilityLabel("Server name")
-                        TextField("Message of the day", text: b.motd, axis: .vertical).accessibilityLabel("Message of the day").lineLimit(3...8)
-                    } footer: {
-                        Text("The message can use %users% (people online), %admins%, %uptime% and %voicetx%, %voicerx%, %lastuser%.")
+                    if editable {
+                        Section {
+                            TextField("Server name", text: b.name).accessibilityLabel("Server name")
+                            TextField("Message of the day", text: b.motd, axis: .vertical).accessibilityLabel("Message of the day").lineLimit(3...8)
+                        } footer: {
+                            Text("The message can use %users% (people online), %admins%, %uptime% and %voicetx%, %voicerx%, %lastuser%.")
+                        }
+                    } else {
+                        Section {
+                            LabeledContent("Server name", value: s.name)
+                            LabeledContent("Message of the day", value: connection.snapshot?.server.motd ?? s.motd)
+                        }
                     }
                     Section("Connections") {
                         number("Most people", b.maxUsers)
                         number("User timeout, seconds", b.userTimeout)
                         number("TCP port", b.tcpPort)
                         number("UDP port", b.udpPort)
-                        Toggle("Save changes straight away", isOn: b.autoSave)
+                        if editable {
+                            Toggle("Save changes straight away", isOn: b.autoSave)
+                        } else {
+                            LabeledContent("Save changes straight away", value: s.autoSave ? "On" : "Off")
+                        }
                     }
                     Section {
                         number("Wrong logins before a ban (0: never)", b.maxLoginAttempts)
@@ -302,6 +317,9 @@ struct ServerSettingsView: View {
             .navigationTitle("Server settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if !editable {
+                    ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                } else {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
@@ -315,6 +333,7 @@ struct ServerSettingsView: View {
                     }
                     .disabled(s == nil)
                 }
+                }
             }
             .task { s = await adminCall(connection, "Couldn't read the settings", monitor: { try $0.adminServerSettings(serverId: $1) }) { try $0.serverSettings() } }
         }
@@ -324,12 +343,16 @@ struct ServerSettingsView: View {
         Binding(get: { b.wrappedValue / 1000 }, set: { b.wrappedValue = $0 * 1000 })
     }
 
-    private func number(_ label: String, _ v: Binding<Int32>) -> some View {
-        LabeledContent(label) {
-            TextField(label, value: v, format: .number)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel(label)
+    @ViewBuilder private func number(_ label: String, _ v: Binding<Int32>) -> some View {
+        if editable {
+            LabeledContent(label) {
+                TextField(label, value: v, format: .number)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityLabel(label)
+            }
+        } else {
+            LabeledContent(label, value: "\(v.wrappedValue)")
         }
     }
 }
@@ -431,5 +454,58 @@ struct OnlineUsersView: View {
         if !u.ipAddress.isEmpty { p.append(u.ipAddress) }
         p.append("\(u.clientName) \(u.version)")
         return p.joined(separator: ", ")
+    }
+}
+
+/// The desktop's User Accounts for someone who isn't an admin: their own
+/// account, read-only (its "View User Information", UserAccountDlg's
+/// USER_READONLY), as the server gave it at login.
+struct MyAccountView: View {
+    @Environment(\.dismiss) private var dismiss
+    let connection: ServerConnection
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let a = connection.coreClient.myAccount() {
+                    Section {
+                        LabeledContent("Username", value: a.username)
+                        LabeledContent("Type", value: a.admin ? "Administrator" : "Default user")
+                        if !a.note.isEmpty { LabeledContent("Note", value: a.note) }
+                        LabeledContent("Initial channel", value: a.initialChannel.isEmpty ? "None" : a.initialChannel)
+                    }
+                    if !a.admin {
+                        Section("What you may do") {
+                            ForEach(allUserRights(), id: \.self) { r in
+                                LabeledContent(r.label, value: a.rights.contains(r) ? "Yes" : "No")
+                            }
+                        }
+                    }
+                    if !a.autoOperatorChannels.isEmpty {
+                        Section("Operator of these channels") {
+                            ForEach(a.autoOperatorChannels, id: \.self) { id in
+                                Text(connection.coreClient.channelPath(channelId: id).nonEmpty ?? "Channel \(id)")
+                            }
+                        }
+                    }
+                    Section("Limits") {
+                        LabeledContent("Highest audio bitrate, kbit/s (0: no limit)", value: "\(a.bitrateLimit / 1000)")
+                        LabeledContent("Flood protection: at most this many commands (0: off)", value: "\(a.commandsLimit)")
+                        LabeledContent("Flood protection: in this many seconds", value: "\(a.commandsIntervalMs / 1000)")
+                    }
+                    if !a.lastModified.isEmpty || !a.lastLogin.isEmpty {
+                        Section {
+                            if !a.lastModified.isEmpty { LabeledContent("Changed", value: serverTime(a.lastModified)) }
+                            if !a.lastLogin.isEmpty { LabeledContent("Last login", value: serverTime(a.lastLogin)) }
+                        }
+                    }
+                } else {
+                    Text("This server didn't say what your account may do.").foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Your account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
     }
 }

@@ -753,6 +753,9 @@ pub struct MyRights {
     /// More than one login with this account at once (otherwise a second
     /// login ends the first).
     pub multi_login: bool,
+    /// Make anyone a channel operator without the channel's operator
+    /// password (the desktop asks for it otherwise).
+    pub operator_enable: bool,
 }
 
 impl MyRights {
@@ -769,6 +772,7 @@ impl MyRights {
             upload_files: has(sys::UserRight_USERRIGHT_UPLOAD_FILES),
             download_files: has(sys::UserRight_USERRIGHT_DOWNLOAD_FILES),
             multi_login: has(sys::UserRight_USERRIGHT_MULTI_LOGIN),
+            operator_enable: has(sys::UserRight_USERRIGHT_OPERATOR_ENABLE),
             update_server: has(sys::UserRight_USERRIGHT_UPDATE_SERVERPROPERTIES),
         }
     }
@@ -1173,6 +1177,8 @@ pub struct Snapshot {
     pub my_user_id: i32,
     pub my_channel_id: i32,
     pub my_rights: MyRights,
+    /// The channels I'm an operator of (I needn't be in them).
+    pub my_operator_channels: Vec<i32>,
     pub channels: Vec<Channel>,
     pub users: Vec<User>,
     /// Every channel's files (that I may see).

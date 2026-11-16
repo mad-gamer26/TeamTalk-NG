@@ -165,6 +165,7 @@ struct ServerView: View {
             switch d.kind {
             case .subscriptions: SubscriptionsDialog(connection: connection, user: d.user)
             case .transmit: TransmitDialog(connection: connection, user: d.user)
+            case .operatorPassword: OperatorPasswordView(connection: connection, user: d.user)
             default: UserVolumeDialog(connection: connection, user: d.user)
             }
         }
@@ -188,7 +189,10 @@ struct ServerView: View {
         .sheet(isPresented: $showBans) {
             BansView(connection: connection)
         }
-        .sheet(isPresented: $showAccounts) { AccountsView(connection: connection) }
+        // The desktop: admins list every account; anyone else sees their own.
+        .sheet(isPresented: $showAccounts) {
+            if connection.rights.admin { AccountsView(connection: connection) } else { MyAccountView(connection: connection) }
+        }
         .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
         .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showMoveUsers) { MoveUsersView(connection: connection) }
@@ -482,10 +486,17 @@ private struct ChannelRow: View {
             if here { m.append(.init("Read What's Happening Here") { connection.speakChannelState() }) }
         }
         m.append(.init("Copy a Link to This Channel", copyLink))
-        if rights.modifyChannels || rights.createTemporaryChannels { m.append(.init("New Channel Inside This One", newSub)) }
-        if rights.modifyChannels || moderate { m.append(.init("Edit Channel", edit)) }
-        if rights.modifyChannels && channel.parentId != 0 { m.append(.init("Delete Channel", delete)) }
-        if moderate { m.append(.init("Channel Bans", bans)) }
+        // The desktop offers these for any channel (the server refuses
+        // without the right). Create Channel makes it inside the chosen one
+        // only with the right to modify channels (otherwise inside mine: More
+        // → New channel).
+        if rights.modifyChannels { m.append(.init("New Channel Inside This One", newSub)) }
+        // (Not through the Monitor: it can't change channels.)
+        if connection?.isMonitor != true {
+            m.append(.init("Edit Channel", edit))
+            m.append(.init("Delete Channel", delete))
+        }
+        m.append(.init("Channel Bans", bans))
         if here {
             if connection?.hasAudio != false { m.append(.init("Stream a File to the Channel", stream)) }
             if let connection, connection.hasAudio, let st = snapshot.streaming {
@@ -494,7 +505,10 @@ private struct ChannelRow: View {
             if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
         }
         if !picked.isEmpty { m.append(.init("Move the \(picked.count) picked here", movePicked)) }
-        if moderate && channel.classroom { m.append(.init("Classroom: who may send", classroom)) }
+        // The desktop's Allow All: classroom channels, operators and those who may modify channels.
+        if channel.classroom, let connection, connection.canControlTransmit(channel: channel.id) {
+            m.append(.init("Classroom: who may send", classroom))
+        }
         return m
     }
 }
@@ -1086,17 +1100,23 @@ extension ServerView {
                                               : .init("Record conversations") { connection.startRecording() })
             }
         }
-        if connection.rights.createTemporaryChannels || connection.rights.modifyChannels {
-            m.append(.init("New channel") { channelSheet = .new(parent: rootId, temporary: !connection.rights.modifyChannels) })
+        // The desktop's Server menu, as its slotUpdateUI enables it: Create
+        // Channel when in a channel (inside mine; the server refuses without
+        // the right), User Accounts and Server Properties for everyone (my
+        // own account, the settings read-only, unless allowed), Banned Users
+        // for operators of my channel and those who may ban.
+        let myChannel = snap?.myChannelId ?? 0
+        if inChannel {
+            m.append(.init("New channel") { channelSheet = .new(parent: myChannel, temporary: !connection.rights.modifyChannels) })
         }
         if connection.rights.broadcast { m.append(.init("Broadcast message") { broadcasting = true }) }
         if connection.rights.moveUsers { m.append(.init("Move users") { showMoveUsers = true }) }
         m.append(.init("Online users") { showOnline = true })
         m.append(.init("Connection statistics") { showClientStats = true })
-        if connection.rights.updateServer { m.append(.init("Server settings") { showServerSettings = true }) }
-        if connection.rights.ban { m.append(.init("Bans") { showBans = true }) }
+        m.append(.init("Server settings") { showServerSettings = true })
+        if connection.rights.ban || connection.isOperator(of: myChannel) { m.append(.init("Bans") { showBans = true }) }
+        m.append(.init("User accounts") { showAccounts = true })
         if connection.rights.admin {
-            m.append(.init("User accounts") { showAccounts = true })
             m.append(.init("Server statistics") { showStats = true })
             m.append(.init("Save server configuration") { connection.saveServerConfig() })
         }
@@ -1137,14 +1157,17 @@ extension ServerView {
         case .userInfo: if let u { personFor = u }
         case .speakUserInfo: if let u { connection.speakUserInfo(u) } else if let c { connection.speakChannelInfo(c) }
         case .messages: if let u { privateWith = u }
-        case .op: if let u { connection.setOperator(u, !u.operator) }
+        case .op:
+            if let u {
+                if connection.rights.operatorEnable { connection.setOperator(u, !u.operator) } else { userDialog = UserDialog(user: u, kind: .operatorPassword) }
+            }
         case .volume: if let u { userDialog = UserDialog(user: u, kind: .volume) }
         case .muteVoice: if let u { connection.toggleMuteVoice(u) }
         case .muteMedia: if let u { connection.toggleMuteMedia(u) }
         case .kickChannel: if let u { connection.kick(u, fromChannel: true) }
         case .kickBanChannel: if let u { banning = BanTarget(user: u, fromChannel: true) }
-        case .kickServer: if let u { connection.kick(u, fromChannel: false) }
-        case .kickBanServer: if let u { banning = BanTarget(user: u, fromChannel: false) }
+        case .kickServer: if let u, connection.rights.kick { connection.kick(u, fromChannel: false) }
+        case .kickBanServer: if let u, connection.rights.ban { banning = BanTarget(user: u, fromChannel: false) }
         case .subscription(let s): if let u { connection.toggleSubscription(u, s) }
         case .transmit(let s, let all):
             guard let c, let who = all ? Int32(0) : u?.id, connection.canControlTransmit(channel: c.id),
@@ -1154,8 +1177,8 @@ extension ServerView {
         case .voiceDown: if let u { connection.stepVolume(u, media: false, by: -1) }
         case .mediaUp: if let u { connection.stepVolume(u, media: true, by: 1) }
         case .mediaDown: if let u { connection.stepVolume(u, media: true, by: -1) }
-        case .storeForMove: if let u { connection.togglePicked(u) }
-        case .moveUsers: if let c { connection.movePicked(to: c) }
+        case .storeForMove: if let u, connection.rights.moveUsers { connection.togglePicked(u) }
+        case .moveUsers: if let c, connection.rights.moveUsers { connection.movePicked(to: c) }
         case .moveDialog: if connection.rights.moveUsers { showMoveUsers = true }
         case .muteAll: connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false))
         case .join: if let c, c.id != connection.snapshot?.myChannelId { if c.hasPassword { passwordFor = c } else { connection.join(c) } }
@@ -1169,10 +1192,11 @@ extension ServerView {
         case .stream: pickingStream = true
         case .pauseStream: if let st = connection.snapshot?.streaming { connection.pauseStream(st.status != .paused) }
         case .accounts: showAccounts = true
-        case .serverBans: showBans = true
+        case .serverBans:
+            if connection.rights.ban || connection.isOperator(of: connection.snapshot?.myChannelId ?? 0) { showBans = true }
         case .onlineUsers: showOnline = true
-        case .broadcast: broadcasting = true
-        case .saveConfig: connection.saveServerConfig()
+        case .broadcast: if connection.rights.broadcast { broadcasting = true }
+        case .saveConfig: if connection.rights.admin { connection.saveServerConfig() }
         case .talk: connection.toggleTalking()
         case .tab(let t): tab = t
         }

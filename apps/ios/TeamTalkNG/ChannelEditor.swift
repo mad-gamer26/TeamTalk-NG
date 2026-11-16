@@ -33,6 +33,8 @@ struct ChannelEditView: View {
 
     private var editing: Channel? { if case .edit(let c) = sheet { c } else { nil } }
     private var temporary: Bool { if case .new(_, let t) = sheet { t } else { false } }
+    /// The desktop's modchannels: lasting channels, their size and disk space.
+    private var canModify: Bool { connection.rights.modifyChannels && !temporary }
 
     static let sampleRates: [Int32] = [8000, 12000, 16000, 24000, 48000]
     static let frameSizes: [Int32] = [5, 10, 20, 40, 60, 80, 100, 120]
@@ -47,12 +49,13 @@ struct ChannelEditView: View {
                     if editing == nil || changePassword {
                         SecureField("Password (empty for none)", text: $password).accessibilityLabel("Password (empty for none)")
                     }
-                    if editing == nil && !temporary {
+                    // The desktop: only with the right to modify channels
+                    // (otherwise the channel is joined as it's made).
+                    if editing == nil && canModify {
                         Toggle("Join it once it's made", isOn: $joinOnExit)
                     }
                 }
-                if !temporary {
-                    Section {
+                Section {
                         if editing != nil { Toggle("Change the operator password", isOn: $changeOpPassword) }
                         if editing == nil || changeOpPassword {
                             SecureField("Operator password (empty for none)", text: $opPassword).accessibilityLabel("Operator password (empty for none)")
@@ -61,19 +64,23 @@ struct ChannelEditView: View {
                         Text("Whoever knows it can make themselves an operator of the channel.")
                     }
                     Section("Limits") {
-                        TextField("Most people allowed in (leave empty to keep it)", text: $maxUsers).accessibilityLabel("Most people allowed in (leave empty to keep it)").keyboardType(.numberPad)
-                        TextField("Disk space for files, in MB (leave empty to keep it)", text: $quotaMB).accessibilityLabel("Disk space for files, in MB (leave empty to keep it)").keyboardType(.decimalPad)
+                        // The desktop: these need the right to modify channels.
+                        if canModify {
+                            TextField("Most people allowed in (leave empty to keep it)", text: $maxUsers).accessibilityLabel("Most people allowed in (leave empty to keep it)").keyboardType(.numberPad)
+                            TextField("Disk space for files, in MB (leave empty to keep it)", text: $quotaMB).accessibilityLabel("Disk space for files, in MB (leave empty to keep it)").keyboardType(.decimalPad)
+                        }
                         TextField("Longest anyone may talk at once, in seconds (0: no limit)", text: $voiceLimit).accessibilityLabel("Longest anyone may talk at once, in seconds (0: no limit)").keyboardType(.numberPad)
                         TextField("Longest a media file may stream, in seconds (0: no limit)", text: $mediaLimit).accessibilityLabel("Longest a media file may stream, in seconds (0: no limit)").keyboardType(.numberPad)
                     }
                     Section("Type") {
-                        Toggle("Keep it when everyone leaves", isOn: $permanent)
+                        if canModify { Toggle("Keep it when everyone leaves", isOn: $permanent) }
                         Toggle("No interruptions: one person talks at a time", isOn: $soloTransmit)
                         Toggle("Classroom: operators choose who may send", isOn: $classroom)
                         Toggle("Only operators see and hear the others", isOn: $operatorReceiveOnly)
                         Toggle("No voice activation (push to talk only)", isOn: $noVoiceActivation)
                         Toggle("No recording", isOn: $noRecording)
-                        Toggle("Hidden: joined by its path only", isOn: $hidden)
+                        // The desktop: set when it's made, never changed after.
+                        if editing == nil { Toggle("Hidden: joined by its path only", isOn: $hidden) }
                     }
                     codecSection
                     Section {
@@ -87,7 +94,7 @@ struct ChannelEditView: View {
                     } footer: {
                         Text("With a fixed volume, everyone in the channel sounds as loud as each other.")
                     }
-                } else {
+                if editing == nil && !canModify {
                     Section { Text("It goes away when the last person leaves.").foregroundStyle(.secondary) }
                 }
             }
@@ -177,20 +184,21 @@ struct ChannelEditView: View {
         let spec = ChannelSpec(
             parentId: parent, name: name.trimmingCharacters(in: .whitespaces), topic: topic,
             password: editing == nil || changePassword ? password : nil,
-            maxUsers: Int32(maxUsers) ?? 0, permanent: temporary ? false : permanent,
+            maxUsers: canModify ? Int32(maxUsers) ?? 0 : (editing?.maxUsers ?? 0),
+            permanent: canModify ? permanent : (editing?.permanent ?? false),
             soloTransmit: soloTransmit, classroom: classroom, operatorReceiveOnly: operatorReceiveOnly,
             noVoiceActivation: noVoiceActivation, noRecording: noRecording, hidden: hidden,
-            operatorPassword: temporary ? nil : (editing == nil || changeOpPassword ? opPassword : nil),
-            diskQuota: temporary ? nil : quota,
-            codec: temporary || codec == originalCodec && editing != nil ? nil : codec,
-            fixedVolume: temporary ? nil : fixedVolume, fixedVolumeLevel: Int32(fixedLevel),
+            operatorPassword: editing == nil || changeOpPassword ? opPassword : nil,
+            diskQuota: canModify ? quota : nil,
+            codec: codec == originalCodec && editing != nil ? nil : codec,
+            fixedVolume: fixedVolume, fixedVolumeLevel: Int32(fixedLevel),
             voiceTimeoutMs: Int32(voiceLimit).map { $0 * 1000 }, mediaTimeoutMs: Int32(mediaLimit).map { $0 * 1000 })
         if let c = editing {
             connection.updateChannel(c, spec)
         } else {
             // As the desktop: made and joined unless "Join channel on exit"
             // is off (only possible with the right to make lasting channels).
-            connection.makeChannel(spec, temporary: temporary || joinOnExit)
+            connection.makeChannel(spec, temporary: !canModify || joinOnExit)
         }
     }
 }

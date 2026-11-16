@@ -84,7 +84,6 @@ struct PersonView: View {
         let s = connection.snapshot
         let channel = s?.channels.first { $0.id == u.channelId }
         let rights = connection.rights
-        let mod = connection.canModerate(channel: u.channelId)
         Form {
             Section("Information") {
                 row("Nickname", u.nickname.isEmpty ? "None" : u.nickname)
@@ -134,7 +133,9 @@ struct PersonView: View {
             } footer: {
                 Text(isMe && connection.hasAudio ? "Your own voice: on means you hear yourself." : "")
             }
-            if rights.admin && !isMe {
+            // The desktop offers the intercepts to everyone (only admins'
+            // are honoured by the server).
+            if !isMe {
                 Section {
                     ForEach(Self.intercepts.filter(connection.shows), id: \.self) { sub in subscription(u, sub) }
                 } header: {
@@ -143,7 +144,8 @@ struct PersonView: View {
                     Text(connection.hasAudio ? "Their messages and audio, even in other channels or to other people." : "Their messages, even in other channels or to other people.")
                 }
             }
-            if !isMe && connection.hasAudio {
+            // The desktop: not while voice activation is on or I'm talking.
+            if !isMe && connection.hasAudio && connection.appModel?.talkMode != .voiceActivation && !connection.transmitting {
                 Section {
                     let relaying = s?.relaying
                     LiveToggle("Relay their voice into my channel", isOn: Binding(
@@ -160,12 +162,16 @@ struct PersonView: View {
             }
             if u.channelId > 0 {
                 Section {
-                    if mod {
+                    // The desktop: directly with the right to make operators;
+                    // otherwise with the channel's operator password.
+                    if rights.operatorEnable {
                         LiveToggle("Operator of their channel", isOn: Binding(get: { u.operator }, set: { connection.setOperator(u, $0) }))
-                    } else if isMe || !u.operator {
+                    } else {
                         SecureField("Channel's operator password", text: $opPassword).accessibilityLabel("Channel's operator password")
-                        Button(isMe ? "Become operator" : "Make operator") { connection.setOperator(u, true, password: opPassword) }
-                            .disabled(opPassword.isEmpty)
+                        Button(u.operator ? "Remove Channel Operator" : (isMe ? "Become operator" : "Make operator")) {
+                            connection.setOperator(u, !u.operator, password: opPassword)
+                        }
+                        .disabled(opPassword.isEmpty)
                     }
                 } header: {
                     Text("Channel operator")
@@ -183,15 +189,18 @@ struct PersonView: View {
                     Text("They may send (Transmit Control)")
                 }
             }
-            if !isMe && (rights.moveUsers || rights.kick || rights.ban || mod) {
+            // The desktop: kicking and banning from a channel offered for
+            // anyone (the server refuses non-operators); from the server and
+            // moving need their rights.
+            if !isMe {
                 Section("Moderation") {
                     if rights.moveUsers {
                         Button("Move to a channel") { dismiss(); move(u) }
                         Button(connection.pickedToMove.contains(u.id) ? "Don't move with the others" : "Pick to move with others") { connection.togglePicked(u) }
                     }
-                    if (rights.kick || mod) && u.channelId > 0 { Button("Kick from the channel", role: .destructive) { confirm = .kickChannel } }
+                    if u.channelId > 0 { Button("Kick from the channel", role: .destructive) { confirm = .kickChannel } }
                     if rights.kick { Button("Kick from the server", role: .destructive) { confirm = .kickServer } }
-                    if (rights.ban || mod) && u.channelId > 0 {
+                    if u.channelId > 0 {
                         Button("Ban from the channel by account", role: .destructive) { confirm = .banChannel(.username) }
                         Button("Ban from the channel by IP address", role: .destructive) { confirm = .banChannel(.ipAddress) }
                     }

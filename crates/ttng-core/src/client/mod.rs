@@ -259,6 +259,9 @@ struct Model {
     relaying: Option<(i32, AudioStream)>,
     streaming: Option<MediaStream>,
     my_account: Option<UserAccount>,
+    /// The channels I'm an operator of (the desktop's TT_IsChannelOperator
+    /// for myself; I needn't be in them).
+    my_operator_channels: std::collections::BTreeSet<i32>,
     audio: AudioSettings,
     recording_each: Option<String>,
 }
@@ -904,6 +907,7 @@ impl Client {
             muted_all: m.muted_all,
             streaming: m.streaming.clone(),
             my_account: m.my_account.clone(),
+            my_operator_channels: m.my_operator_channels.iter().copied().collect(),
             audio: m.audio,
             recording_each: m.recording_each.clone(),
             relaying: m.relaying,
@@ -1939,6 +1943,7 @@ impl Worker {
         m.relaying = None;
         m.streaming = None;
         m.my_account = None;
+        m.my_operator_channels.clear();
         m.server = ServerInfo::default();
         self.partial.clear();
     }
@@ -2388,6 +2393,14 @@ impl Worker {
                         .then(|| UserAccount::from(&account));
                     if let Ok(mut m) = self.model.lock() {
                         m.my_account = mine.clone();
+                    }
+                    let channels: Vec<i32> = self
+                        .model
+                        .lock()
+                        .map(|m| m.channels.keys().copied().collect())
+                        .unwrap_or_default();
+                    for c in channels {
+                        self.refresh_my_operator(c);
                     }
                     self.logged_in_once = true;
                     self.set_state(ConnectionState::LoggedIn);

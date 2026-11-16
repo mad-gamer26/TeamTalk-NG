@@ -373,8 +373,14 @@ final class ServerConnection {
         return client.channelPath(channelId: c.id)
     }
 
+    /// The desktop's me_op (an operator of that channel, in it or not), or admin.
     func canModerate(channel id: Int32) -> Bool {
-        rights.admin || (me?.operator == true && me?.channelId == id)
+        rights.admin || isOperator(of: id) || (me?.operator == true && me?.channelId == id)
+    }
+
+    /// An operator of a channel (the desktop's TT_IsChannelOperator for me).
+    func isOperator(of channel: Int32) -> Bool {
+        snapshot?.myOperatorChannels.contains(channel) ?? false
     }
 
     /// The desktop's Transmit Control: channel operators and those who may
@@ -788,7 +794,7 @@ final class ServerConnection {
 
     // MARK: Administration
 
-    var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false, multiLogin: false) }
+    var rights: MyRights { snapshot?.myRights ?? MyRights(admin: false, createTemporaryChannels: false, modifyChannels: false, broadcast: false, kick: false, ban: false, moveUsers: false, uploadFiles: false, downloadFiles: false, updateServer: false, multiLogin: false, operatorEnable: false) }
 
     func kick(_ user: User, fromChannel: Bool) {
         if monitorId != nil { monitorAct(.kick(userId: Int64(user.id), channelId: fromChannel ? Int64(user.channelId) : nil)); return }
@@ -1657,7 +1663,7 @@ extension ServerConnection {
         func has(_ b: Int64) -> Bool { admin || bits & b != 0 }
         return MyRights(admin: admin, createTemporaryChannels: false, modifyChannels: false, broadcast: has(0x10),
                         kick: has(0x20), ban: has(0x40), moveUsers: has(0x80), uploadFiles: false, downloadFiles: false,
-                        updateServer: has(0x800), multiLogin: false)
+                        updateServer: has(0x800), multiLogin: false, operatorEnable: false)
     }
 
     /// The Monitor's view as the core's snapshot.
@@ -1671,7 +1677,7 @@ extension ServerConnection {
             state: .loggedIn,
             server: ServerInfo(name: v.serverName, motd: v.motd, version: "", maxUsers: 0),
             myUserId: Int32(v.myUserId), myChannelId: me?.channelId ?? 0,
-            myRights: Self.rights(type: v.myUserType, bits: v.myUserRights),
+            myRights: Self.rights(type: v.myUserType, bits: v.myUserRights), myOperatorChannels: [],
             channels: channels, users: users, files: [], transfers: [], recordingPath: "",
             mutedAll: false, relaying: nil, streaming: nil)
         // As a live connection: events are handled against what was known,
