@@ -14,6 +14,7 @@ final class AppModel {
         didSet {
             save()
             connections.values.forEach { $0.applyTalkMode() }
+            LiveActivities.shared.refreshAll()
             if talkMode != oldValue && (talkMode == .voiceActivation || oldValue == .voiceActivation) {
                 // Switching modes: vox_enable to voice activation, vox_disable
                 // to push to talk (the owner's choice).
@@ -321,6 +322,7 @@ final class AppModel {
         for k in defaults.dictionaryRepresentation().keys where !keep.contains(k) && !k.hasPrefix("Apple") && !k.hasPrefix("NS") {
             defaults.removeObject(forKey: k)
         }
+        LiveActivities.shared.reset()
         talkMode = .pushToTalk
         voiceLevel = 2
         nickname = ""
@@ -357,6 +359,20 @@ final class AppModel {
 
     /// Opens what iOS hands the app: tt:// links (connect) and .tt files.
     func open(_ url: URL) {
+        #if DEBUG
+        // UI tests only: the actions Siri, Control Center and Live
+        // Activities run (Siri itself can't be driven by a test).
+        if url.scheme?.lowercased() == "teamtalkng", url.host == "uitest-action",
+           ProcessInfo.processInfo.arguments.contains("-UITestReset") {
+            ShortcutActions.runForUITest(url)
+            return
+        }
+        #endif
+        // A Live Activity tapped: that server's screen.
+        if url.scheme?.lowercased() == "teamtalkng", url.host == "server" {
+            openServer(id: url.lastPathComponent)
+            return
+        }
         if url.scheme?.lowercased() == "tt", let e = parseTtLink(link: url.absoluteString) {
             addFromEntry(e, connect: true)
             announce("Connecting to \(e.host)")
@@ -390,6 +406,10 @@ final class AppModel {
 
     /// The app, for App Intents (Siri and Control Center run in it).
     @MainActor static weak var shared: AppModel?
+    #if DEBUG
+    /// UI tests: what the last test action said (shown on the server list).
+    var uiTestActionResult = ""
+    #endif
 
     func connectOnStart() {
         for s in servers where s.connectOnStart == true { connection(for: s).connect() }

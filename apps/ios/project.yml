@@ -56,6 +56,11 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: TeamTalk link
             CFBundleURLSchemes: [tt]
+          # A Live Activity tapped opens its server.
+          - CFBundleURLName: TeamTalk NG
+            CFBundleURLSchemes: [teamtalkng]
+        # A Live Activity for each connected server (Settings → Live Activities).
+        NSSupportsLiveActivities: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dk.bearware.teamtalk.tt
             UTTypeDescription: TeamTalk server
@@ -171,11 +176,11 @@ targets:
         # Generated code: its warnings aren't ours.
         SWIFT_SUPPRESS_WARNINGS: YES
 
-  # The Control Center control (iOS 18): "Connect to Server".
+  # Live Activities (iOS 17) and Control Center's controls (iOS 18).
   TeamTalkNGControls:
     type: app-extension
     platform: iOS
-    deploymentTarget: "18.0"
+    deploymentTarget: "17.0"
     sources:
       - Controls
       - Shared

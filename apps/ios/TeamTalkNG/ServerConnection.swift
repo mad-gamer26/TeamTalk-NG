@@ -81,6 +81,7 @@ final class ServerConnection {
     private(set) var lines: [ChatLine] = [] {
         didSet {
             History.save(lines, for: server.id)
+            LiveActivities.shared.changed(self)
             if lines.count == oldValue.count + 1, let last = lines.last { log(last) }
         }
     }
@@ -92,9 +93,9 @@ final class ServerConnection {
     private(set) var busy = false
 
     /// Push to talk: talking now.
-    private(set) var transmitting = false
+    private(set) var transmitting = false { didSet { LiveActivities.shared.changed(self) } }
     /// Voice activation: microphone muted.
-    private(set) var muted = false
+    private(set) var muted = false { didSet { LiveActivities.shared.changed(self) } }
     /// Voice activation is sending my voice now.
     private(set) var voiceActive = false
 
@@ -1015,6 +1016,8 @@ final class ServerConnection {
             refreshPending = false
             snapshot = monitorId == nil ? client.snapshot() : monitorSnapshot
             state = snapshot?.state ?? .disconnected
+            // Live Activities and Control Center follow.
+            LiveActivities.shared.changed(self)
             // My channel changed: in view, its parents open (as the
             // desktop's join does; the channel I left was just collapsed,
             // and it may be one of them).
@@ -1142,7 +1145,7 @@ final class ServerConnection {
     /// Who talked last (the desktop's "Show last to talk").
     private(set) var lastTalker: Int32 = 0
     /// People whose private messages aren't read yet (the desktop's ✉).
-    var unread: Set<Int32> = []
+    var unread: Set<Int32> = [] { didSet { LiveActivities.shared.changed(self) } }
 
     /// Web-login users' settings between their logins (the desktop's
     /// "Restore volume settings and subscriptions on login").

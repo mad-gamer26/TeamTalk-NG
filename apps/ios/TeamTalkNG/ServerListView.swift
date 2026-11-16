@@ -111,6 +111,14 @@ struct ServerListView: View {
                 Button("Cancel", role: .cancel) { link = "" }
             }
         }
+        #if DEBUG
+        // UI tests: what the last test action said.
+        .overlay(alignment: .bottom) {
+            if !model.uiTestActionResult.isEmpty {
+                Text(model.uiTestActionResult).font(.caption).accessibilityIdentifier("uitest-action-result")
+            }
+        }
+        #endif
     }
 }
 
@@ -322,6 +330,7 @@ struct SettingsView: View {
                     NavigationLink("Display") { DisplaySettingsView() }
                     NavigationLink("Connection") { ConnectionSettingsView() }
                     NavigationLink("Recording") { RecordingSettingsView() }
+                    NavigationLink("Live Activities") { LiveActivitySettingsView() }
                     NavigationLink("iCloud sync") { ICloudSyncView() }
                     NavigationLink {
                         NGAccountView()
