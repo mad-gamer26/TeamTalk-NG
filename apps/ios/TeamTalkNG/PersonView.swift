@@ -139,7 +139,7 @@ struct PersonView: View {
                 Section {
                     ForEach(Self.intercepts.filter(connection.shows), id: \.self) { sub in subscription(u, sub) }
                 } header: {
-                    Text("Listen In (administrators)")
+                    Text("Intercept (administrators)")
                 } footer: {
                     Text(connection.hasAudio ? "Their messages and audio, even in other channels or to other people." : "Their messages, even in other channels or to other people.")
                 }

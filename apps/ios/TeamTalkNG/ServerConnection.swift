@@ -920,7 +920,9 @@ final class ServerConnection {
             let failed: String? = await Task.detached {
                 do { try call(client); return nil } catch { return words(error) }
             }.value
-            if let failed {
+            // Not connected (kicked, or disconnected meanwhile): the server's
+            // row already says so; it isn't added to it as a problem.
+            if let failed, failed != Self.notConnected {
                 problem = failed
                 onFail?(failed)
                 announce("\(what): \(failed)")
@@ -928,6 +930,9 @@ final class ServerConnection {
             refresh()
         }
     }
+
+    /// The core's words for an action without a connection.
+    static let notConnected = "Not connected to a server."
 
     // MARK: Talking
 
@@ -1043,12 +1048,12 @@ final class ServerConnection {
         case .desktop: ("Shared screen", .subDesktop)
         case .desktopAccess: ("Control of my shared screen", .subDesktopInput)
         case .mediaFile: ("Media files", .subMediaFile)
-        case .interceptUserMessages: ("Listen in on private messages", .subInterceptUserMessages)
-        case .interceptChannelMessages: ("Listen in on channel messages", .subInterceptChannelMessages)
-        case .interceptVoice: ("Listen in on voice", .subInterceptVoice)
-        case .interceptVideo: ("Listen in on video", .subInterceptVideo)
-        case .interceptDesktop: ("Listen in on shared screens", .subInterceptDesktop)
-        case .interceptMediaFile: ("Listen in on media files", .subInterceptMediaFile)
+        case .interceptUserMessages: ("Intercept private messages", .subInterceptUserMessages)
+        case .interceptChannelMessages: ("Intercept channel messages", .subInterceptChannelMessages)
+        case .interceptVoice: ("Intercept voice", .subInterceptVoice)
+        case .interceptVideo: ("Intercept video", .subInterceptVideo)
+        case .interceptDesktop: ("Intercept shared screens", .subInterceptDesktop)
+        case .interceptMediaFile: ("Intercept media files", .subInterceptMediaFile)
         }
     }
 
@@ -1064,12 +1069,12 @@ final class ServerConnection {
         case .desktop: "Shared Screen"
         case .desktopAccess: "Control of My Shared Screen"
         case .mediaFile: "Media Files"
-        case .interceptUserMessages: "Listen In on Private Messages"
-        case .interceptChannelMessages: "Listen In on Channel Messages"
-        case .interceptVoice: "Listen In on Voice"
-        case .interceptVideo: "Listen In on Video"
-        case .interceptDesktop: "Listen In on Shared Screens"
-        case .interceptMediaFile: "Listen In on Media Files"
+        case .interceptUserMessages: "Intercept Private Messages"
+        case .interceptChannelMessages: "Intercept Channel Messages"
+        case .interceptVoice: "Intercept Voice"
+        case .interceptVideo: "Intercept Video"
+        case .interceptDesktop: "Intercept Shared Screens"
+        case .interceptMediaFile: "Intercept Media Files"
         }
     }
 

@@ -150,6 +150,7 @@ final class ServersUITests: NGTestCase {
         Thread.sleep(forTimeInterval: 3)
         XCTAssertNil(Host.user("alice"), "not logged in again")
         XCTAssertFalse(serverRow.label.contains(", Connected"), "still not connected: \(serverRow.label)")
+        XCTAssertFalse(serverRow.label.contains("Not connected to a server"), "no error added to it: \(serverRow.label)")
     }
 
     @MainActor
