@@ -203,6 +203,88 @@ impl NgAccount {
         decode(self.post("/v1/sync", &json!({ "changes": changes }))?)
     }
 
+    // MARK: Sound packs (backed up privately; published to the catalog)
+
+    /// The account's packs.
+    pub fn my_packs(&self) -> Result<Vec<OwnPack>> {
+        #[derive(serde::Deserialize)]
+        struct Answer {
+            packs: Vec<OwnPack>,
+        }
+        decode::<Answer>(self.get("/v1/packs")?).map(|a| a.packs)
+    }
+
+    /// Backs up one of this app's packs (its `local_id`), or finds it.
+    pub fn backup_pack(&self, local_id: &str, name: &str) -> Result<OwnPack> {
+        decode(self.post("/v1/packs", &json!({ "local_id": local_id, "name": name }))?)
+    }
+
+    /// Changes a pack's name, author, description, or whether it's in the catalog.
+    pub fn change_pack(&self, id: &str, change: &PackChange) -> Result<OwnPack> {
+        decode(self.send(
+            "PATCH",
+            &format!("/v1/packs/{}", seg(id)),
+            Some(serde_json::to_vec(change).unwrap_or_default()),
+            true,
+        )?)
+    }
+
+    /// Puts one sound (`logged_on.wav`) in a pack.
+    pub fn upload_pack_file(&self, id: &str, name: &str, data: &[u8]) -> Result<OwnPack> {
+        decode(self.send(
+            "PUT",
+            &format!("/v1/packs/{}/files/{}", seg(id), seg(name)),
+            Some(data.to_vec()),
+            false,
+        )?)
+    }
+
+    pub fn remove_pack_file(&self, id: &str, name: &str) -> Result<OwnPack> {
+        decode(self.send(
+            "DELETE",
+            &format!("/v1/packs/{}/files/{}", seg(id), seg(name)),
+            None,
+            false,
+        )?)
+    }
+
+    pub fn delete_pack(&self, id: &str) -> Result<()> {
+        self.send("DELETE", &format!("/v1/packs/{}", seg(id)), None, false)
+            .map(|_| ())
+    }
+
+    fn send(&self, method: &str, path: &str, body: Option<Vec<u8>>, json_body: bool) -> Result<Value> {
+        let url = format!("{}{path}", self.base);
+        let auth = self.token.as_ref().map(|t| format!("Bearer {t}"));
+        let r = match method {
+            "PATCH" => {
+                let mut req = self.agent.patch(url);
+                if let Some(a) = &auth {
+                    req = req.header("Authorization", a);
+                }
+                if json_body {
+                    req = req.header("Content-Type", "application/json");
+                }
+                req.send(body.unwrap_or_default())
+            }
+            "PUT" => {
+                let mut req = self.agent.put(url);
+                if let Some(a) = &auth {
+                    req = req.header("Authorization", a);
+                }
+                req.send(body.unwrap_or_default())
+            }
+            _ => {
+                let mut req = self.agent.delete(url);
+                if let Some(a) = &auth {
+                    req = req.header("Authorization", a);
+                }
+                req.call()
+            }
+        };
+        answer(r, self.token.is_some())
+    }
+
     fn session(&mut self, v: Value) -> Result<Session> {
         let s: Session = decode(v)?;
         self.token = Some(s.token.clone());
@@ -258,4 +340,54 @@ pub(crate) fn answer(
     } else {
         ServiceError::Refused { status, message }
     })
+}
+
+/// A path segment, escaped.
+fn seg(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// One of the account's sound packs, as the service has it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default)]
+pub struct OwnPack {
+    pub id: String,
+    /// The app's own ID for the pack.
+    pub local_id: String,
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    /// In the catalog for everyone.
+    pub public: bool,
+    /// Hidden from the catalog by an administrator.
+    pub hidden: bool,
+    pub version: String,
+    pub installs: i64,
+    pub files: Vec<OwnPackFile>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default)]
+pub struct OwnPackFile {
+    pub name: String,
+    pub hash: String,
+    pub size: i64,
+}
+
+/// What to change about a pack (what's left out stays).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct PackChange {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
 }

@@ -203,6 +203,54 @@ pub struct SyncApplied {
     pub conflicts: Vec<SyncRecord>,
 }
 
+/// One of the account's sound packs.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct OwnPack {
+    pub id: String,
+    pub local_id: String,
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    pub public: bool,
+    pub hidden: bool,
+    pub version: String,
+    pub installs: i64,
+    pub files: Vec<OwnPackFile>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct OwnPackFile {
+    pub name: String,
+    /// SHA-256, hex.
+    pub hash: String,
+    pub size: i64,
+}
+
+impl From<svc::OwnPack> for OwnPack {
+    fn from(p: svc::OwnPack) -> Self {
+        OwnPack {
+            id: p.id,
+            local_id: p.local_id,
+            name: p.name,
+            author: p.author,
+            description: p.description,
+            public: p.public,
+            hidden: p.hidden,
+            version: p.version,
+            installs: p.installs,
+            files: p
+                .files
+                .into_iter()
+                .map(|f| OwnPackFile {
+                    name: f.name,
+                    hash: f.hash,
+                    size: f.size,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// NG Account for one install of the app. Calls block: run them off the
 /// main thread.
 #[derive(uniffi::Object)]
@@ -282,6 +330,48 @@ impl NgAccountClient {
 
     pub fn sign_out(&self) -> Result<()> {
         self.with(|a| a.sign_out())
+    }
+
+    /// The account's sound packs (backed up, maybe published).
+    pub fn my_packs(&self) -> Result<Vec<OwnPack>> {
+        self.with(|a| a.my_packs())
+            .map(|l| l.into_iter().map(Into::into).collect())
+    }
+
+    /// Backs up one of this app's packs (or finds it): `local_id` is the app's ID for it.
+    pub fn backup_pack(&self, local_id: String, name: String) -> Result<OwnPack> {
+        self.with(|a| a.backup_pack(&local_id, &name)).map(Into::into)
+    }
+
+    /// Changes what's given (nil stays): name, author, description, in the catalog.
+    pub fn change_pack(
+        &self,
+        id: String,
+        name: Option<String>,
+        author: Option<String>,
+        description: Option<String>,
+        public: Option<bool>,
+    ) -> Result<OwnPack> {
+        let c = svc::PackChange {
+            name,
+            author,
+            description,
+            public,
+        };
+        self.with(|a| a.change_pack(&id, &c)).map(Into::into)
+    }
+
+    /// Puts a sound (its file's bytes, named as the desktop's, such as `logged_on.wav`) in a pack.
+    pub fn upload_pack_file(&self, id: String, name: String, data: Vec<u8>) -> Result<OwnPack> {
+        self.with(|a| a.upload_pack_file(&id, &name, &data)).map(Into::into)
+    }
+
+    pub fn remove_pack_file(&self, id: String, name: String) -> Result<OwnPack> {
+        self.with(|a| a.remove_pack_file(&id, &name)).map(Into::into)
+    }
+
+    pub fn delete_pack(&self, id: String) -> Result<()> {
+        self.with(|a| a.delete_pack(&id))
     }
 
     pub fn pull(&self, since: i64) -> Result<SyncPull> {

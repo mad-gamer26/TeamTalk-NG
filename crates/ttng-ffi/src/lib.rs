@@ -17,6 +17,7 @@ mod hosts;
 mod monitor;
 mod services;
 mod sound;
+mod zipfiles;
 pub use admin::*;
 pub use hosts::*;
 pub use monitor::*;

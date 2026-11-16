@@ -3,21 +3,6 @@ import SwiftUI
 /// Settings → Sounds: the pack, volume, and which events sound.
 struct SoundsView: View {
     @Environment(AppModel.self) private var model
-    @State private var choosingFor: SoundEvent?
-    @State private var importing = false
-
-    @ViewBuilder private func actions(_ e: SoundEvent) -> some View {
-        Button("Play") { model.sounds.preview(e) }
-        Button("Choose a sound file") { choosingFor = e }
-        if model.sounds.hasOwnFile(e) { Button("Use the pack's sound") { model.sounds.resetFile(e) } }
-    }
-
-    /// The same, reversed for VoiceOver.
-    @ViewBuilder private func voiceOverActions(_ e: SoundEvent) -> some View {
-        if model.sounds.hasOwnFile(e) { Button("Use the pack's sound") { model.sounds.resetFile(e) } }
-        Button("Choose a sound file") { choosingFor = e }
-        Button("Play") { model.sounds.preview(e) }
-    }
 
     var body: some View {
         let sounds = model.sounds
@@ -30,59 +15,34 @@ struct SoundsView: View {
                 Picker("Sound pack", selection: $b.selectedId) {
                     ForEach(sounds.packs) { Text($0.name).tag($0.id) }
                 }
+                NavigationLink("Sound packs") { SoundPacksView() }
                 NavigationLink("Get sound packs") { CatalogView() }
-                Button("Import a sound pack") { importing = true }
                 Picker("Playback mode", selection: $b.playbackMode) {
                     ForEach(SoundStore.PlaybackMode.allCases) { Text($0.label).tag($0) }
                 }
                 NamedSlider("Sound volume", value: $b.volume, in: 0...1, step: 0.05, spoken: { "\(Int(($0 * 100).rounded())) percent" })
             } footer: {
-                Text("A desktop client's sound pack imports as it is: choose its folder (a zip opens into one in the Files app). Its sounds have the desktop's names, such as logged_on.wav and vox_me_enable.wav (microphone on). Its hotkey.wav is left out: it isn't used.")
+                Text("Sound packs: make your own, edit, share, publish, import a desktop client's pack, or delete one.")
             }
             Section {
                 ForEach(SoundEvent.allCases) { e in
-                    Toggle(sounds.hasOwnFile(e) ? "\(e.label) (your own sound)" : e.label,
-                           isOn: Binding(get: { sounds.isOn(e) }, set: { sounds.setOn(e, $0) }))
-                        .accessibilityActions { voiceOverActions(e) }
-                        .contextMenu { actions(e) }
+                    Toggle(e.label, isOn: Binding(get: { sounds.isOn(e) }, set: { sounds.setOn(e, $0) }))
+                        .accessibilityActions { Button("Play") { sounds.preview(e) } }
+                        .contextMenu { Button("Play") { sounds.preview(e) } }
                 }
             } header: {
                 Text("Sounds")
             } footer: {
-                Text("Each sound's actions (swipe up or down with VoiceOver, or touch and hold): play it, choose your own file for it, or go back to the pack's.")
+                Text("Each sound's action (swipe up or down with VoiceOver, or touch and hold) plays it. A pack's sounds are chosen in Sound packs.")
             }
             Section {
                 Button("Turn all on") { sounds.setAll(true) }
                 Button("Turn all off") { sounds.setAll(false) }
                 Button("As they were at first", role: .destructive) { sounds.revert() }
             }
-            if sounds.installed.isEmpty == false {
-                Section("Installed packs") {
-                    ForEach(sounds.installed) { p in
-                        Text(p.version.isEmpty ? "\(p.name), by \(p.author)" : "\(p.name), by \(p.author), version \(p.version)")
-                            .swipeActions { Button("Delete", role: .destructive) { sounds.remove(p) } }
-                            .accessibilityActions { Button("Delete") { sounds.remove(p) } }
-                    }
-                }
-            }
-        }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { r in
-            if case .success(let url) = r { announce(model.sounds.importPack(from: url)) }
         }
         .navigationTitle("Sounds")
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(isPresented: Binding(get: { choosingFor != nil }, set: { if !$0 { choosingFor = nil } }),
-                      allowedContentTypes: [.audio]) { r in
-            if case .success(let url) = r, let e = choosingFor {
-                if model.sounds.setFile(e, from: url) {
-                    announce("\(e.label) uses \(url.lastPathComponent)")
-                    model.sounds.preview(e)
-                } else {
-                    announce("That file can't be played")
-                }
-            }
-            choosingFor = nil
-        }
     }
 }
 

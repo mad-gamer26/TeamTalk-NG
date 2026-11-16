@@ -10,7 +10,10 @@ mod monitor;
 mod server_record;
 mod sync;
 
-pub use account::{Account, AccountInfo, NgAccount, Session, SyncApplied, SyncChange, SyncPull, SyncRecord};
+pub use account::{
+    Account, AccountInfo, NgAccount, OwnPack, OwnPackFile, PackChange, Session, SyncApplied, SyncChange, SyncPull,
+    SyncRecord,
+};
 pub use error::ServiceError;
 pub use monitor::{
     Conversation, Monitor, MonitorAction, MonitorChannel, MonitorEvent, MonitorEvents, MonitorServer,

@@ -59,3 +59,18 @@ docs/desktop-audit.md; this list is what the old app did beyond it.
       (ng_installed_catalog_packs, ng_selected_sound_pack); core
       sync_with_settings, tested. n/a: backing up packs made on the phone
       (NG has no pack maker; a sound of your own per event stays local).
+
+## Sound packs (2026-11-16, the owner's choices)
+
+- [x] Packs are made, edited, duplicated, exported and deleted
+      (SoundPackViews.swift). Each sound of a pack: play, choose a file,
+      or use the built-in one. Built-in and catalog packs are edited
+      through a copy ("Make an editable copy"); imported and made ones
+      directly. The old per-sound "your own sound" files were dropped.
+- [x] Export and share: a .zip with the desktop's file names (ttng-ffi
+      zip_folder); import from a folder or a .zip (unzip_flat).
+- [x] Publish to the catalog through NG Account (backed up privately,
+      sounds sent when changed, made public under the name and author
+      given), update, withdraw; deleting a pack deletes the account's copy.
+      Needs the live service's sound names to include the desktop's full
+      list (deployed only to the dev Mac's ngmon so far).

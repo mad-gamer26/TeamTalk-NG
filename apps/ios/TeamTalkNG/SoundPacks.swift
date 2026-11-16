@@ -105,14 +105,35 @@ struct CatalogPack: Decodable, Identifiable, Hashable {
     let files: [File]
 }
 
-/// A pack on this iPhone: the built-in one, or one from the catalog.
+/// A pack on this iPhone: the built-in one, one from the catalog, one
+/// imported, or one made here. Imported and made ones can be edited; the
+/// others are edited through a copy (an update would undo changes).
 struct InstalledPack: Codable, Identifiable, Hashable {
     let id: String
     var name: String
     var author: String
     var version: String
+    /// Said in the catalog when published (made and imported packs).
+    var description: String?
 
     static let builtIn = InstalledPack(id: "default", name: "TeamTalk (built in)", author: "BearWare.dk", version: "")
+
+    enum Kind { case builtIn, catalog, imported, own }
+    var kind: Kind {
+        if id == Self.builtIn.id { return .builtIn }
+        if id.hasPrefix("imported-") { return .imported }
+        if id.hasPrefix("own-") { return .own }
+        return .catalog
+    }
+    var editable: Bool { kind == .imported || kind == .own }
+    var kindText: String {
+        switch kind {
+        case .builtIn: "built in"
+        case .catalog: "from the catalog"
+        case .imported: "imported"
+        case .own: "yours"
+        }
+    }
 }
 
 /// Sound packs, the chosen one, volume and which events sound; plays them.
@@ -165,17 +186,9 @@ final class SoundStore {
         let known = Set(defaults.stringArray(forKey: "soundsKnown") ?? SoundEvent.allCases.map(\.rawValue))
         for e in SoundEvent.allCases where !known.contains(e.rawValue) && !e.onByDefault { disabled.insert(e) }
         defaults.set(SoundEvent.allCases.map(\.rawValue), forKey: "soundsKnown")
-        // My own sounds for talking on and off: the voice activation ones now.
-        for (old, new) in [("on", "vox_me_enable"), ("off", "vox_me_disable"), ("hotkey", "")] {
-            let from = Self.customDirectory.appendingPathComponent("\(old).wav")
-            guard FileManager.default.fileExists(atPath: from.path) else { continue }
-            let to = Self.customDirectory.appendingPathComponent("\(new).wav")
-            if new.isEmpty || FileManager.default.fileExists(atPath: to.path) {
-                try? FileManager.default.removeItem(at: from)
-            } else {
-                try? FileManager.default.moveItem(at: from, to: to)
-            }
-        }
+        // A sound file of my own for each event is gone (packs are made
+        // and edited instead; the owner chose to drop those files).
+        try? FileManager.default.removeItem(at: Self.customDirectory)
         // Packs installed before: their hotkey sound isn't used.
         for p in installed {
             for ext in SoundEvent.extensions {
@@ -213,10 +226,9 @@ final class SoundStore {
         save()
     }
 
-    /// As the desktop has them: on and off, and no files of my own.
+    /// As the desktop has them: which play.
     func revert() {
         disabled = Set(SoundEvent.allCases.filter { !$0.onByDefault })
-        for e in SoundEvent.allCases { resetFile(e) }
         save()
     }
 
@@ -225,28 +237,6 @@ final class SoundStore {
     private static var customDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SoundPacks/custom", isDirectory: true)
-    }
-
-    func hasOwnFile(_ e: SoundEvent) -> Bool {
-        FileManager.default.fileExists(atPath: Self.customDirectory.appendingPathComponent(e.fileName).path)
-    }
-
-    /// Uses a picked audio file for this event (whichever pack is chosen).
-    func setFile(_ e: SoundEvent, from url: URL) -> Bool {
-        let reading = url.startAccessingSecurityScopedResource()
-        defer { if reading { url.stopAccessingSecurityScopedResource() } }
-        guard (try? AVAudioPlayer(contentsOf: url)) != nil else { return false }
-        try? FileManager.default.createDirectory(at: Self.customDirectory, withIntermediateDirectories: true)
-        let dest = Self.customDirectory.appendingPathComponent(e.fileName)
-        try? FileManager.default.removeItem(at: dest)
-        let ok = (try? FileManager.default.copyItem(at: url, to: dest)) != nil
-        refreshNotificationSounds()
-        return ok
-    }
-
-    func resetFile(_ e: SoundEvent) {
-        try? FileManager.default.removeItem(at: Self.customDirectory.appendingPathComponent(e.fileName))
-        refreshNotificationSounds()
     }
 
     // MARK: Playing
@@ -319,8 +309,13 @@ final class SoundStore {
 
     /// The pack's sound, or the built-in one where it has none.
     private func url(for e: SoundEvent, in pack: InstalledPack) -> URL? {
-        let own = Self.customDirectory.appendingPathComponent(e.fileName)
-        if FileManager.default.fileExists(atPath: own.path) { return own }
+        if let own = packFile(e, in: pack) { return own }
+        return Bundle.main.url(forResource: e.rawValue, withExtension: "wav")
+    }
+
+    /// The pack's own file for an event (the desktop's name in any kind of
+    /// sound file, else an older name); nil when it uses the built-in one.
+    func packFile(_ e: SoundEvent, in pack: InstalledPack) -> URL? {
         if pack.id != InstalledPack.builtIn.id {
             // The desktop's name in any kind of sound file, else an older name.
             let dir = Self.directory(pack.id)
@@ -331,7 +326,7 @@ final class SoundStore {
                 }
             }
         }
-        return Bundle.main.url(forResource: e.rawValue, withExtension: "wav")
+        return nil
     }
 
     // MARK: The catalog
@@ -383,8 +378,9 @@ final class SoundStore {
         _ = try? await URLSession.shared.data(for: req)
     }
 
-    /// Packs imported from the iPhone's files (not the catalog's).
-    static func isImported(_ id: String) -> Bool { id.hasPrefix("imported-") }
+    /// Packs that are only on this iPhone: imported, or made here (not the
+    /// catalog's, which NG Account installs on the account's devices).
+    static func isLocal(_ id: String) -> Bool { id.hasPrefix("imported-") || id.hasPrefix("own-") }
 
     /// Imports a sound pack from a folder (a desktop client's pack, such as
     /// one of its Sounds folders, or one unzipped in the Files app): its
@@ -443,6 +439,127 @@ final class SoundStore {
         if selectedId == pack.id { selectedId = InstalledPack.builtIn.id }
         save()
         packsChanged?()
+    }
+
+    // MARK: Making and editing packs
+
+    private func add(_ p: InstalledPack) {
+        installed.append(p)
+        installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        save()
+    }
+
+    func pack(_ id: String) -> InstalledPack? { packs.first { $0.id == id } }
+
+    /// A new pack of my own: empty, so every sound is the built-in one
+    /// until a file is chosen for it.
+    @discardableResult
+    func createPack(name: String, author: String) -> InstalledPack {
+        let p = InstalledPack(id: "own-" + UUID().uuidString.prefix(8).lowercased(),
+                              name: name.trimmingCharacters(in: .whitespaces).nonEmpty ?? "My sound pack",
+                              author: author.trimmingCharacters(in: .whitespaces), version: "", description: "")
+        try? FileManager.default.createDirectory(at: Self.directory(p.id), withIntermediateDirectories: true)
+        add(p)
+        return p
+    }
+
+    /// A copy of any pack, mine to edit (the built-in one's copy starts
+    /// empty: its sounds are the built-in ones anyway).
+    @discardableResult
+    func duplicate(_ source: InstalledPack, name: String) -> InstalledPack {
+        let p = createPack(name: name, author: source.author)
+        let fm = FileManager.default
+        if source.kind != .builtIn {
+            for f in (try? fm.contentsOfDirectory(at: Self.directory(source.id), includingPropertiesForKeys: nil)) ?? []
+            where SoundEvent.extensions.contains(f.pathExtension.lowercased()) {
+                try? fm.copyItem(at: f, to: Self.directory(p.id).appendingPathComponent(f.lastPathComponent))
+            }
+        }
+        if let i = installed.firstIndex(where: { $0.id == p.id }) { installed[i].description = source.description }
+        save()
+        return p
+    }
+
+    /// Its name, author and description (editable packs).
+    func update(_ id: String, name: String, author: String, description: String) {
+        guard let i = installed.firstIndex(where: { $0.id == id }), installed[i].editable else { return }
+        installed[i].name = name.trimmingCharacters(in: .whitespaces).nonEmpty ?? installed[i].name
+        installed[i].author = author.trimmingCharacters(in: .whitespaces)
+        installed[i].description = description
+        installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        save()
+    }
+
+    /// Uses a picked sound file for an event in an editable pack, named as
+    /// the desktop's (so the pack exports as one). False when it can't be played.
+    func setSound(_ e: SoundEvent, in pack: InstalledPack, from url: URL) -> Bool {
+        guard pack.editable else { return false }
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        guard (try? AVAudioPlayer(contentsOf: url)) != nil else { return false }
+        let ext = SoundEvent.extensions.contains(url.pathExtension.lowercased()) ? url.pathExtension.lowercased() : "wav"
+        removeSound(e, in: pack)
+        let dir = Self.directory(pack.id)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let ok = (try? FileManager.default.copyItem(at: url, to: dir.appendingPathComponent("\(e.rawValue).\(ext)"))) != nil
+        refreshNotificationSounds()
+        packEdited = UUID()
+        return ok
+    }
+
+    /// The event goes back to the built-in sound in this pack.
+    func removeSound(_ e: SoundEvent, in pack: InstalledPack) {
+        guard pack.editable else { return }
+        let dir = Self.directory(pack.id)
+        for name in [e.rawValue] + e.olderNames {
+            for ext in SoundEvent.extensions {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(name).\(ext)"))
+            }
+        }
+        refreshNotificationSounds()
+        packEdited = UUID()
+    }
+
+    /// Changes whenever a pack's sounds change (screens showing them follow).
+    private(set) var packEdited = UUID()
+
+    /// The pack's own sounds by the desktop's names (for sharing and publishing).
+    func soundFiles(_ pack: InstalledPack) -> [(name: String, url: URL)] {
+        if pack.kind == .builtIn {
+            return SoundEvent.allCases.compactMap { e in
+                Bundle.main.url(forResource: e.rawValue, withExtension: "wav").map { ("\(e.rawValue).wav", $0) }
+            }
+        }
+        return SoundEvent.allCases.compactMap { e in
+            packFile(e, in: pack).map { ("\(e.rawValue).\($0.pathExtension.lowercased())", $0) }
+        }
+    }
+
+    /// The pack as a .zip with the desktop's file names, for sharing (a
+    /// desktop client or TeamTalk NG imports it as it is).
+    func exportZip(_ pack: InstalledPack) -> URL? {
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("pack-\(UUID().uuidString)", isDirectory: true)
+        let folder = work.appendingPathComponent("files", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        for f in soundFiles(pack) { try? fm.copyItem(at: f.url, to: folder.appendingPathComponent(f.name)) }
+        let safe = pack.name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let zip = work.appendingPathComponent("\(safe).zip")
+        guard (try? zipFolder(folder: folder.path, zipPath: zip.path)) ?? 0 > 0 else { return nil }
+        return zip
+    }
+
+    /// Imports a .zip of a pack (its sounds by the desktop's names, in any
+    /// folder inside it), as importing a folder does.
+    func importZip(_ url: URL) -> String {
+        let reading = url.startAccessingSecurityScopedResource()
+        defer { if reading { url.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("unzip-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: work) }
+        let folder = work.appendingPathComponent(url.deletingPathExtension().lastPathComponent, isDirectory: true)
+        do { _ = try unzipFlat(zipPath: url.path, folder: folder.path) } catch { return words(error) }
+        return importPack(from: folder)
     }
 
     private static func directory(_ id: String) -> URL {

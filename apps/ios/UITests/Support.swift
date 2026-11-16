@@ -168,6 +168,23 @@ class NGTestCase: XCTestCase {
 
     /// A row's VoiceOver action (its actions list) by name.
     @MainActor
+    /// Runs an action as Siri would, and waits for what it says.
+    /// A debug-only test action (teamtalkng://uitest-action), through the
+    /// system (app.open would start the app afresh).
+    func run(_ action: String, _ params: [String: String] = [:], says expected: String, file: StaticString = #filePath, line: UInt = #line) {
+        var c = URLComponents()
+        c.scheme = "teamtalkng"
+        c.host = "uitest-action"
+        c.queryItems = [URLQueryItem(name: "do", value: action)] + params.map { URLQueryItem(name: $0.key, value: $0.value) }
+        // Through the system (app.open would start the app afresh).
+        XCUIDevice.shared.system.open(c.url!)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let openButton = springboard.buttons["Open"]
+        if openButton.waitForExistence(timeout: 2) { openButton.tap() }
+        let said = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH %@", expected)).firstMatch
+        waitFor(said, "\(action) saying \(expected)", file: file, line: line)
+    }
+
     func action(_ name: String, on e: XCUIElement) {
         e.press(forDuration: 1.2)
         let b = button(name)

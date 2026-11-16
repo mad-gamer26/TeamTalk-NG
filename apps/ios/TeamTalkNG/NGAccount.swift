@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 import UIKit
@@ -250,6 +251,53 @@ final class NGAccountStore {
         app.applySynced(list, passwords: passwords)
     }
 
+    // MARK: Publishing my packs to the catalog
+
+    /// The account's copy of one of my packs (published or not); nil when
+    /// there's none or I'm not signed in.
+    func publishedCopy(of localId: String) async -> OwnPack? {
+        guard email != nil else { return nil }
+        return try? await call { try $0.myPacks() }.get().first { $0.localId == localId }
+    }
+
+    /// Puts my pack in the catalog (or updates it there): backed up to the
+    /// account, its sounds sent (only those changed), its name, author and
+    /// description set, made public. A problem in words, or nil.
+    func publish(localId: String, files: [(name: String, url: URL)], name: String, author: String, description: String) async -> String? {
+        guard email != nil else { return "Sign in to NG Account first (Settings → NG Account)." }
+        let r: Result<OwnPack, Error> = await call { c in
+            var p = try c.backupPack(localId: localId, name: name)
+            let had = Dictionary(uniqueKeysWithValues: p.files.map { ($0.name, $0.hash) })
+            for f in files {
+                guard let data = try? Data(contentsOf: f.url) else { continue }
+                let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                if had[f.name] != hash { p = try c.uploadPackFile(id: p.id, name: f.name, data: data) }
+            }
+            let keep = Set(files.map(\.name))
+            for f in p.files where !keep.contains(f.name) { p = try c.removePackFile(id: p.id, name: f.name) }
+            return try c.changePack(id: p.id, name: name, author: author, description: description, public: true)
+        }
+        switch r {
+        case .success: return nil
+        case .failure(let e): return failed(e)
+        }
+    }
+
+    /// Takes my pack out of the catalog (kept in the account).
+    func withdraw(localId: String) async -> String? {
+        guard let p = await publishedCopy(of: localId) else { return "It isn't in the catalog." }
+        let r = await call { try $0.changePack(id: p.id, name: nil, author: nil, description: nil, public: false) }
+        if case .failure(let e) = r { return failed(e) }
+        return nil
+    }
+
+    /// Deleting my pack here also deletes the account's copy (and takes it
+    /// out of the catalog).
+    func forgetPack(localId: String) async {
+        guard let p = await publishedCopy(of: localId) else { return }
+        _ = await call { try $0.deletePack(id: p.id) }
+    }
+
     // MARK: Sound packs
 
     private var packSettings: [SyncSetting] {
@@ -257,8 +305,8 @@ final class NGAccountStore {
         let s = app.sounds
         // A pack imported from this iPhone's files isn't in the catalog: "local".
         let chosen = s.selectedId == InstalledPack.builtIn.id ? "default"
-            : SoundStore.isImported(s.selectedId) ? "local:" + s.selectedId : "catalog:" + s.selectedId
-        return [SyncSetting(key: Self.installedPacksKey, json: Self.fragment(s.installed.map(\.id).filter { !SoundStore.isImported($0) }.sorted())),
+            : SoundStore.isLocal(s.selectedId) ? "local:" + s.selectedId : "catalog:" + s.selectedId
+        return [SyncSetting(key: Self.installedPacksKey, json: Self.fragment(s.installed.map(\.id).filter { !SoundStore.isLocal($0) }.sorted())),
                 SyncSetting(key: Self.chosenPackKey, json: Self.fragment(chosen))]
     }
 
@@ -282,7 +330,7 @@ final class NGAccountStore {
             let selected = s.selectedId
             if let packs {
                 let want = Set(packs)
-                for p in s.installed where !want.contains(p.id) && !SoundStore.isImported(p.id) { s.remove(p) }
+                for p in s.installed where !want.contains(p.id) && !SoundStore.isLocal(p.id) { s.remove(p) }
                 let missing = want.subtracting(s.installed.map(\.id))
                 if !missing.isEmpty, let catalog = try? await s.catalog() {
                     for p in catalog where missing.contains(p.id) { try? await s.install(p) }

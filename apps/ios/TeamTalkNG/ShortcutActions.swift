@@ -146,6 +146,16 @@ extension ShortcutActions {
                     } catch {}
                 }
                 return
+            case "packSound":
+                // What choosing a sound file does (the file picker can't be
+                // driven by a test): a built-in sound for an event in a pack.
+                let sounds = AppModel.shared?.sounds
+                if let p = sounds?.packs.first(where: { $0.name == q["pack"] }), let e = SoundEvent(rawValue: q["event"] ?? ""),
+                   let src = Bundle.main.url(forResource: q["from"] ?? "user_msg", withExtension: "wav") {
+                    said = sounds?.setSound(e, in: p, from: src) == true ? "Sound set" : "Sound refused"
+                } else {
+                    said = "No such pack or sound"
+                }
             case "disconnect": said = try disconnect(server)
             case "disconnectAll": said = try disconnectAll()
             case "muteEveryone": said = try muteEveryone(server, sw)
