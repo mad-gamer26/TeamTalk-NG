@@ -117,6 +117,7 @@ impl Worker {
                 };
                 // SAFETY: inst is live; c is a valid Channel.
                 let cmd = unsafe { sys::TT_DoJoinChannel(self.inst, &c) };
+                self.listing(cmd);
                 self.track(cmd, Pending::Reply(reply), "Joining that channel");
             }
             ChannelRequest::Stream {

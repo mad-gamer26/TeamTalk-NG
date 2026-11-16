@@ -482,3 +482,31 @@ fn recording_as_mp3_converts_when_it_ends() {
     );
     let _ = std::fs::remove_file(&path);
 }
+
+/// Kicked from the server: fully disconnected at once (the app then shows
+/// the server list with it disconnected), and not trying again.
+#[test]
+fn kicked_from_the_server_is_disconnected() {
+    let server = Server::start();
+    let admin = TestClient::logged_in(&server, "admin");
+    let carol = TestClient::logged_in(&server, "carol");
+    carol.client.join_channel_path("/", "").unwrap();
+    let id = carol.client.snapshot().my_user_id;
+    admin.wait_until(|s| s.users.iter().any(|u| u.id == id));
+    admin.client.kick_user(id, false).expect("kicked");
+    carol.wait_for("the kick", |e| matches!(e, Event::Kicked { .. }).then_some(()));
+    carol.wait_until(|s| s.state == Some(ConnectionState::Disconnected));
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert_eq!(
+        carol.client.snapshot().state,
+        Some(ConnectionState::Disconnected),
+        "and stays so"
+    );
+    let left = carol.client.snapshot();
+    assert!(
+        left.users.is_empty() && left.channels.is_empty(),
+        "nothing left of the server: {:?} {:?}",
+        left.users.iter().map(|u| &u.username).collect::<Vec<_>>(),
+        left.channels.len()
+    );
+}

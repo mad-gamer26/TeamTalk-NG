@@ -27,6 +27,23 @@ final class FilesSettingsUITests: NGTestCase {
         Host.until("the file gone for Bob") { (Host.state()["files"] as? [String])?.contains("notes.txt") == false }
     }
 
+    /// Joining a channel that already has files doesn't announce them
+    /// (as the desktop); a file added after is announced.
+    func testFilesAlreadyThereAreNotAnnouncedOnJoining() {
+        Host.call("/join", ["bot": "bob", "path": "/Lobby/"])
+        Host.until("Bob in Lobby") { (Host.state()["me"] as? String) == "/Lobby/" }
+        Host.call("/upload", ["bot": "bob", "name": "old.txt"])
+        Host.until("the file on the server") { (Host.state()["files"] as? [String])?.contains("old.txt") == true }
+        connect()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Lobby'")).firstMatch.tap()
+        Host.until("Alice in Lobby") { self.whereIs("alice") == "/Lobby/" }
+        let oldAnnounced = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'File old.txt added'")).firstMatch
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertFalse(oldAnnounced.exists, "the file already there isn't announced")
+        Host.call("/upload", ["bot": "bob", "name": "new.txt"])
+        waitFor(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'File new.txt added'")).firstMatch, "a new file announced")
+    }
+
     func testRecordingMakesARecording() {
         connect()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Lobby'")).firstMatch.tap()

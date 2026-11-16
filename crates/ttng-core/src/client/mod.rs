@@ -988,6 +988,8 @@ struct Worker {
     last_frame_note: HashMap<(i32, VideoKind), Instant>,
     /// The channel's sound and my microphone, captured for the app.
     captured: Arc<Captured>,
+    /// Logins and joins in progress (their file listings aren't news).
+    listing_cmds: std::collections::HashSet<i32>,
     /// Stream media files' video too (VP8).
     stream_video: bool,
     /// BearWare's answer to a web login, when it comes.
@@ -1032,6 +1034,7 @@ impl Worker {
             web_login: None,
             frames,
             captured,
+            listing_cmds: Default::default(),
             last_frame_note: HashMap::new(),
             stream_video: false,
         }
@@ -1167,20 +1170,14 @@ impl Worker {
                 self.start_connect(0);
             }
             Request::Disconnect(reply) => {
-                self.options = None;
-                self.retry = None;
-                self.rejoin = None;
-                // SAFETY: inst is live.
-                unsafe { sys::TT_Disconnect(self.inst) };
-                self.fail_attempt(Error::Connection("Disconnected.".into()));
-                self.clear_model();
-                self.set_state(ConnectionState::Disconnected);
+                self.hang_up();
                 let _ = reply.send(Ok(()));
             }
             Request::JoinChannel { id, password, reply } => {
                 let pw = arg(&password);
                 // SAFETY: inst is live; pw is NUL-terminated and outlives the call.
                 let cmd = unsafe { sys::TT_DoJoinChannelByID(self.inst, id, pw.as_ptr()) };
+                self.listing(cmd);
                 self.track(cmd, Pending::Reply(reply), "Joining that channel");
             }
             Request::JoinPath { path, password, reply } => match self.channel_id(&path) {
@@ -1428,6 +1425,9 @@ impl Worker {
                         sys::TT_DoMakeChannel(self.inst, &c)
                     }
                 };
+                if join {
+                    self.listing(cmd);
+                }
                 self.track(cmd, Pending::Reply(reply), "Making the channel");
             }
             Request::UpdateChannel { id, spec, reply } => {
@@ -1784,6 +1784,7 @@ impl Worker {
         // SAFETY: inst is live; the strings are NUL-terminated and outlive the call.
         let cmd = unsafe { sys::TT_DoLoginEx(self.inst, n.as_ptr(), u.as_ptr(), p.as_ptr(), c.as_ptr()) };
         if cmd > 0 {
+            self.listing(cmd);
             self.pending.insert(cmd, (Pending::Login, Instant::now()));
         } else {
             self.connect_failed("Couldn't log in.".into());
@@ -1923,6 +1924,7 @@ impl Worker {
 
     fn clear_model(&mut self) {
         self.status_sent = None;
+        self.listing_cmds.clear();
         if self.model.lock().map(|m| m.recording.is_some()).unwrap_or(false) {
             self.stop_recording(Some("Disconnected.".into()));
         }
@@ -1957,6 +1959,31 @@ impl Worker {
                 unsafe { Channel::from(&union.channel) }
             })
         };
+        // Disconnected (kicked, logged out, or by me): what the server had
+        // already sent about people, channels and files is old news, and
+        // would put them back in the cleared model.
+        let disconnected = self
+            .model
+            .lock()
+            .map(|m| m.state == Some(ConnectionState::Disconnected))
+            .unwrap_or(false);
+        if disconnected
+            && matches!(
+                msg.nClientEvent,
+                sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDIN
+                    | sys::ClientEvent_CLIENTEVENT_CMD_USER_LOGGEDOUT
+                    | sys::ClientEvent_CLIENTEVENT_CMD_USER_UPDATE
+                    | sys::ClientEvent_CLIENTEVENT_CMD_USER_JOINED
+                    | sys::ClientEvent_CLIENTEVENT_CMD_USER_LEFT
+                    | sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_NEW
+                    | sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_UPDATE
+                    | sys::ClientEvent_CLIENTEVENT_CMD_CHANNEL_REMOVE
+                    | sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW
+                    | sys::ClientEvent_CLIENTEVENT_CMD_FILE_REMOVE
+            )
+        {
+            return;
+        }
         match msg.nClientEvent {
             sys::ClientEvent_CLIENTEVENT_CON_SUCCESS => {
                 self.set_state(ConnectionState::LoggingIn);
@@ -2022,17 +2049,27 @@ impl Worker {
                 }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_MYSELF_LOGGEDOUT => {
+                // Logged out by the server (another login with this account,
+                // say): the connection stays open, so it's closed here, as
+                // the desktop is left disconnected.
                 self.no_reconnect = true;
+                if self.logged_in() {
+                    self.hang_up();
+                }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_MYSELF_KICKED => {
                 let by = user().map(|u| u.id).unwrap_or(0);
-                if msg.nSource == 0 {
-                    self.no_reconnect = true;
-                }
                 self.emit(Event::Kicked {
                     by_user_id: by,
                     channel_id: msg.nSource,
                 });
+                // Kicked from the server: the server ends the login but
+                // keeps the connection open, which left the app saying it
+                // was connected. Fully disconnected now, not trying again.
+                if msg.nSource == 0 {
+                    self.no_reconnect = true;
+                    self.hang_up();
+                }
             }
             sys::ClientEvent_CLIENTEVENT_CMD_SERVER_UPDATE => {
                 if msg.ttType == sys::TTType___SERVERPROPERTIES {
@@ -2217,11 +2254,14 @@ impl Worker {
                         m.files.remove(&f.id);
                     }
                 }
-                self.emit(if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW {
-                    Event::FileAdded(f)
-                } else {
-                    Event::FileRemoved(f)
-                });
+                // Listed by a login or a join: in the list, not announced.
+                if self.listing_cmds.is_empty() {
+                    self.emit(if msg.nClientEvent == sys::ClientEvent_CLIENTEVENT_CMD_FILE_NEW {
+                        Event::FileAdded(f)
+                    } else {
+                        Event::FileRemoved(f)
+                    });
+                }
             }
             sys::ClientEvent_CLIENTEVENT_FILETRANSFER if msg.ttType == sys::TTType___FILETRANSFER => {
                 // SAFETY: checked ttType.
@@ -2287,7 +2327,29 @@ impl Worker {
         }));
     }
 
+    /// Disconnected for good: no retry, nothing left of the server.
+    fn hang_up(&mut self) {
+        self.options = None;
+        self.retry = None;
+        self.rejoin = None;
+        // SAFETY: inst is live.
+        unsafe { sys::TT_Disconnect(self.inst) };
+        self.fail_attempt(Error::Connection("Disconnected.".into()));
+        self.clear_model();
+        self.set_state(ConnectionState::Disconnected);
+    }
+
+    /// A login or a join: the files it lists aren't news (the desktop says
+    /// nothing about them, CLIENTEVENT_CMD_FILE_NEW during
+    /// CMD_COMPLETE_LOGIN or CMD_COMPLETE_JOINCHANNEL).
+    fn listing(&mut self, cmd: i32) {
+        if cmd > 0 {
+            self.listing_cmds.insert(cmd);
+        }
+    }
+
     fn command_done(&mut self, id: i32, result: Result<()>) {
+        self.listing_cmds.remove(&id);
         let Some((p, _)) = self.pending.remove(&id) else { return };
         match p {
             Pending::Reply(r) => {
@@ -2364,6 +2426,7 @@ impl Worker {
                 // SAFETY: inst is live; pw is NUL-terminated and outlives the call.
                 let cmd = unsafe { sys::TT_DoJoinChannelByID(self.inst, id, pw.as_ptr()) };
                 if cmd > 0 {
+                    self.listing(cmd);
                     self.pending.insert(cmd, (Pending::Rejoin, Instant::now()));
                 } else {
                     self.finish_attempt(Err(Error::Refused(format!("Couldn't join {path}."))));

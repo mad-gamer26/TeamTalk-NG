@@ -84,3 +84,38 @@ fn what_cant_be_done_says_why() {
         Err(Error::Refused("That transfer isn't running.".into()))
     );
 }
+
+/// Joining a channel that has files lists them without announcing them
+/// (the desktop says nothing about files a login or a join lists); a file
+/// uploaded after is announced.
+#[test]
+fn files_already_there_when_joining_are_not_news() {
+    let server = Server::start();
+    let a = TestClient::logged_in(&server, "alice");
+    a.client.join_channel_path("/", "").unwrap();
+    let root = a.client.snapshot().my_channel_id;
+    let dir = std::env::temp_dir().join(format!("ttng-files-join-{}-{}", std::process::id(), server.port));
+    std::fs::create_dir_all(&dir).unwrap();
+    let up = dir.join("notes.txt");
+    std::fs::write(&up, b"hello").unwrap();
+    a.client.upload_file(root, up.to_str().unwrap()).unwrap();
+    finished(&a, false);
+
+    let b = TestClient::logged_in(&server, "bob");
+    b.client.join_channel_path("/", "").unwrap();
+    b.wait_until(|s| s.files_in(root).len() == 1);
+    assert!(
+        !b.seen.lock().unwrap().iter().any(|e| matches!(e, Event::FileAdded(_))),
+        "the file already there wasn't announced"
+    );
+
+    let up2 = dir.join("later.txt");
+    std::fs::write(&up2, b"later").unwrap();
+    a.client.upload_file(root, up2.to_str().unwrap()).unwrap();
+    let f = b.wait_for("the new file", |e| match e {
+        Event::FileAdded(f) => Some(f.clone()),
+        _ => None,
+    });
+    assert_eq!(f.name, "later.txt");
+    let _ = std::fs::remove_dir_all(&dir);
+}

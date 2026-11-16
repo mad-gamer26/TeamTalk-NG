@@ -143,6 +143,13 @@ final class ServersUITests: NGTestCase {
         Host.call("/kick", ["who": "alice"])
         waitFor(onTheServerList, "the server list at once")
         XCTAssertFalse(app.alerts.firstMatch.exists, "no dialog with the setting off")
+        // Fully disconnected (it said Connected before), and not back.
+        Host.until("the server not connected in the list") {
+            !self.serverRow.label.contains("Connected") || self.serverRow.label.contains("Not connected")
+        }
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertNil(Host.user("alice"), "not logged in again")
+        XCTAssertFalse(serverRow.label.contains(", Connected"), "still not connected: \(serverRow.label)")
     }
 
     @MainActor
