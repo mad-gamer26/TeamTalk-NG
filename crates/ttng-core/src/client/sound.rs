@@ -6,6 +6,12 @@
 
 use super::*;
 
+/// The desktop's refGain: the slider's percent as an SDK gain level (the
+/// same curve; 50: the SDK's default).
+fn mic_level(percent: i32) -> i32 {
+    crate::volume::level(percent).min(sys::SoundLevel_SOUND_GAIN_MAX as i32)
+}
+
 /// The WebRTC gain controller's strongest fixed gain (dB).
 const FIXED_GAIN_MAX_DB: f32 = 49.9;
 
@@ -159,23 +165,36 @@ impl Worker {
                 g.adaptivedigital.bEnable = 0;
                 p
             }
-            None if echo || s.noise_suppression || s.gain_control => webrtc(echo, s.noise_suppression, s.gain_control),
+            // The desktop's slotMicrophoneGainChanged, WebRTC: the gain is
+            // its fixed digital gain (the slider's percent of the most).
+            None if echo || s.noise_suppression || s.gain_control => {
+                let mut p = webrtc(echo, s.noise_suppression, s.gain_control);
+                // SAFETY: webrtc() made the WebRTC member the valid one.
+                let g = unsafe { &mut p.__bindgen_anon_1.webrtc.gaincontroller2 };
+                g.fixeddigital.fGainDB = FIXED_GAIN_MAX_DB * s.mic_gain.clamp(0, 100) as f32 / 100.0;
+                p
+            }
+            // Neither: TeamTalk's own preprocessor, the gain its gain level
+            // (it overrides the input's level: the desktop sets it here; it
+            // was left at the default, so the gain did nothing).
             None => sys::AudioPreprocessor {
                 nPreprocessor: sys::AudioPreprocessorType_TEAMTALK_AUDIOPREPROCESSOR,
                 __bindgen_anon_1: sys::AudioPreprocessor__bindgen_ty_1 {
                     ttpreprocessor: sys::TTAudioPreprocessor {
-                        nGainLevel: sys::SoundLevel_SOUND_GAIN_DEFAULT as i32,
+                        nGainLevel: mic_level(s.mic_gain),
                         bMuteLeftSpeaker: 0,
                         bMuteRightSpeaker: 0,
                     },
                 },
             },
         };
-        let gain = if fixed.is_some() {
+        // The input's level: the default while a channel's fixed volume or
+        // automatic gain control sets the gain, else the slider's (the
+        // desktop's refGain).
+        let gain = if fixed.is_some() || s.gain_control {
             sys::SoundLevel_SOUND_GAIN_DEFAULT as i32
         } else {
-            // The desktop's refGain: the same curve (50: the SDK's default).
-            crate::volume::level(s.mic_gain).min(sys::SoundLevel_SOUND_GAIN_MAX as i32)
+            mic_level(s.mic_gain)
         };
         // SAFETY: inst is live; p is a valid preprocessor.
         unsafe {

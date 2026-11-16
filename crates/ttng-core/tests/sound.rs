@@ -225,3 +225,61 @@ fn the_sound_devices_can_be_tested() {
     };
     drop(ttng_core::loopback::start(AudioDevices::Virtual, &processed).expect("with processing"));
 }
+
+/// The microphone gain changes how loud I'm heard, whatever processing is
+/// on (as the desktop's slotMicrophoneGainChanged): with none (TeamTalk's
+/// own preprocessor, whose gain level it sets), and with noise suppression
+/// alone (WebRTC, automatic gain off: its fixed digital gain and the input
+/// level). It used to make no difference with neither.
+#[test]
+fn the_microphone_gain_changes_how_loud_i_am_heard() {
+    use std::time::{Duration, Instant};
+    let server = Server::start();
+    let talker = TestClient::logged_in(&server, "alice");
+    let listener = TestClient::logged_in(&server, "bob");
+    for c in [&talker, &listener] {
+        c.client.join_channel_path("/", "").unwrap();
+        c.client.init_audio(AudioDevices::Virtual).unwrap();
+    }
+    listener.client.set_capture(Capture::Channel, true).unwrap();
+    talker.client.set_test_tone(440).unwrap();
+    talker.client.set_transmitting(true).unwrap();
+
+    let heard = |gain: i32, denoise: bool| -> i32 {
+        talker
+            .client
+            .set_audio_settings(AudioSettings {
+                mic_gain: gain,
+                noise_suppression: denoise,
+                gain_control: false,
+                echo_cancellation: false,
+                ..AudioSettings::default()
+            })
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(800));
+        let _ = listener.client.read_captured(Capture::Channel);
+        let start = Instant::now();
+        let mut loud = 0;
+        while start.elapsed() < Duration::from_millis(1200) {
+            std::thread::sleep(Duration::from_millis(100));
+            let s = listener.client.read_captured(Capture::Channel).samples;
+            let rms = if s.is_empty() {
+                0.0
+            } else {
+                (s.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / s.len() as f64).sqrt()
+            };
+            loud = loud.max(rms as i32);
+        }
+        loud
+    };
+    for denoise in [false, true] {
+        let quiet = heard(20, denoise);
+        let normal = heard(50, denoise);
+        let loud = heard(80, denoise);
+        assert!(
+            quiet < normal && normal < loud,
+            "denoise {denoise}: 20 → {quiet}, 50 → {normal}, 80 → {loud}"
+        );
+    }
+    talker.client.set_transmitting(false).unwrap();
+}
