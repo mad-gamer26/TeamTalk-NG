@@ -45,45 +45,6 @@ final class ServersUITests: NGTestCase {
         Host.until("the server gone") { !app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Renamed'")).firstMatch.exists }
     }
 
-    /// A server deleted by mistake comes back from Settings → Settings
-    /// backups (a copy is made each time the app starts with changes).
-    @MainActor
-    func testABackupBringsADeletedServerBack() {
-        app.buttons["Add server"].tap()
-        button("Type its details").tap()
-        let name = app.textFields["Name"]
-        waitFor(name, "the editor")
-        name.tap(); name.typeText("Kept")
-        let address = app.textFields["Address"]
-        address.tap(); address.typeText("127.0.0.1")
-        button("Save").tap()
-        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Kept'")).firstMatch
-        waitFor(row, "the server in the list")
-        // A new start (not a fresh install): it's backed up.
-        app.terminate()
-        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXS"]
-        app.launch()
-        waitFor(row, "the server after a restart")
-        action("Delete", on: row)
-        waitFor(any("Delete Kept?"), "the confirmation", timeout: 5)
-        app.buttons.matching(NSPredicate(format: "label == 'Delete'")).allElementsBoundByIndex.last!.tap()
-        Host.until("the server gone") { !row.exists }
-
-        app.buttons["Settings"].tap()
-        let backups = app.buttons["Settings backups"]
-        if !backups.waitForExistence(timeout: 3) { app.swipeUp() }
-        backups.tap()
-        let entry = app.buttons.matching(NSPredicate(format: "label CONTAINS '1 server, at start'")).firstMatch
-        waitFor(entry, "the backup with the server")
-        entry.tap()
-        button("Restore").tap()
-        waitFor(any("restored the next time the app starts"), "the restore waiting for the next start")
-
-        app.terminate()
-        app.launch()
-        waitFor(row, "the server back after the restore")
-    }
-
     @MainActor
     func testLinkConnectsAndShowsChannelsAndPeople() {
         connect()

@@ -101,7 +101,6 @@ final class ICloudSync {
         let time = store.double(forKey: timeKey)
         guard time > defaults.double(forKey: appliedKey), let data = store.data(forKey: snapshotKey),
               let snapshot = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return }
-        SettingsBackup.save(reason: "Before iCloud's settings")
         var mine = domain.filter { !shared($0.key) }
         for (k, v) in snapshot where shared(k) { mine[k] = v }
         defaults.setPersistentDomain(mine, forName: Bundle.main.bundleIdentifier ?? "")

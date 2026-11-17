@@ -25,13 +25,10 @@ struct TeamTalkNGApp: App {
     /// Reads the settings and makes the app's model; only once they can
     /// be read.
     @MainActor private static func makeModel() -> AppModel {
-        // A backup restore asked for, the old app's servers and settings
-        // (once, when this app replaced it), then iCloud's newer settings,
-        // before anything reads them; and a copy of what's there.
-        SettingsBackup.applyPendingRestore()
+        // The old app's servers and settings (once, when this app replaced
+        // it), then iCloud's newer settings, before anything reads them.
         OldAppImport.runIfNeeded()
         ICloudSync.shared.startAtLaunch()
-        SettingsBackup.save(reason: "At start")
         return AppModel()
     }
 
