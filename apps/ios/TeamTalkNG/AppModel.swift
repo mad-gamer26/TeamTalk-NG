@@ -558,6 +558,23 @@ final class AppModel {
         account.changed()
     }
 
+    /// A server dragged onto another: it takes that one's place.
+    func moveServer(_ id: UUID, onto target: UUID) {
+        guard id != target, let from = servers.firstIndex(where: { $0.id == id }),
+              let to = servers.firstIndex(where: { $0.id == target }) else { return }
+        move(from: IndexSet(integer: from), to: to > from ? to + 1 : to)
+        announce("\(servers[to].title), position \(to + 1) of \(servers.count)")
+    }
+
+    /// Move up (-1) or down (+1) one place.
+    func moveServer(_ s: SavedServer, by step: Int) {
+        guard let from = servers.firstIndex(where: { $0.id == s.id }) else { return }
+        let to = from + step
+        guard servers.indices.contains(to) else { return }
+        move(from: IndexSet(integer: from), to: step > 0 ? to + 1 : to)
+        announce("Position \(to + 1) of \(servers.count)")
+    }
+
     /// The server's connection, made (not connected) on first use.
     /// The Monitor's connections, shown as server screens (monitor mode).
     @ObservationIgnored private var monitorConnections: [Int64: ServerConnection] = [:]

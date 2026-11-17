@@ -280,3 +280,73 @@ final class BackupUITests: NGTestCase {
         waitFor(pack, "the sound pack back after the restore")
     }
 }
+
+/// The server list: searched, and reordered by Move up / Move down and by
+/// dragging.
+final class ServerListOrderUITests: NGTestCase {
+    @MainActor
+    func add(_ name: String) {
+        app.buttons["Add server"].tap()
+        button("Type its details").tap()
+        let n = app.textFields["Name"]
+        waitFor(n, "the editor")
+        n.tap(); n.typeText(name)
+        let a = app.textFields["Address"]
+        a.tap(); a.typeText("127.0.0.1")
+        button("Save").tap()
+        waitFor(row(name), "\(name) in the list")
+    }
+
+    @MainActor
+    func row(_ name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name + ",")).firstMatch
+    }
+
+    /// The servers' names, top to bottom.
+    @MainActor
+    func order() -> [String] {
+        ["Alpha", "Bravo", "Charlie"].sorted { row($0).frame.minY < row($1).frame.minY }
+    }
+
+    @MainActor
+    func testSearchedAndReordered() {
+        add("Alpha"); add("Bravo"); add("Charlie")
+        XCTAssertEqual(order(), ["Alpha", "Bravo", "Charlie"])
+
+        // Move down / Move up (the menu's items, VoiceOver's actions too).
+        action("Move down", on: row("Alpha"))
+        Host.until("Alpha second") { self.order() == ["Bravo", "Alpha", "Charlie"] }
+        action("Move up", on: row("Charlie"))
+        Host.until("Charlie second") { self.order() == ["Bravo", "Charlie", "Alpha"] }
+        // The first has no Move up.
+        row("Bravo").press(forDuration: 1.2)
+        waitFor(button("Move down"), "the menu")
+        XCTAssertFalse(button("Move up").exists, "no Move up at the top")
+        app.tap()
+
+        // Dragged: Alpha onto Bravo's place, at the top.
+        row("Alpha").press(forDuration: 0.6, thenDragTo: row("Bravo"), withVelocity: .slow, thenHoldForDuration: 0.8)
+        Host.until("Alpha first after the drag") { self.order().first == "Alpha" }
+
+        // Kept after a restart.
+        let kept = order()
+        app.terminate()
+        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXS"]
+        app.launch()
+        waitFor(row("Alpha"), "the list again")
+        XCTAssertEqual(order(), kept)
+
+        // Searched: only the ones that match; no moving meanwhile.
+        let field = app.searchFields["Search servers"]
+        if !field.waitForExistence(timeout: 3) { app.swipeDown() }
+        field.tap(); field.typeText("char")
+        Host.until("only Charlie") { self.row("Charlie").exists && !self.row("Alpha").exists && !self.row("Bravo").exists }
+        row("Charlie").press(forDuration: 1.2)
+        waitFor(button("Edit"), "its menu")
+        XCTAssertFalse(button("Move up").exists || button("Move down").exists, "no moving while searching")
+        app.tap()
+        field.buttons["Clear text"].tap()
+        field.typeText("nothing like it")
+        waitFor(any("No servers match"), "nothing found, said")
+    }
+}

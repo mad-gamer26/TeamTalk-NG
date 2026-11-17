@@ -22,6 +22,24 @@ struct ServerListView: View {
     @State private var importing = false
     @State private var linking = false
     @State private var link = ""
+    @State private var search = ""
+
+    /// Reordering in edit mode (not while searching: only some show).
+    private var moving: ((IndexSet, Int) -> Void)? {
+        guard search.isEmpty else { return nil }
+        let m = model
+        return { m.move(from: $0, to: $1) }
+    }
+
+    /// The servers whose name, address, username or nickname has what's
+    /// searched for (all of them when nothing is).
+    private var shownServers: [SavedServer] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return model.servers }
+        return model.servers.filter { s in
+            [s.title, s.host, s.username, s.nickname].contains { $0.localizedCaseInsensitiveContains(q) }
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -49,12 +67,20 @@ struct ServerListView: View {
                 if model.servers.isEmpty {
                     Text("No servers yet. Add one with the Add server button.")
                         .foregroundStyle(.secondary)
+                } else if shownServers.isEmpty {
+                    Text("No servers match \"\(search)\".")
+                        .foregroundStyle(.secondary)
                 }
-                ForEach(model.servers) { server in
-                    ServerRow(server: server, connection: model.connections[server.id], edit: { editing = server })
+                // Dragged to reorder (touch and hold, then move), or Move
+                // up and Move down; not while searching (only some show).
+                ForEach(shownServers) { server in
+                    ServerRow(server: server, connection: model.connections[server.id], edit: { editing = server },
+                              canMove: search.isEmpty, index: model.servers.firstIndex(of: server) ?? 0,
+                              count: model.servers.count)
                 }
-                .onMove(perform: model.move)
+                .onMove(perform: moving)
             }
+            .searchable(text: $search, prompt: "Search servers")
             .navigationTitle("Servers")
             .navigationDestination(for: SavedServer.self) { server in
                 ServerView(connection: model.connection(for: server))
@@ -130,9 +156,15 @@ private struct ServerRow: View {
     let server: SavedServer
     let connection: ServerConnection?
     let edit: () -> Void
+    /// Reordering offered (not while searching), and where it is.
+    let canMove: Bool
+    let index: Int
+    let count: Int
     @State private var deleting = false
 
     var body: some View {
+        let up = canMove && index > 0
+        let down = canMove && index < count - 1
         NavigationLink(value: server) {
             VStack(alignment: .leading) {
                 Text(server.title).font(.headline)
@@ -141,6 +173,12 @@ private struct ServerRow: View {
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
+        }
+        .draggable(server.id.uuidString)
+        .dropDestination(for: String.self) { ids, _ in
+            guard canMove, let id = ids.first.flatMap(UUID.init(uuidString:)) else { return false }
+            model.moveServer(id, onto: server.id)
+            return true
         }
         .swipeActions {
             Button("Delete", role: .destructive) { deleting = true }
@@ -156,11 +194,15 @@ private struct ServerRow: View {
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
+            if up { Button("Move up") { model.moveServer(server, by: -1) } }
+            if down { Button("Move down") { model.moveServer(server, by: 1) } }
             Button("Delete", role: .destructive) { deleting = true }
         }
         // Reversed for VoiceOver (the touch-and-hold menu's order, backwards).
         .accessibilityActions {
             Button("Delete") { deleting = true }
+            if down { Button("Move down") { model.moveServer(server, by: 1) } }
+            if up { Button("Move up") { model.moveServer(server, by: -1) } }
             if connection?.state != nil && connection?.state != .disconnected {
                 Button("Disconnect") { connection?.disconnect() }
             }
