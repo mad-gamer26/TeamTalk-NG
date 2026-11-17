@@ -156,6 +156,18 @@ extension ShortcutActions {
                 } else {
                     said = "No such pack or sound"
                 }
+            case "makeBackup":
+                // A backup of everything, kept where the test can open it
+                // again (the share sheet's Save to Files can't be driven).
+                let made = try Backup.make(Backup.Parts())
+                let kept = FileManager.default.temporaryDirectory.appendingPathComponent("uitest.ttng")
+                try? FileManager.default.removeItem(at: kept)
+                try FileManager.default.copyItem(at: made, to: kept)
+                said = "Backup made"
+            case "openBackup":
+                // As opening the .ttng file from Files does.
+                AppModel.shared?.open(FileManager.default.temporaryDirectory.appendingPathComponent("uitest.ttng"))
+                said = "Backup opened"
             case "disconnect": said = try disconnect(server)
             case "disconnectAll": said = try disconnectAll()
             case "muteEveryone": said = try muteEveryone(server, sw)

@@ -131,6 +131,10 @@ final class FilesSettingsUITests: NGTestCase {
         app.swipeUp()
         app.buttons["Reset all settings"].tap()
         app.buttons.matching(NSPredicate(format: "label == 'Reset'")).allElementsBoundByIndex.last!.tap()
+        // Settings again from the top (it's longer than one screen; General
+        // is otherwise under the navigation bar, and a swipe down closes it).
+        button("Done").tap()
+        app.buttons["Settings"].tap()
         app.buttons["General"].tap()
         Host.until("the nickname gone") { (app.textFields["Nickname"].value as? String) ?? "" == "Nickname" || (app.textFields["Nickname"].value as? String) == "" }
     }

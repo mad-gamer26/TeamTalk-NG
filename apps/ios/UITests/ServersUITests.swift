@@ -191,3 +191,92 @@ final class ServersUITests: NGTestCase {
     }
 }
 
+
+/// Settings → Backup and Restore: a .ttng backup of servers, passwords,
+/// settings, sound packs and chat history; opened as from Files, its parts
+/// chosen and restored (replacing what's there), the app restarting itself.
+final class BackupUITests: NGTestCase {
+    @MainActor
+    func testABackupFileRestoresServersAndSoundPacks() {
+        // A server, and a sound pack of my own.
+        app.buttons["Add server"].tap()
+        button("Type its details").tap()
+        let name = app.textFields["Name"]
+        waitFor(name, "the editor")
+        name.tap(); name.typeText("Backed up")
+        let address = app.textFields["Address"]
+        address.tap(); address.typeText("127.0.0.1")
+        button("Save").tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Backed up'")).firstMatch
+        waitFor(row, "the server in the list")
+        app.buttons["Settings"].tap()
+        // A sound pack of my own.
+        let sounds = app.buttons["Sounds"]
+        if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
+        sounds.tap()
+        app.buttons["Sound packs"].tap()
+        button("New sound pack").tap()
+        let packName = app.alerts.firstMatch.textFields.firstMatch
+        waitFor(packName, "the new pack's name")
+        packName.tap(); packName.typeText("Backed pack")
+        app.alerts.firstMatch.buttons["Make"].tap()
+        waitFor(app.navigationBars["Backed pack"], "the pack's screen")
+        app.navigationBars["Backed pack"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Sound packs"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Sounds"].buttons.element(boundBy: 0).tap()
+        let screen = app.buttons["Backup and Restore"]
+        if !screen.waitForExistence(timeout: 3) { app.swipeUp() }
+        screen.tap()
+        for part in ["Servers", "Server passwords", "Settings", "Sound packs", "Chat history"] {
+            XCTAssertTrue(app.switches[part].exists, "the \(part) switch")
+        }
+        // Making one offers to save or send it.
+        button("Make a backup").tap()
+        let shared = app.otherElements["ActivityListView"].firstMatch
+        XCTAssertTrue(shared.waitForExistence(timeout: 10), "the share sheet")
+        let close = shared.buttons.matching(NSPredicate(format: "label == 'Close' OR label == 'Cancel'")).firstMatch
+        if close.waitForExistence(timeout: 3) { close.tap() } else { shared.swipeDown() }
+        if !shared.waitForNonExistence(timeout: 3) { shared.swipeDown() }
+        XCTAssertTrue(shared.waitForNonExistence(timeout: 5), "the share sheet closed")
+        let back = app.navigationBars["Backup and Restore"].buttons["Settings"]
+        waitFor(back, "the way back to Settings")
+        back.tap()
+        let done = button("Done")
+        waitFor(done, "Settings' Done")
+        done.tap()
+        run("makeBackup", [:], says: "Backup made")
+
+        // Deleted, then the backup opened as from Files.
+        action("Delete", on: row)
+        waitFor(any("Delete Backed up?"), "the confirmation", timeout: 5)
+        app.buttons.matching(NSPredicate(format: "label == 'Delete'")).allElementsBoundByIndex.last!.tap()
+        Host.until("the server gone") { !row.exists }
+        // The pack deleted too.
+        app.buttons["Settings"].tap()
+        if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
+        sounds.tap()
+        app.buttons["Sound packs"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Backed pack'")).firstMatch.tap()
+        let delete = button("Delete sound pack")
+        for _ in 0..<6 where !(delete.exists && delete.isHittable) { app.collectionViews.firstMatch.swipeUp() }
+        delete.tap()
+        app.buttons.matching(NSPredicate(format: "label == 'Delete'")).allElementsBoundByIndex.last!.tap()
+        let pack = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Backed pack'")).firstMatch
+        Host.until("the pack gone") { !pack.exists }
+        app.navigationBars["Sound packs"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Sounds"].buttons.element(boundBy: 0).tap()
+        button("Done").tap()
+        run("openBackup", [:], says: "Backup opened")
+        waitFor(app.navigationBars["Restore a backup"], "the restore screen")
+        waitFor(app.switches["Servers (1 server)"], "what it holds")
+        XCTAssertTrue(app.switches["Settings"].exists)
+        app.navigationBars.buttons["Restore"].tap()
+        app.buttons.matching(NSPredicate(format: "label == 'Restore'")).allElementsBoundByIndex.last!.tap()
+        waitFor(row, "the server back after the restore", timeout: 20)
+        app.buttons["Settings"].tap()
+        if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
+        sounds.tap()
+        app.buttons["Sound packs"].tap()
+        waitFor(pack, "the sound pack back after the restore")
+    }
+}

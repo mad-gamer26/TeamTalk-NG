@@ -68,11 +68,21 @@ targets:
             UTTypeConformsTo: [public.xml, public.data]
             UTTypeTagSpecification:
               public.filename-extension: [tt]
+          # A TeamTalk NG backup (Settings → Backup and Restore).
+          - UTTypeIdentifier: com.matthewdovi.teamtalk-ng.backup
+            UTTypeDescription: TeamTalk NG backup
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [ttng]
         CFBundleDocumentTypes:
           - CFBundleTypeName: TeamTalk server
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
             LSItemContentTypes: [dk.bearware.teamtalk.tt]
+          - CFBundleTypeName: TeamTalk NG backup
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.matthewdovi.teamtalk-ng.backup]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
     settings:
       base:

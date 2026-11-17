@@ -54,6 +54,14 @@ struct TeamTalkNGApp: App {
                 startIfReadable()
             }
             .onChange(of: phase) { _, p in if p == .active { startIfReadable() } }
+            // A backup restored: everything reads the restored settings.
+            .onReceive(NotificationCenter.default.publisher(for: .ttngRestored)) { _ in
+                model = nil
+                DispatchQueue.main.async {
+                    model = AppModel()
+                    announce("Backup restored")
+                }
+            }
         }
         .onChange(of: phase) { _, p in
             guard let model else { return }
@@ -71,6 +79,8 @@ struct TeamTalkNGApp: App {
 
     private func main(_ model: AppModel) -> some View {
             ServerListView()
+                // A new model (after a restore) is a new screen: set up again.
+                .id(ObjectIdentifier(model))
                 .environment(model)
                 .onOpenURL { model.open($0) }
                 .task {

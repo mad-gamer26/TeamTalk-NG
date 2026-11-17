@@ -94,6 +94,9 @@ struct ServerListView: View {
             }
             .sheet(isPresented: $showPublic) { PublicServersView() }
             .sheet(isPresented: $firstRun) { FirstRunView() }
+            .sheet(item: Binding(get: { model.backupToRestore }, set: { model.backupToRestore = $0 })) { c in
+                RestoreBackupView(contents: c)
+            }
             .onAppear {
                 if !UserDefaults.standard.bool(forKey: "setUp") && model.servers.isEmpty { firstRun = true }
                 // The desktop's "Show dialog box with server list on startup".
@@ -332,6 +335,7 @@ struct SettingsView: View {
                     NavigationLink("Recording") { RecordingSettingsView() }
                     NavigationLink("Live Activities") { LiveActivitySettingsView() }
                     NavigationLink("iCloud sync") { ICloudSyncView() }
+                    NavigationLink("Backup and Restore") { BackupView() }
                     NavigationLink {
                         NGAccountView()
                     } label: {

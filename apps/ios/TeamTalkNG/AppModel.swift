@@ -380,6 +380,17 @@ final class AppModel {
             announce("Connecting to \(e.host)")
             return
         }
+        // A TeamTalk NG backup (opened from Files): what to restore of it.
+        if url.pathExtension.lowercased() == "ttng" {
+            do {
+                backupToRestore = try Backup.read(url)
+            } catch let p as Backup.Problem {
+                announce(p.text)
+            } catch {
+                announce("That backup couldn't be read")
+            }
+            return
+        }
         let reading = url.startAccessingSecurityScopedResource()
         defer { if reading { url.stopAccessingSecurityScopedResource() } }
         guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
@@ -408,6 +419,17 @@ final class AppModel {
 
     /// The app, for App Intents (Siri and Control Center run in it).
     @MainActor static weak var shared: AppModel?
+
+    /// A backup opened (from Files, or chosen in Backup and Restore),
+    /// waiting to be restored.
+    var backupToRestore: Backup.Contents?
+
+    /// Before a restore: every connection closed, and nothing saved from
+    /// now on (a new model reads what's restored).
+    func retireForRestore() {
+        for c in connections.values { c.disconnect() }
+        loading = true
+    }
     #if DEBUG
     /// UI tests: what the last test action said (shown on the server list).
     var uiTestActionResult = ""
