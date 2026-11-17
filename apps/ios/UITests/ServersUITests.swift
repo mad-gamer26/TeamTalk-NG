@@ -143,14 +143,11 @@ final class ServersUITests: NGTestCase {
         Host.call("/kick", ["who": "alice"])
         waitFor(onTheServerList, "the server list at once")
         XCTAssertFalse(app.alerts.firstMatch.exists, "no dialog with the setting off")
-        // Fully disconnected (it said Connected before), and not back.
-        Host.until("the server not connected in the list") {
-            !self.serverRow.label.contains("Connected") || self.serverRow.label.contains("Not connected")
-        }
+        // Fully disconnected, and not back.
         Thread.sleep(forTimeInterval: 3)
         XCTAssertNil(Host.user("alice"), "not logged in again")
-        XCTAssertFalse(serverRow.label.contains(", Connected"), "still not connected: \(serverRow.label)")
-        XCTAssertFalse(serverRow.label.contains("Not connected to a server"), "no error added to it: \(serverRow.label)")
+        // The row says only what the server is: no state, no error.
+        XCTAssertEqual(serverRow.label, "127.0.0.1:\(Host.ttPort)", "only host:port: \(serverRow.label)")
     }
 
     @MainActor
@@ -312,6 +309,8 @@ final class ServerListOrderUITests: NGTestCase {
     func testSearchedAndReordered() {
         add("Alpha"); add("Bravo"); add("Charlie")
         XCTAssertEqual(order(), ["Alpha", "Bravo", "Charlie"])
+        // A row says its name and host:port, nothing else.
+        XCTAssertEqual(row("Alpha").label, "Alpha, 127.0.0.1:10333")
 
         // Move down / Move up (the menu's items, VoiceOver's actions too).
         action("Move down", on: row("Alpha"))
