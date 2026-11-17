@@ -177,6 +177,39 @@ final class ServersUITests: NGTestCase {
         XCTAssertTrue(app.buttons["More"].exists)
     }
 
+    /// With the dialog off (the default), a kick from a channel still says
+    /// who did it (the status line, as the desktop's status bar); Settings →
+    /// Display → Show status line hides that line.
+    @MainActor
+    func testKickedFromAChannelSaysWhoAndTheStatusLineCanBeHidden() {
+        connect()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Lobby'")).firstMatch.tap()
+        Host.until("Alice in Lobby") { (Host.user("alice")?["channel"] as? String) == "/Lobby/" }
+        Host.call("/kick", ["who": "alice", "channel": "1"])
+        let status = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Status: Kicked from channel by '")).firstMatch
+        waitFor(status, "the status line saying who kicked me")
+        XCTAssertFalse(status.label.contains("unknown user"), "a name: \(status.label)")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "no dialog with the setting off")
+        XCTAssertFalse(onTheServerList.exists, "still on the server's screen")
+
+        // Show status line off: the line goes.
+        app.navigationBars.buttons["Servers"].tap()
+        app.buttons["Settings"].tap()
+        app.buttons["Display"].tap()
+        let sw = app.switches["Show status line"]
+        for _ in 0..<4 where !(sw.exists && sw.isHittable) { app.swipeUp() }
+        waitFor(sw, "the Show status line setting")
+        XCTAssertEqual(sw.value as? String, "1", "on by default")
+        sw.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        Host.until("it off") { (sw.value as? String) == "0" }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        button("Done").tap()
+        serverRow.tap()
+        waitFor(any("Lobby"), "back on the server's screen")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Status: '")).firstMatch.waitForExistence(timeout: 3),
+                       "no status line")
+    }
+
     @MainActor
     func testServerGoingDownAndComingBackReconnects() {
         connect()

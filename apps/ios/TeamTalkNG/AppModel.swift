@@ -157,6 +157,9 @@ final class AppModel {
 
     var showTimestamps = true { didSet { save() } }
     var showMOTD = true { didSet { save() } }
+    /// The status line under a server's screen (its latest status-bar
+    /// event). On by default.
+    var showStatusLine = true { didSet { save() } }
     /// The desktop's "Show statusbar events in chat-window", on by default.
     var eventsInChat = true { didSet { save() } }
     var notifyInBackground = true { didSet { save() } }
@@ -253,6 +256,7 @@ final class AppModel {
         serverListOnStart = defaults.bool(forKey: "serverListOnStart")
         showTimestamps = defaults.object(forKey: "showTimestamps") as? Bool ?? true
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
+        showStatusLine = defaults.object(forKey: "showStatusLine") as? Bool ?? true
         eventsInChat = defaults.object(forKey: "eventsInChat") as? Bool ?? true
         notifyInBackground = defaults.object(forKey: "notifyInBackground") as? Bool ?? true
         reconnect = defaults.object(forKey: "reconnect") as? Bool ?? true
@@ -333,7 +337,7 @@ final class AppModel {
         statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
         showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; sendOnReturn = true
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
-        showTimestamps = true; showMOTD = true; eventsInChat = true; notifyInBackground = true
+        showTimestamps = true; showMOTD = true; showStatusLine = true; eventsInChat = true; notifyInBackground = true
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
         sounds.volume = 1
@@ -499,6 +503,7 @@ final class AppModel {
         defaults.set(serverListOnStart, forKey: "serverListOnStart")
         defaults.set(showTimestamps, forKey: "showTimestamps")
         defaults.set(showMOTD, forKey: "showMOTD")
+        defaults.set(showStatusLine, forKey: "showStatusLine")
         defaults.set(eventsInChat, forKey: "eventsInChat")
         defaults.set(notifyInBackground, forKey: "notifyInBackground")
         defaults.set(reconnect, forKey: "reconnect")

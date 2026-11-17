@@ -68,7 +68,7 @@ struct ServerView: View {
                     TalkBar(connection: connection)
                 }
                 // The desktop's status bar: its latest message.
-                if !connection.statusLine.isEmpty {
+                if model.showStatusLine && !connection.statusLine.isEmpty {
                     Text(connection.statusLine)
                         .font(.caption)
                         .foregroundStyle(.secondary)

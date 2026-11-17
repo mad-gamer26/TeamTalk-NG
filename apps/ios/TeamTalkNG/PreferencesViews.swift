@@ -35,6 +35,7 @@ struct DisplaySettingsView: View {
                     .accessibilityHint("Such as HH:mm:ss. Now: \(model.timestamp(.now))")
                 Toggle("Show the message of the day", isOn: $model.showMOTD)
                 Toggle("Show status-bar events in the chat", isOn: $model.eventsInChat)
+                Toggle("Show status line", isOn: $model.showStatusLine)
                 NavigationLink("Status-bar events") { StatusEventsView() }
                 NavigationLink("Message templates") { ChatTemplatesView() }
             }
