@@ -176,6 +176,10 @@ final class AppModel {
     @ObservationIgnored private var loading = true
 
     init() {
+        // Never with settings that can't be read (after a restart, before
+        // the first unlock): they'd look empty, and `loading` staying true
+        // keeps anything from saving that over the real ones.
+        guard SettingsAccess.readable else { return }
         /// Settings converted to the desktop's ways while loading.
         var convertedSettings = false
         if let d = defaults.data(forKey: "servers"), let s = try? JSONDecoder().decode([SavedServer].self, from: d) {

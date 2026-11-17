@@ -4,7 +4,10 @@ import SwiftUI
 @main
 struct TeamTalkNGApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
-    @State private var model: AppModel
+    /// Nil until the settings can be read (see `SettingsAccess`): started
+    /// in the background after a restart, before the first unlock, the
+    /// app waits rather than read empty settings and save them.
+    @State private var model: AppModel?
 
     init() {
         #if DEBUG
@@ -16,16 +19,60 @@ struct TeamTalkNGApp: App {
             UIView.setAnimationsEnabled(false)
         }
         #endif
-        // The old app's servers and settings (once, when this app replaced
-        // it), then iCloud's newer settings, before anything reads them.
+        if SettingsAccess.readable { _model = State(initialValue: Self.makeModel()) }
+    }
+
+    /// Reads the settings and makes the app's model; only once they can
+    /// be read.
+    @MainActor private static func makeModel() -> AppModel {
+        // A backup restore asked for, the old app's servers and settings
+        // (once, when this app replaced it), then iCloud's newer settings,
+        // before anything reads them; and a copy of what's there.
+        SettingsBackup.applyPendingRestore()
         OldAppImport.runIfNeeded()
         ICloudSync.shared.startAtLaunch()
-        _model = State(initialValue: AppModel())
+        SettingsBackup.save(reason: "At start")
+        return AppModel()
+    }
+
+    /// The first unlock after a restart (or any later moment the settings
+    /// became readable): the app starts now.
+    private func startIfReadable() {
+        guard model == nil, SettingsAccess.readable else { return }
+        model = Self.makeModel()
     }
     @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
+            Group {
+                if let model {
+                    main(model)
+                } else {
+                    Text("Unlock your iPhone to use TeamTalk NG.")
+                        .padding()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataDidBecomeAvailableNotification)) { _ in
+                startIfReadable()
+            }
+            .onChange(of: phase) { _, p in if p == .active { startIfReadable() } }
+        }
+        .onChange(of: phase) { _, p in
+            guard let model else { return }
+            // Away after a while in the background, as the desktop is after
+            // a while without input.
+            // Coming back leaves the sound as it is (the owner's choice: the
+            // audio was set up again each time). An interruption that ends
+            // (a phone call) makes the session active again (AppModel).
+            if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
+            // NG Account: what changed on other devices meanwhile (their
+            // push may not have come, or came while the app wasn't running).
+            if p == .active, model.account.email != nil { Task { await model.account.sync() } }
+        }
+    }
+
+    private func main(_ model: AppModel) -> some View {
             ServerListView()
                 .environment(model)
                 .onOpenURL { model.open($0) }
@@ -40,18 +87,6 @@ struct TeamTalkNGApp: App {
                     model.connectOnStart()
                     if model.notifyInBackground { requestNotifications() }
                 }
-        }
-        .onChange(of: phase) { _, p in
-            // Away after a while in the background, as the desktop is after
-            // a while without input.
-            // Coming back leaves the sound as it is (the owner's choice: the
-            // audio was set up again each time). An interruption that ends
-            // (a phone call) makes the session active again (AppModel).
-            if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
-            // NG Account: what changed on other devices meanwhile (their
-            // push may not have come, or came while the app wasn't running).
-            if p == .active, model.account.email != nil { Task { await model.account.sync() } }
-        }
     }
 }
 
