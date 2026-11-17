@@ -60,6 +60,7 @@ struct SoundPackView: View {
     @State private var author = ""
     @State private var about = ""
     @State private var choosingFor: SoundEvent?
+    @State private var picking = false
     @State private var deleting = false
     @State private var copyOpened: String?
     @State private var publishing = false
@@ -97,8 +98,10 @@ struct SoundPackView: View {
             .navigationTitle(p.name)
             .onAppear { name = p.name; author = p.author; about = p.description ?? "" }
             .task(id: p.id) { if p.editable { published = await model.account.publishedCopy(of: p.id) } }
-            .fileImporter(isPresented: Binding(get: { choosingFor != nil }, set: { if !$0 { choosingFor = nil } }),
-                          allowedContentTypes: [.audio]) { r in
+            // Its own flag: SwiftUI closes the picker (setting this false)
+            // before it hands over the file, so the sound it's for must
+            // outlive that (it was cleared there, and nothing was saved).
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.audio]) { r in
                 if case .success(let url) = r, let e = choosingFor {
                     if sounds.setSound(e, in: p, from: url) {
                         announce("\(e.label): \(url.lastPathComponent)")
@@ -171,13 +174,13 @@ struct SoundPackView: View {
                 .accessibilityHint("Plays it.")
                 .contextMenu {
                     Button("Play") { sounds.preview(e, pack: p) }
-                    if p.editable { Button("Choose a sound file") { choosingFor = e } }
+                    if p.editable { Button("Choose a sound file") { choosingFor = e; picking = true } }
                     if p.editable && own { Button("Use the built-in sound") { sounds.removeSound(e, in: p) } }
                 }
                 // The menu's items as VoiceOver actions, reversed (the owner's rule).
                 .accessibilityActions {
                     if p.editable && own { Button("Use the built-in sound") { sounds.removeSound(e, in: p) } }
-                    if p.editable { Button("Choose a sound file") { choosingFor = e } }
+                    if p.editable { Button("Choose a sound file") { choosingFor = e; picking = true } }
                     Button("Play") { sounds.preview(e, pack: p) }
                 }
             }

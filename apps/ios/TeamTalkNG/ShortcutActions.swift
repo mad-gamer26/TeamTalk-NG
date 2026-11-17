@@ -156,6 +156,16 @@ extension ShortcutActions {
                 } else {
                     said = "No such pack or sound"
                 }
+            case "placeSoundFile":
+                // A sound in the app's own Files folder (On My iPhone), for
+                // the real file picker to choose.
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let to = docs.appendingPathComponent("Picked sound.wav")
+                try? FileManager.default.removeItem(at: to)
+                if let src = Bundle.main.url(forResource: "user_msg", withExtension: "wav") {
+                    try FileManager.default.copyItem(at: src, to: to)
+                }
+                said = "Sound file placed"
             case "makeBackup":
                 // A backup of everything, kept where the test can open it
                 // again (the share sheet's Save to Files can't be driven).

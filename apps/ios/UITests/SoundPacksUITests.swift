@@ -88,6 +88,33 @@ final class SoundPacksUITests: NGTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Test pack, yours, in use'")).firstMatch.exists)
     }
 
+    /// "Choose a sound file" through the real file picker: the file chosen
+    /// becomes the pack's sound for that event.
+    func testChooseASoundFileThroughThePicker() {
+        run("placeSoundFile", [:], says: "Sound file placed")
+        openPacks()
+        newPack("Picked pack")
+        let row = soundRow("User logged in, the built-in sound")
+        waitFor(row, "the sound")
+        row.press(forDuration: 1.2)
+        button("Choose a sound file").tap()
+        // The picker: Browse, On My iPhone, the app's folder, the file.
+        let browse = app.buttons["Browse"]
+        waitFor(browse, "the file picker")
+        browse.tap()
+        if browse.isHittable { browse.tap() }  // a second tap goes to its top
+        let onPhone = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'On My iPhone'")).firstMatch
+        waitFor(onPhone, "On My iPhone")
+        onPhone.tap()
+        let folder = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'TTNG Dev'")).firstMatch
+        waitFor(folder, "the app's folder")
+        folder.tap()
+        let file = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Picked sound'")).firstMatch
+        waitFor(file, "the sound file")
+        file.tap()
+        waitFor(soundRow("User logged in, from this pack"), "the chosen file as the pack's sound")
+    }
+
     func testTheBuiltInPackIsEditedThroughACopy() {
         openPacks()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'TeamTalk (built in)'")).firstMatch.tap()
