@@ -114,6 +114,25 @@ final class MonitorUITests: NGTestCase {
         }
     }
 
+    /// Private messages the Monitor received while the app wasn't watching
+    /// are there when the server is opened through it.
+    func testPrivateMessagesKeptByTheMonitorShowWhenItsServerOpens() {
+        connect("alice")
+        more("Disconnect")
+        monitorFromSettings()
+        closeSettings(from: "Monitor")
+        Host.until("the Monitor logged in as alice", timeout: 30) { Host.user("alice") != nil }
+        Host.call("/pm", ["bot": "bob", "to": "alice", "text": "Kept for you"])
+        Thread.sleep(forTimeInterval: 2)
+        app.buttons["Monitor"].tap()
+        let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(watched, "it on the Monitor's list", timeout: 20)
+        watched.tap()
+        waitFor(any("Bob"), "Bob, through the Monitor", timeout: 30)
+        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        waitFor(any("Kept for you"), "Bob's message, kept by the Monitor", timeout: 20)
+    }
+
     /// Connecting to a monitored server here doesn't log the monitor out:
     /// it stays (only this iPhone's notifications about it pause).
     func testConnectingHereKeepsTheMonitorLoggedIn() {

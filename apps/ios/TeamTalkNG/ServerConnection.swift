@@ -1625,6 +1625,9 @@ extension ServerConnection {
                     self.applyMonitorView(v, announce: false)
                     if first {
                         first = false
+                        // What the Monitor kept while nobody looked: its
+                        // private conversations, as this session's.
+                        await self.loadMonitorConversations(id)
                         // Already there: listed, not announced (as on login).
                         self.handle(.connectionChanged(state: .loggedIn))
                         // The root channel open, as a live connection's (it
@@ -1732,6 +1735,44 @@ extension ServerConnection {
         }
     }
 
+
+    /// The Monitor's private conversations on this server (kept while the
+    /// app wasn't watching) as private message lines, quietly: in time
+    /// order among the rest, replacing any shown before (opened again), and
+    /// people with unread messages marked as the desktop marks them.
+    private func loadMonitorConversations(_ id: Int64) async {
+        guard let store = monitorStore, case .success(let conversations)? = await store.call({ try $0.conversations(serverId: id) }) else { return }
+        let me = myName
+        var kept: [ChatLine] = []
+        for c in conversations {
+            let cid = c.id
+            guard case .success(let messages)? = await store.call({ try $0.messages(serverId: id, conversationId: cid, before: nil) }) else { continue }
+            let name = c.nickname.isEmpty ? c.username : c.nickname
+            for m in messages {
+                kept.append(ChatLine(from: m.outgoing ? "Me" : name, text: m.text, privateWith: name,
+                                     time: Date(timeIntervalSince1970: TimeInterval(m.time) / 1000), kind: .privateMessage,
+                                     vars: ["user": m.outgoing ? me : name, "content": m.text]))
+            }
+            if c.unread > 0, let u = snapshot?.users.first(where: { Int64($0.id) == c.userId }) { unread.insert(u.id) }
+        }
+        guard monitorTask != nil else { return }
+        lines = (lines.filter { $0.kind != .privateMessage } + kept).sorted { $0.time < $1.time }
+    }
+
+    /// Monitor mode: a private conversation was opened, so the Monitor
+    /// counts its messages as read (its unread count, on every device).
+    func monitorConversationRead(with user: User) {
+        guard let id = monitorId, let store = monitorStore else { return }
+        let uid = Int64(user.id)
+        Task {
+            guard case .success(let all)? = await store.call({ try $0.conversations(serverId: id) }) else { return }
+            for c in all where c.userId == uid && c.unread > 0 {
+                let cid = c.id
+                await store.call { try $0.markRead(serverId: id, conversationId: cid) }
+            }
+            await store.refresh()
+        }
+    }
 
     /// A channel's path ("/" for the root), from the Monitor's view.
     func monitorChannelPath(_ id: Int32) -> String {

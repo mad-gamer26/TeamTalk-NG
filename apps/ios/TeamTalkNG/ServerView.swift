@@ -783,7 +783,13 @@ struct ChatView: View {
             .padding(.vertical, 8)
         }
         // The conversation on screen (the desktop's "focused window").
-        .onAppear { if let p = privateWith { connection.focusedConversation = p.id; connection.unread.remove(p.id) } }
+        .onAppear {
+            if let p = privateWith {
+                connection.focusedConversation = p.id
+                connection.unread.remove(p.id)
+                connection.monitorConversationRead(with: p)
+            }
+        }
         .onDisappear { if connection.focusedConversation == privateWith?.id { connection.focusedConversation = nil } }
     }
 
