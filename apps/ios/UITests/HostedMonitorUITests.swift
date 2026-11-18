@@ -3,7 +3,7 @@ import XCTest
 /// TeamTalk NG's hosted Monitor (for people without a computer): chosen
 /// with what it means said first, a server monitored through it, then the
 /// move to your own Monitor (recommended): the server moves across and the
-/// hosted Monitor lets go of it.
+/// hosted Monitor lets go of it; then back to the hosted one the same way.
 final class HostedMonitorUITests: NGTestCase {
     override var pairedWithMonitor: Bool { false }
 
@@ -66,5 +66,14 @@ final class HostedMonitorUITests: NGTestCase {
         waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch, "the server moved to your own Monitor", timeout: 30)
         Thread.sleep(forTimeInterval: 5)
         Host.until("one monitor there: your own", timeout: 30) { admins() == before + 1 }
+
+        // And back: the server moves to the hosted Monitor again, your own
+        // stops watching it (still one monitor there).
+        app.buttons["monitor-move-to-hosted"].tap()
+        app.buttons.matching(NSPredicate(format: "label == %@", "Move to TeamTalk NG's Monitor")).allElementsBoundByIndex.last { $0.isHittable }?.tap()
+        waitFor(app.buttons["monitor-use-own"], "the hosted Monitor in use again", timeout: 30)
+        waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch, "the server moved to the hosted Monitor", timeout: 30)
+        Thread.sleep(forTimeInterval: 5)
+        Host.until("one monitor there: the hosted one", timeout: 30) { admins() == before + 1 }
     }
 }

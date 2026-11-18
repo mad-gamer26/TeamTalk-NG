@@ -262,6 +262,7 @@ struct MonitorSettingsView: View {
     @State private var forgetting = false
     @State private var choosingHosted = false
     @State private var leavingHosted = false
+    @State private var movingToHosted = false
 
     var body: some View {
         let monitor = model.monitor
@@ -269,6 +270,8 @@ struct MonitorSettingsView: View {
             Section {
                 if let own = monitor.own {
                     LabeledContent("Your Monitor", value: own.name)
+                    Button("Use TeamTalk NG's Monitor instead") { movingToHosted = true }
+                        .accessibilityIdentifier("monitor-move-to-hosted")
                     Button("Forget this Monitor", role: .destructive) { forgetting = true }
                 } else if monitor.hosted {
                     LabeledContent("Using", value: "TeamTalk NG's Monitor")
@@ -342,6 +345,17 @@ struct MonitorSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("It watches the servers you choose from TeamTalk NG's server, so it keeps their accounts' passwords there, encrypted. Your own Monitor, on your computer, keeps them to yourself; you can move to it any time.")
+        }
+        .confirmationDialog("Use TeamTalk NG's Monitor instead?", isPresented: $movingToHosted, titleVisibility: .visible) {
+            Button("Move to TeamTalk NG's Monitor") {
+                Task {
+                    let problem = await monitor.moveToHosted()
+                    announce(problem ?? "Using TeamTalk NG's Monitor; your servers moved to it")
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your servers move to TeamTalk NG's Monitor, which keeps their passwords on its server, encrypted. Your own Monitor stops watching them but keeps running on your computer; to remove it there, run the install command with --uninstall.")
         }
         .confirmationDialog("Stop using TeamTalk NG's Monitor?", isPresented: $leavingHosted, titleVisibility: .visible) {
             Button("Stop using it", role: .destructive) {

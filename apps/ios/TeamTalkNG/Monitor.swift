@@ -91,6 +91,30 @@ final class MonitorStore {
         monitorChanged()
     }
 
+    /// From your own Monitor to the hosted one: the servers it watches for
+    /// this phone move across (the passwords saved here), it stops
+    /// watching them (it keeps running on your computer; nothing logs in
+    /// twice), and this phone forgets the pairing. Returns servers that
+    /// couldn't move, in words, or nil.
+    func moveToHosted() async -> String? {
+        guard own != nil else { useHosted(); return nil }
+        await refresh()
+        let moving = app.servers.filter { monitor(of: $0) != nil }
+        for saved in moving {
+            if let m = monitor(of: saved) { await remove(m) }
+        }
+        Passwords.setSecret("", Self.ownService, "monitor")
+        own = nil
+        pushKeySaved = false
+        Service.forgetPushKey()
+        useHosted()
+        var failed: [String] = []
+        for saved in moving {
+            if let why = await add(saved) { failed.append("\(saved.title): \(why)") }
+        }
+        return failed.isEmpty ? nil : "Not moved: " + failed.joined(separator: "; ")
+    }
+
     /// Stops using the hosted Monitor: its registration ends, so it logs out
     /// of these servers and deletes them and their passwords there.
     func stopHosted() async {
