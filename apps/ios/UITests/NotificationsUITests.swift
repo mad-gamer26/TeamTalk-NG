@@ -44,7 +44,7 @@ final class NotificationsUITests: NGTestCase {
         Thread.sleep(forTimeInterval: 3)
         app.activate()
         let list = delivered()
-        for want in ["Channel message from Bob: Hello all", "Private message from Bob: Hi", "User logged out: Carol"] {
+        for want in ["Channel message from Bob: Hello all", "Private message from Bob: Hi", "Carol logged out"] {
             XCTAssertTrue(list.contains(want), "\(want) in \(list)")
         }
         XCTAssertFalse(list.contains("Bob |"), "titled with the server, not a person: \(list)")
