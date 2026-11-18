@@ -236,6 +236,12 @@ fn main() {
             let ok = |r: ttng_core::Result<()>| r.map(|_| json!({ "ok": true })).map_err(|e| format!("{e:?}"));
             match path {
                 "/state" => Ok(state(c()?)),
+                // The Simulator's pasteboard (the test runner may not read it).
+                "/pasteboard" => std::process::Command::new("xcrun")
+                    .args(["simctl", "pbpaste", "booted"])
+                    .output()
+                    .map(|o| json!({ "text": String::from_utf8_lossy(&o.stdout) }))
+                    .map_err(|e| e.to_string()),
                 "/join" => ok(c()?
                     .client
                     .join_channel_path(&q["path"], q.get("password").map_or("", |s| s))),

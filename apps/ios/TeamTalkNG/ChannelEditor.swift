@@ -47,7 +47,7 @@ struct ChannelEditView: View {
                     TextField("Topic", text: $topic).accessibilityLabel("Topic")
                     if editing != nil { Toggle("Change the password", isOn: $changePassword) }
                     if editing == nil || changePassword {
-                        SecureField("Password (empty for none)", text: $password).accessibilityLabel("Password (empty for none)")
+                        PasswordField("Password (empty for none)", text: $password)
                     }
                     // The desktop: only with the right to modify channels
                     // (otherwise the channel is joined as it's made).
@@ -58,7 +58,7 @@ struct ChannelEditView: View {
                 Section {
                         if editing != nil { Toggle("Change the operator password", isOn: $changeOpPassword) }
                         if editing == nil || changeOpPassword {
-                            SecureField("Operator password (empty for none)", text: $opPassword).accessibilityLabel("Operator password (empty for none)")
+                            PasswordField("Operator password (empty for none)", text: $opPassword, showLabel: "Show operator password")
                         }
                     } footer: {
                         Text("Whoever knows it can make themselves an operator of the channel.")
@@ -175,6 +175,11 @@ struct ChannelEditView: View {
         fixedLevel = Double(c.fixedVolumeLevel)
         voiceLimit = String(c.voiceTimeoutMs / 1000)
         mediaLimit = String(c.mediaTimeoutMs / 1000)
+        // The passwords, where TeamTalk shows them (admins): there to see
+        // and change, as the old app.
+        let known = connection.knownPassword(c.id)
+        if !known.isEmpty { password = known; changePassword = true }
+        if !c.operatorPassword.isEmpty { opPassword = c.operatorPassword; changeOpPassword = true }
     }
 
     private func save() {
@@ -232,7 +237,7 @@ struct ChannelInfoView: View {
                         row("Topic", c.topic.isEmpty ? "None" : c.topic)
                         row("People", people.isEmpty ? "Nobody" : people.map(\.displayName).joined(separator: ", "))
                         row("Most people", "\(c.maxUsers)")
-                        row("Password", c.hasPassword ? "Yes" : "No")
+                        row("Password", !c.password.isEmpty ? c.password : (c.hasPassword ? "Yes" : "No"))
                         if !c.operatorPassword.isEmpty { row("Operator password", c.operatorPassword) }
                         let ops = people.filter(\.operator).map(\.displayName)
                         row("Operators here", ops.isEmpty ? "None" : ops.joined(separator: ", "))

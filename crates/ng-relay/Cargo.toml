@@ -1,0 +1,24 @@
+[package]
+name = "ng-relay"
+version = "0.1.0"
+edition.workspace = true
+description = "Self-hosted Monitors: pairing codes (SPAKE2), end-to-end sessions (Noise KK) and the relay's frames."
+publish = false
+
+[dependencies]
+spake2 = "0.4"
+snow = { version = "0.9", default-features = false, features = ["default-resolver"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true

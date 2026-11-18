@@ -60,7 +60,7 @@ PY
 cd "$root/apps/ios"
 xcodegen -q
 xcrun simctl boot "$sim" 2>/dev/null || true
-xcrun simctl uninstall "$sim" com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
+xcrun simctl uninstall "$sim" com.matthewdovi.TeamTalk-NG 2>/dev/null || true
 TEST_RUNNER_NG_EMAIL="$email" TEST_RUNNER_NG_PASSWORD="$password" xcodebuild test \
     -project TeamTalkNG.xcodeproj -scheme TeamTalkNG -destination "platform=iOS Simulator,id=$sim" \
     -derivedDataPath build/uitest -only-testing:TeamTalkNGUITests TTNG_SERVICE_URL="$url" 2>&1 \

@@ -58,9 +58,47 @@ pub struct MonitorServerInput {
     pub username: String,
     pub password: String,
     pub status_msg: String,
+    /// The monitor's gender as TeamTalk status mode bits (female 256,
+    /// neutral 4096; neither is male).
+    pub status_mode: i64,
     pub channel: String,
+    /// Empty keeps the service's (as does an empty `password`).
     pub channel_password: String,
     pub enabled: bool,
+}
+
+/// A monitored server's settings as the service keeps them (no passwords).
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct MonitorServerConfig {
+    pub id: i64,
+    pub name: String,
+    pub host: String,
+    pub tcp_port: u16,
+    pub encrypted: bool,
+    pub nickname: String,
+    pub username: String,
+    pub status_msg: String,
+    pub status_mode: i64,
+    pub channel: String,
+    pub enabled: bool,
+}
+
+impl From<svc::MonitorServerConfig> for MonitorServerConfig {
+    fn from(c: svc::MonitorServerConfig) -> Self {
+        MonitorServerConfig {
+            id: c.id,
+            name: c.name,
+            host: c.host,
+            tcp_port: c.tcp_port,
+            encrypted: c.encrypted,
+            nickname: c.nickname,
+            username: c.username,
+            status_msg: c.status_msg,
+            status_mode: c.status_mode,
+            channel: c.channel,
+            enabled: c.enabled,
+        }
+    }
 }
 
 impl From<MonitorServerInput> for svc::MonitorServerInput {
@@ -74,6 +112,7 @@ impl From<MonitorServerInput> for svc::MonitorServerInput {
             username: s.username,
             password: s.password,
             status_msg: s.status_msg,
+            status_mode: s.status_mode,
             channel: s.channel,
             channel_password: s.channel_password,
             enabled: s.enabled,
@@ -226,6 +265,36 @@ impl MonitorClient {
         })
     }
 
+    /// Your own Monitor (`ng-monitor` on a home computer), paired before,
+    /// through the relay at `relay` (empty: the live service).
+    #[uniffi::constructor]
+    pub fn own(relay: String, monitor: OwnMonitor, phone_key: Vec<u8>) -> Result<Arc<Self>> {
+        let relay = if relay.is_empty() {
+            svc::DEFAULT_BASE_URL.to_owned()
+        } else {
+            relay
+        };
+        let monitor_key: [u8; 32] = monitor.monitor_key.try_into().map_err(|_| bad_key())?;
+        let phone_key: [u8; 32] = phone_key.try_into().map_err(|_| bad_key())?;
+        let paired = svc::PairedMonitor {
+            monitor_id: monitor.monitor_id,
+            name: monitor.name,
+            monitor_key,
+        };
+        Ok(Arc::new(MonitorClient {
+            inner: Mutex::new(svc::Monitor::own(&relay, paired, &phone_key)),
+        }))
+    }
+
+    /// Your own Monitor's name and the key that opens its notifications.
+    pub fn own_hello(&self) -> Result<OwnMonitorHello> {
+        self.with(|m| m.hello()).map(|v| OwnMonitorHello {
+            name: v["name"].as_str().unwrap_or_default().to_owned(),
+            push_key: v["push_key"].as_str().unwrap_or_default().to_owned(),
+            version: v["version"].as_str().unwrap_or_default().to_owned(),
+        })
+    }
+
     /// Registers this install alone; returns its token (keep it secret).
     pub fn register(&self, device_name: String) -> Result<String> {
         self.with(|m| m.register(&device_name)).map(|r| r.token)
@@ -246,8 +315,9 @@ impl MonitorClient {
         sandbox: bool,
         app_ref: String,
         install_id: String,
+        topic: String,
     ) -> Result<()> {
-        self.with(|m| m.set_push(apns_token.as_deref(), sandbox, &app_ref, &install_id))
+        self.with(|m| m.set_push_for(apns_token.as_deref(), sandbox, &app_ref, &install_id, &topic))
     }
 
     pub fn servers(&self) -> Result<Vec<MonitorServer>> {
@@ -298,6 +368,12 @@ impl MonitorClient {
         self.with(|m| m.add_server(&server.into()))
     }
 
+    /// A monitored server's settings: nickname, status message, gender,
+    /// channel, enabled.
+    pub fn server_config(&self, server_id: i64) -> Result<MonitorServerConfig> {
+        self.with(|m| m.server_config(server_id)).map(Into::into)
+    }
+
     pub fn update_server(&self, server_id: i64, server: MonitorServerInput) -> Result<()> {
         self.with(|m| m.update_server(server_id, &server.into()))
     }
@@ -312,6 +388,14 @@ impl MonitorClient {
 
     pub fn resume(&self, server_id: i64) -> Result<()> {
         self.with(|m| m.resume(server_id))
+    }
+
+    pub fn quiet(&self, server_id: i64, install_id: String, seconds: i64) -> Result<()> {
+        self.with(|m| m.quiet(server_id, &install_id, seconds))
+    }
+
+    pub fn unquiet(&self, server_id: i64, install_id: String) -> Result<()> {
+        self.with(|m| m.unquiet(server_id, &install_id))
     }
 
     pub fn events(&self, since: Option<i64>, server_id: Option<i64>) -> Result<MonitorEvents> {
@@ -406,6 +490,55 @@ impl MonitorClient {
     pub fn delete_conversation(&self, server_id: i64, conversation_id: i64) -> Result<()> {
         self.with(|m| m.delete_conversation(server_id, conversation_id))
     }
+}
+
+/// Your own Monitor, as pairing found it: keep all of it (the key proves
+/// it's the one).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct OwnMonitor {
+    pub monitor_id: String,
+    pub name: String,
+    pub monitor_key: Vec<u8>,
+}
+
+/// What your own Monitor says about itself.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct OwnMonitorHello {
+    pub name: String,
+    /// Opens its notifications (a secret).
+    pub push_key: String,
+    pub version: String,
+}
+
+fn bad_key() -> NgError {
+    NgError::Unexpected {
+        message: "A stored Monitor key is damaged. Pair again.".into(),
+    }
+}
+
+/// A new private key for this phone, for pairing with your own Monitors
+/// (keep it in the Keychain).
+#[uniffi::export]
+pub fn own_monitor_new_phone_key() -> Vec<u8> {
+    svc::new_phone_key().to_vec()
+}
+
+/// Pairs with your own Monitor using the code it shows (blocks: run it off
+/// the main thread). `relay` empty: the live service.
+#[uniffi::export]
+pub fn own_monitor_pair(relay: String, code: String, phone_name: String, phone_key: Vec<u8>) -> Result<OwnMonitor> {
+    let relay = if relay.is_empty() {
+        svc::DEFAULT_BASE_URL.to_owned()
+    } else {
+        relay
+    };
+    let phone_key: [u8; 32] = phone_key.try_into().map_err(|_| bad_key())?;
+    let p = svc::pair_own_monitor(&relay, &code, &phone_name, &phone_key)?;
+    Ok(OwnMonitor {
+        monitor_id: p.monitor_id,
+        name: p.name,
+        monitor_key: p.monitor_key.to_vec(),
+    })
 }
 
 /// A new registration: its token and the key that opens its notifications.

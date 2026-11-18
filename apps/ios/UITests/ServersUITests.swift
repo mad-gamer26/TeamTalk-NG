@@ -68,7 +68,8 @@ final class ServersUITests: NGTestCase {
         let alert = app.alerts.firstMatch
         waitFor(alert, "the Login error dialog")
         XCTAssertTrue(alert.label.contains("Login") || alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Login'")).count > 0)
-        let pw = alert.secureTextFields.firstMatch
+        // The password shown, as the old app (an alert has no switch).
+        let pw = alert.textFields["Password"]
         pw.tap()
         // It holds the wrong password: cleared first.
         pw.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "alice-pw")
@@ -257,9 +258,10 @@ final class BackupUITests: NGTestCase {
         let screen = app.buttons["Backup and Restore"]
         if !screen.waitForExistence(timeout: 3) { app.swipeUp() }
         screen.tap()
-        for part in ["Servers", "Server passwords", "Settings", "Sound packs", "Chat history"] {
+        for part in ["Servers", "Server passwords", "Settings", "Sound packs"] {
             XCTAssertTrue(app.switches[part].exists, "the \(part) switch")
         }
+        XCTAssertFalse(app.switches["Chat history"].exists, "no chat history: it isn't kept")
         // Making one offers to save or send it.
         button("Make a backup").tap()
         let shared = app.otherElements["ActivityListView"].firstMatch

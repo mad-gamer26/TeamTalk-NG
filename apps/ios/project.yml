@@ -1,8 +1,9 @@
 # XcodeGen spec for TeamTalk NG on iPhone (SwiftUI on the Rust core). Build:
 #   apps/ios/build-core.sh && cd apps/ios && xcodegen generate
-# TTNG_BUNDLE_ID: the real app's ID (com.matthewdovi.TeamTalk-NG) makes a
-# build replace the installed TeamTalk NG; the default is a separate
-# development app that installs beside it.
+# TTNG_BUNDLE_ID: the real app's ID (com.matthewdovi.TeamTalk-NG, since
+# 2026-11-17): a build replaces the installed TeamTalk NG and imports the
+# old app's data. com.matthewdovi.TeamTalk-NG.dev with "TTNG Dev" makes a
+# separate development app that installs beside it.
 name: TeamTalkNG
 options:
   bundleIdPrefix: com.matthewdovi
@@ -14,13 +15,12 @@ settings:
     MARKETING_VERSION: "2.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: 5NJK4F832Z
-    TTNG_BUNDLE_ID: com.matthewdovi.TeamTalk-NG.dev
-    TTNG_DISPLAY_NAME: TTNG Dev
-    # The Monitor and NG Account service. TEMPORARY for the dev app: the
-    # development ngmon on the owner's Mac (Tailscale only, its own empty
-    # database; ~/ngmon-dev there). Empty means the live service. The
-    # real app must use the live service (and lose the HTTP exception).
-    TTNG_SERVICE_URL: "http://100.118.202.104:8650"
+    TTNG_BUNDLE_ID: com.matthewdovi.TeamTalk-NG
+    TTNG_DISPLAY_NAME: TeamTalk NG
+    # The Monitor and NG Account service: empty means the live one
+    # (https://ttmonitor.mad-gamer.com; since 2026-11-17 for the dev app
+    # too). The UI tests set a private one on localhost.
+    TTNG_SERVICE_URL: ""
     TTNG_APP_GROUP: "group.$(TTNG_BUNDLE_ID)"
 targets:
   TeamTalkNG:
@@ -40,10 +40,10 @@ targets:
         UILaunchScreen: {}
         TTNGServiceURL: "$(TTNG_SERVICE_URL)"
         TTNGAppGroup: "$(TTNG_APP_GROUP)"
-        # DEV ONLY: the development Monitor is plain HTTP on a Tailscale
-        # address. Remove with TTNG_SERVICE_URL for the real app.
+        # Plain HTTP only on this device and the local network (the UI
+        # tests' private services on localhost); everything else HTTPS.
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
         # Stays connected, and keeps talking and listening, when locked.
         # NG Account's silent "changed elsewhere" notices sync in the background.
         UIBackgroundModes: [audio, remote-notification]

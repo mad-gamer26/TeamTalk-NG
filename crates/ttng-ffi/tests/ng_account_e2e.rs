@@ -173,6 +173,7 @@ fn an_iphone_and_an_ipad_share_one_ng_account() {
             username: String::new(),
             password: String::new(),
             status_msg: String::new(),
+            status_mode: 0,
             channel: String::new(),
             channel_password: String::new(),
             enabled: false,

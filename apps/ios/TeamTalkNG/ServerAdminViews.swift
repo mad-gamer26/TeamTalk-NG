@@ -66,6 +66,9 @@ struct AccountsView: View {
     @State private var accounts: [UserAccount]?
     @State private var editing: EditAccount?
     @State private var deleting: UserAccount?
+    @State private var exporting: UserAccount?
+    @State private var exportFileName = ""
+    @State private var exportEntryName = ""
 
     struct EditAccount: Identifiable {
         let account: UserAccount
@@ -88,7 +91,17 @@ struct AccountsView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityHint("Double-tap to change.")
                         .swipeActions { Button("Delete", role: .destructive) { deleting = a } }
-                        .accessibilityActions { Button("Delete") { deleting = a } }
+                        .contextMenu {
+                            Button("Copy Link") { copyLink(a) }
+                            Button("Export TT File") { exportStart(a) }
+                            Button("Delete", role: .destructive) { deleting = a }
+                        }
+                        // Reversed for VoiceOver (the menu's order, backwards).
+                        .accessibilityActions {
+                            Button("Delete") { deleting = a }
+                            Button("Export TT File") { exportStart(a) }
+                            Button("Copy Link") { copyLink(a) }
+                        }
                     }
                 } else {
                     ProgressView("Loading the accounts")
@@ -128,11 +141,62 @@ struct AccountsView: View {
             } message: {
                 Text("They can no longer log in with it.")
             }
+            .alert("Export TT File", isPresented: Binding(get: { exporting != nil }, set: { if !$0 { exporting = nil } })) {
+                TextField("File name", text: $exportFileName).accessibilityLabel("File name")
+                TextField("Server entry name", text: $exportEntryName).accessibilityLabel("Server entry name")
+                Button("Export") {
+                    if let a = exporting { presentShareSheet([makeTTFile(a, fileName: exportFileName, entryName: exportEntryName)]) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("A .tt file that logs in with \(exporting?.username ?? "this account"), its password included.")
+            }
         }
+    }
+
+    /// This server, logging in with the account (its password and initial
+    /// channel included), as the old app's Copy TT Link and Export TT File.
+    private func entry(_ a: UserAccount, name: String? = nil) -> HostEntry {
+        var e = connection.server.entry(password: a.password)
+        e.name = name ?? e.name
+        e.username = a.username
+        e.nickname = ""
+        e.statusMessage = ""
+        e.channel = a.initialChannel
+        e.channelPassword = ""
+        return e
+    }
+
+    private func copyLink(_ a: UserAccount) {
+        UIPasteboard.general.string = ttLink(entry: entry(a))
+        announce("Link copied")
+    }
+
+    private func exportStart(_ a: UserAccount) {
+        exportFileName = Self.safeName(a.username.isEmpty ? "TeamTalk Server" : a.username)
+        exportEntryName = connection.snapshot?.server.name.nonEmpty ?? connection.server.title
+        exporting = a
+    }
+
+    private func makeTTFile(_ a: UserAccount, fileName: String, entryName: String) -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("share", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var name = Self.safeName(fileName.trimmingCharacters(in: .whitespaces))
+        if name.isEmpty { name = Self.safeName(a.username.isEmpty ? "TeamTalk Server" : a.username) }
+        let url = dir.appendingPathComponent(name).appendingPathExtension("tt")
+        let entryName = entryName.trimmingCharacters(in: .whitespaces)
+        let e = entry(a, name: entryName.isEmpty ? (connection.snapshot?.server.name.nonEmpty ?? connection.server.title) : entryName)
+        try? ttFile(entry: e).write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private static func safeName(_ s: String) -> String {
+        s.components(separatedBy: CharacterSet(charactersIn: "/\\?%*|\"<>:")).joined(separator: "-")
     }
 
     private func summary(_ a: UserAccount) -> String {
         var p = [a.admin ? "Administrator" : "Default user"]
+        if !a.password.isEmpty { p.append("password \(a.password)") }
         if !a.note.isEmpty { p.append(a.note) }
         if !a.lastLogin.isEmpty { p.append("last login \(serverTime(a.lastLogin))") }
         return p.joined(separator: ", ")
@@ -150,6 +214,10 @@ struct AccountEditView: View {
     let connection: ServerConnection
     @State var account: UserAccount
     let new: Bool
+    /// The username it had (an existing account renamed is made again
+    /// under the new name, then the old one deleted, as the old app did:
+    /// TeamTalk can't rename one).
+    @State private var originalUsername: String?
     @State private var bitrateKbps = ""
     @State private var commands = ""
     @State private var seconds = ""
@@ -159,13 +227,9 @@ struct AccountEditView: View {
         NavigationStack {
             Form {
                 Section {
-                    if new {
-                        TextField("Username", text: $account.username).accessibilityLabel("Username")
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    } else {
-                        LabeledContent("Username", value: account.username)
-                    }
-                    SecureField("Password", text: $account.password).accessibilityLabel("Password")
+                    TextField("Username", text: $account.username).accessibilityLabel("Username")
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    PasswordField("Password", text: $account.password)
                     Picker("Type", selection: $account.admin) {
                         Text("Default user").tag(false)
                         Text("Administrator").tag(true)
@@ -221,7 +285,7 @@ struct AccountEditView: View {
                     }
                 }
             }
-            .navigationTitle(new ? "New account" : account.username)
+            .navigationTitle(new ? "New account" : (originalUsername ?? account.username))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -233,9 +297,17 @@ struct AccountEditView: View {
                         a.commandsIntervalMs = (Int32(seconds) ?? 0) * 1000
                         a.username = a.username.trimmingCharacters(in: .whitespaces)
                         let saving = a
+                        let old = new ? nil : originalUsername
                         Task {
                             if await adminCall(connection, "Couldn't save it", monitor: { try $0.adminSaveAccount(serverId: $1, account: saving) }, { try $0.saveAccount(account: saving) }) != nil {
-                                announce("Saved \(saving.username)")
+                                if let old, old != saving.username {
+                                    if await adminCall(connection, "Saved as \(saving.username), but \(old) couldn't be deleted", monitor: { try $0.adminDeleteAccount(serverId: $1, username: old) }, { try $0.deleteAccount(username: old) }) == nil {
+                                        return
+                                    }
+                                    announce("Renamed \(old) to \(saving.username)")
+                                } else {
+                                    announce("Saved \(saving.username)")
+                                }
                                 dismiss()
                             }
                         }
@@ -243,6 +315,7 @@ struct AccountEditView: View {
                 }
             }
             .onAppear {
+                if originalUsername == nil { originalUsername = account.username }
                 bitrateKbps = String(account.bitrateLimit / 1000)
                 commands = String(account.commandsLimit)
                 seconds = String(account.commandsIntervalMs / 1000)

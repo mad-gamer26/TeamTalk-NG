@@ -85,6 +85,10 @@ struct ServerListView: View {
             .navigationDestination(for: SavedServer.self) { server in
                 ServerView(connection: model.connection(for: server))
             }
+            // A tapped Monitor notification: its server, as if connected.
+            .navigationDestination(isPresented: Binding(get: { model.openMonitor != nil }, set: { if !$0 { model.openMonitor = nil } })) {
+                if let m = model.openMonitor { ServerView(connection: model.monitorConnection(for: m)) }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Settings", systemImage: "gearshape") { showSettings = true }
@@ -193,7 +197,7 @@ private struct ServerRow: View {
             Button("Edit", action: edit)
             ShareLink(item: ttFileURL(for: server, withPassword: false)) { Text("Share as a .tt file") }
             Button("Copy its tt:// link") {
-                UIPasteboard.general.string = ttLink(entry: server.entry(password: ""))
+                UIPasteboard.general.string = ttLink(entry: server.entry(password: Passwords.get(server.id)))
                 announce("Link copied")
             }
             if connection?.state != nil && connection?.state != .disconnected {
@@ -212,7 +216,7 @@ private struct ServerRow: View {
                 Button("Disconnect") { connection?.disconnect() }
             }
             Button("Copy its tt:// link") {
-                UIPasteboard.general.string = ttLink(entry: server.entry(password: ""))
+                UIPasteboard.general.string = ttLink(entry: server.entry(password: Passwords.get(server.id)))
                 announce("Link copied")
             }
             Button("Edit", action: edit)
@@ -296,7 +300,7 @@ struct ServerEditView: View {
                             TextField("Password", text: $password).accessibilityLabel("Password")
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                         } else {
-                            SecureField("Password", text: $password).accessibilityLabel("Password")
+                            PasswordField("Password", text: $password)
                         }
                         // The desktop's "Show password".
                         Toggle("Show password", isOn: $showPassword)
@@ -315,7 +319,7 @@ struct ServerEditView: View {
                             TextField("Its password (optional)", text: $server.channelPassword).accessibilityLabel("Its password (optional)")
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                         } else {
-                            SecureField("Its password (optional)", text: $server.channelPassword).accessibilityLabel("Its password (optional)")
+                            PasswordField("Its password (optional)", text: $server.channelPassword, showLabel: "Show channel password")
                         }
                         Toggle("Show channel password", isOn: $showChannelPassword)
                     }
@@ -383,6 +387,7 @@ struct SettingsView: View {
                     NavigationLink("Live Activities") { LiveActivitySettingsView() }
                     NavigationLink("iCloud sync") { ICloudSyncView() }
                     NavigationLink("Backup and Restore") { BackupView() }
+                    NavigationLink("Monitor") { MonitorSettingsView() }.accessibilityIdentifier("settings-monitor")
                     NavigationLink {
                         NGAccountView()
                     } label: {

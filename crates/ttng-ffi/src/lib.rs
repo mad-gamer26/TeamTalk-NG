@@ -356,6 +356,8 @@ pub struct Channel {
     pub transmit_queue: Vec<i32>,
     /// Admins only; empty otherwise.
     pub operator_password: String,
+    /// Its password: admins only; empty otherwise.
+    pub password: String,
     pub disk_quota: i64,
     pub codec: AudioCodec,
     pub fixed_volume: bool,
@@ -382,6 +384,7 @@ impl From<core::Channel> for Channel {
             hidden: c.hidden,
             transmit_queue: c.transmit_queue.clone(),
             operator_password: c.operator_password.clone(),
+            password: c.password.clone(),
             disk_quota: c.disk_quota,
             codec: c.codec.into(),
             fixed_volume: c.fixed_volume,

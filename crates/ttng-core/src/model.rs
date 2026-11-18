@@ -69,6 +69,9 @@ pub struct Channel {
     pub transmit_queue: Vec<i32>,
     /// Shown to admins only; empty otherwise.
     pub operator_password: String,
+    /// Its password: shown to admins only (TeamTalk keeps it as plain
+    /// text); empty otherwise, or when it has none.
+    pub password: String,
     /// Bytes its files may take (0: none allowed, unless the server's own).
     pub disk_quota: i64,
     pub codec: AudioCodec,
@@ -225,6 +228,7 @@ impl From<&sys::Channel> for Channel {
         let gain = c.audiocfg.nGainLevel;
         Channel {
             operator_password: from_tt(&c.szOpPassword),
+            password: from_tt(&c.szPassword),
             disk_quota: c.nDiskQuota,
             codec: AudioCodec::from_sys(&c.audiocodec),
             fixed_volume: c.audiocfg.bEnableAGC != 0,

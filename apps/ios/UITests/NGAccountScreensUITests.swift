@@ -117,7 +117,11 @@ final class NGAccountScreensUITests: NGTestCase {
         button("Email me a code").tap()
         waitFor(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Type the code we emailed'")).firstMatch, "the reset step", timeout: 15)
         type(app.textFields["Code"], code(email, after: mailsBefore))
-        type(app.secureTextFields["New password"], "the second password")
+        // Shown (the Simulator loses keys typed into a hidden new password).
+        let show = app.switches["Show password"]
+        let knob = show.switches.firstMatch
+        (knob.exists ? knob : show).tap()
+        type(app.textFields["New password"], "the second password")
         button("Set password and sign in").tap()
         waitFor(app.staticTexts["Signed in as"], "signed in with the new password", timeout: 20)
         XCTAssertNotNil(api("POST", "v1/account/signin", ["email": email, "password": "the second password", "install_id": "check", "device_name": "Check"])["token"],

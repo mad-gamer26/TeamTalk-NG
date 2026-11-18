@@ -99,14 +99,14 @@ final class SoundPacksUITests: NGTestCase {
         row.press(forDuration: 1.2)
         button("Choose a sound file").tap()
         // The picker: Browse, On My iPhone, the app's folder, the file.
-        let browse = app.buttons["Browse"]
+        let browse = app.buttons.matching(identifier: "Browse").firstMatch
         waitFor(browse, "the file picker")
         browse.tap()
         if browse.isHittable { browse.tap() }  // a second tap goes to its top
         let onPhone = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'On My iPhone'")).firstMatch
         waitFor(onPhone, "On My iPhone")
         onPhone.tap()
-        let folder = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'TTNG Dev'")).firstMatch
+        let folder = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'TeamTalk NG'")).firstMatch
         waitFor(folder, "the app's folder")
         folder.tap()
         let file = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Picked sound'")).firstMatch
@@ -184,5 +184,18 @@ final class SoundPacksUITests: NGTestCase {
         withdraw.tap()
         waitFor(button("Publish to the catalog"), "withdrawn", timeout: 30)
         Host.until("out of the catalog", timeout: 15) { !inCatalog() }
+    }
+
+    /// A pack from a link to its .zip: downloaded and imported.
+    func testImportingAPackFromALink() {
+        let link = Host.env["PACK_URL"] ?? ""
+        guard !link.isEmpty else { return XCTFail("no local web server (run through scripts/test-ios-ui.sh)") }
+        openPacks()
+        button("Import a sound pack from a link").tap()
+        let field = app.alerts.firstMatch.textFields["Link to a .zip"]
+        waitFor(field, "the link box again")
+        field.tap(); field.typeText(link)
+        app.alerts.firstMatch.buttons["Import"].tap()
+        waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Link pack'")).firstMatch, "the downloaded pack listed", timeout: 30)
     }
 }

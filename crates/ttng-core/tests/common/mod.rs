@@ -49,11 +49,11 @@ fn free_port() -> u16 {
     }
 }
 
-fn account(name: &str, admin: bool) -> String {
+fn account(name: &str, admin: bool, rights: u32) -> String {
     format!(
         "<user><username>{name}</username><password>{name}-pw</password><user-type>{}</user-type><user-rights>{}</user-rights><note /><userdata>0</userdata><init-channel /><audiocodec-bps-limit>0</audiocodec-bps-limit><channel-operator /></user>",
         if admin { 2 } else { 1 },
-        if admin { 0 } else { USER_RIGHTS }
+        if admin { 0 } else { rights }
     )
 }
 
@@ -73,12 +73,23 @@ impl Server {
     /// more settings beside them (`top`, such as tt5prosrv's
     /// `<bearware-weblogin>`).
     pub fn start_exe(exe: PathBuf, general: &str, top: &str) -> Server {
+        Server::start_rights(exe, general, top, USER_RIGHTS)
+    }
+
+    /// Accounts that may log in only once at a time: a second login with
+    /// the same account throws the first off.
+    #[allow(dead_code)]
+    pub fn start_single_login() -> Server {
+        Server::start_rights(tt5srv(), "", "", USER_RIGHTS & !1)
+    }
+
+    fn start_rights(exe: PathBuf, general: &str, top: &str, rights: u32) -> Server {
         let port = free_port();
         let dir = std::env::temp_dir().join(format!("ttng-test-{}-{port}", std::process::id()));
         std::fs::create_dir_all(dir.join("files")).unwrap();
         let users: String = [("admin", true), ("alice", false), ("bob", false), ("carol", false)]
             .iter()
-            .map(|(n, a)| account(n, *a))
+            .map(|(n, a)| account(n, *a, rights))
             .collect();
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>

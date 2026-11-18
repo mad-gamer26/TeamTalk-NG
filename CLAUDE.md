@@ -17,6 +17,8 @@ Read `docs/design.md` first: it records the decisions.
   from the SDK on a random local port; never a real server. On the Mac,
   `scripts/test-ios-sim.sh` runs the same tests inside the iOS Simulator
   against the SDK built from source.
+  Your own Monitor end to end: `cargo test -p ttng-services --test own_monitor`
+  (see docs/design.md; `crates/ng-relay` is a copy: scripts/check-ng-relay-copy.sh).
   NG Account end to end: `cargo test -p ttng-ffi --test ng_account_e2e`
   (two devices through the app's calls, on a private ngmon; NGMON_BIN for
   a freshly built one), and on the Mac `scripts/test-ng-account-ui.sh`

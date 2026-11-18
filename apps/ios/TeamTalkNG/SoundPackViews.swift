@@ -8,6 +8,9 @@ struct SoundPacksView: View {
     @State private var newName = ""
     @State private var importing = false
     @State private var opened: String?
+    @State private var askingLink = false
+    @State private var link = ""
+    @State private var downloading = false
 
     var body: some View {
         let sounds = model.sounds
@@ -24,8 +27,10 @@ struct SoundPacksView: View {
             Section {
                 Button("New sound pack") { newName = ""; naming = true }
                 Button("Import a sound pack") { importing = true }
+                Button(downloading ? "Downloading the sound pack" : "Import a sound pack from a link") { link = ""; askingLink = true }
+                    .disabled(downloading)
             } footer: {
-                Text("A new pack starts with the built-in sounds; choose a file for any of them. A desktop client's pack imports as it is, from its folder or a .zip (its sounds have the desktop's names, such as logged_on.wav). Packs from the catalog and the built-in one are edited through a copy.")
+                Text("A new pack starts with the built-in sounds; choose a file for any of them. A desktop client's pack imports as it is, from its folder, a .zip or a link to a .zip (its sounds have the desktop's names, such as logged_on.wav). Packs from the catalog and the built-in one are edited through a copy.")
             }
         }
         .navigationTitle("Sound packs")
@@ -42,6 +47,26 @@ struct SoundPacksView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Its name.")
+        }
+        .alert("Import from a link", isPresented: $askingLink) {
+            TextField("Link to a .zip", text: $link)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .accessibilityLabel("Link to a .zip")
+            Button("Import") {
+                downloading = true
+                announce("Downloading the sound pack")
+                let text = link
+                Task {
+                    let said = await sounds.importZip(fromLink: text)
+                    downloading = false
+                    announce(said)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A link to a sound pack's .zip file, such as one from a website or a Dropbox share.")
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder, .zip]) { r in
             guard case .success(let url) = r else { return }

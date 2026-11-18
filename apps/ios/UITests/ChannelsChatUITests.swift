@@ -24,11 +24,11 @@ final class ChannelsChatUITests: NGTestCase {
         channel("Secret").tap()
         let alert = app.alerts["Channel password"]
         waitFor(alert, "the password asked")
-        let pw = alert.secureTextFields.firstMatch
+        let pw = alert.textFields.firstMatch
         pw.tap(); pw.typeText("wrong")
         alert.buttons["Join"].tap()
         waitFor(app.alerts.firstMatch, "asked again after a wrong one")
-        let again = app.alerts.firstMatch.secureTextFields.firstMatch
+        let again = app.alerts.firstMatch.textFields.firstMatch
         again.tap(); again.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "sesame")
         app.alerts.firstMatch.buttons["Join"].tap()
         Host.until("Alice in Secret") { whereIsAlice() == "/Secret/" }

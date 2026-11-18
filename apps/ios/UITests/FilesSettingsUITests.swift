@@ -62,6 +62,16 @@ final class FilesSettingsUITests: NGTestCase {
         recording.tap()
         app.buttons["Recordings"].tap()
         waitFor(app.cells.firstMatch, "a recording listed", timeout: 20)
+        // Played: the player opens (it crashed here, its position slider
+        // being made before the recording's length was known).
+        // (Its row; the server list's stay underneath Settings.)
+        let file = app.buttons.matching(NSPredicate(format: "label CONTAINS '.mp3' OR label CONTAINS '.wav'")).firstMatch
+        waitFor(file, "the recording's row")
+        file.tap()
+        waitFor(app.sliders["Position"], "the player's position")
+        waitFor(button("Pause"), "playing")
+        button("Done").tap()
+        XCTAssertEqual(app.state, .runningForeground, "still running")
     }
 
     func testNicknameStatusAndGenderReachTheOthers() {

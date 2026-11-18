@@ -57,6 +57,44 @@ fn the_monitor_watches_and_carries_private_messages() {
             .find(|s| s.id == id && s.status == "logged_in")
     });
     assert_eq!(watching.status_text(), "Watching");
+
+    // Its settings: nickname, status message and gender, kept by the service
+    // (the password stays: an empty one keeps it).
+    let mut cfg = mon.server_config(id).expect("its settings");
+    assert_eq!(cfg.nickname, "Alice (monitor)");
+    mon.update_server(
+        id,
+        &MonitorServerInput {
+            name: cfg.name.clone(),
+            host: cfg.host.clone(),
+            tcp_port: cfg.tcp_port,
+            encrypted: cfg.encrypted,
+            nickname: "Alice watching".into(),
+            username: cfg.username.clone(),
+            password: String::new(),
+            status_msg: "Back soon".into(),
+            status_mode: 256,
+            channel: cfg.channel.clone(),
+            channel_password: String::new(),
+            enabled: true,
+        },
+    )
+    .expect("updated");
+    cfg = mon.server_config(id).expect("its settings again");
+    assert_eq!(
+        (cfg.nickname.as_str(), cfg.status_msg.as_str(), cfg.status_mode),
+        ("Alice watching", "Back soon", 256)
+    );
+    until("the monitor logged in again with them", || {
+        mon.view(id).ok().and_then(|v| {
+            v.users.into_iter().find(|u| {
+                u.id == v.my_user_id
+                    && u.nickname == "Alice watching"
+                    && u.status_mode & 256 != 0
+                    && u.status_msg == "Back soon"
+            })
+        })
+    });
     let view = mon.view(id).unwrap();
     assert_eq!(view.server_name, "TTNG Test");
     assert!(view.my_user_id > 0);
@@ -139,4 +177,61 @@ fn an_ng_account_session_is_also_the_monitor() {
     assert!(mon.servers().unwrap().is_empty());
     let none = Monitor::new(&ng.url, Some("not a token"));
     assert!(matches!(none.servers(), Err(ServiceError::SignedOut(_))));
+}
+
+/// The app logged in to a monitored server itself: the monitor stays (its
+/// events go on), only that install's notifications pause; where the
+/// account may log in once, the monitor steps aside and waits until the
+/// app leaves, instead of logging in again over it.
+#[test]
+fn the_apps_own_login_quiets_only_this_install() {
+    let Some(ng) = Ngmon::start() else { return };
+    let server = tt::Server::start_single_login();
+    let mut mon = Monitor::new(&ng.url, None);
+    mon.register("Test iPhone").expect("registered");
+    let id = mon
+        .add_server(&MonitorServerInput {
+            name: "Test".into(),
+            host: "127.0.0.1".into(),
+            tcp_port: server.port,
+            nickname: "Alice (monitor)".into(),
+            username: "alice".into(),
+            password: "alice-pw".into(),
+            enabled: true,
+            ..Default::default()
+        })
+        .expect("added");
+    let status = |mon: &Monitor| {
+        mon.servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .map(|s| s.status)
+            .unwrap_or_default()
+    };
+    until("the monitor logging in", || (status(&mon) == "logged_in").then_some(()));
+    // Quiet for this install: the monitor stays logged in.
+    mon.quiet(id, "install-1", 60).expect("quiet");
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(status(&mon), "logged_in", "still watching while only quiet");
+    // The app logs in with the same account: the monitor steps aside and
+    // stays aside (no login over the app).
+    let app = tt::TestClient::logged_in(&server, "alice");
+    until("the monitor stepping aside", || {
+        (status(&mon) == "stepped_aside").then_some(())
+    });
+    std::thread::sleep(Duration::from_secs(6));
+    assert_eq!(status(&mon), "stepped_aside", "waiting while the app is there");
+    assert_eq!(
+        app.client.snapshot().state,
+        Some(ttng_core::ConnectionState::LoggedIn),
+        "the app wasn't thrown off"
+    );
+    // The app leaves: the monitor is back at once.
+    app.client.disconnect().unwrap();
+    mon.unquiet(id, "install-1").expect("notifications back");
+    until("the monitor back", || (status(&mon) == "logged_in").then_some(()));
+    // A quiet that isn't renewed runs out by itself (the app was closed).
+    mon.quiet(id, "install-1", 30).expect("quiet again");
+    mon.remove_server(id).unwrap();
 }

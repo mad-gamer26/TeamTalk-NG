@@ -122,7 +122,7 @@ struct RecordingPlayer: View {
                         }
                         .buttonStyle(.borderless)
                         NamedSlider("Position", value: Binding(get: { position }, set: { position = $0; player?.currentTime = $0 }),
-                                    in: 0...max(duration, 0.1), step: 1, spoken: { "\(time($0)) of \(time(duration))" })
+                                    in: 0...max(duration, 1), step: duration >= 2 ? 1 : 0.1, spoken: { "\(time($0)) of \(time(duration))" })
                     }
                 }
             }

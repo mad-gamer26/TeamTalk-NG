@@ -8,7 +8,7 @@ extension UTType {
 
 /// A backup of the app in one .ttng file (a property list): its servers
 /// (with each one's last channel), their passwords, its settings, its sound
-/// packs (and sounds of my own), and the chat history, each part chosen
+/// packs (and sounds of my own), each part chosen
 /// when the backup is made and again when it's restored. Not NG Account,
 /// iCloud sync, AudioNet sign-ins or this install's own markers. Restoring
 /// a part replaces what the app has of it.
@@ -18,7 +18,6 @@ enum Backup {
         var passwords = true
         var settings = true
         var soundPacks = true
-        var history = true
     }
 
     /// What a backup file holds.
@@ -29,12 +28,11 @@ enum Backup {
         let passwords: Int?
         let settings: Bool
         let soundPacks: Int?
-        let history: Int?
         fileprivate let root: [String: Any]
 
         var has: Parts {
             Parts(servers: servers != nil, passwords: passwords != nil, settings: settings,
-                  soundPacks: soundPacks != nil, history: history != nil)
+                  soundPacks: soundPacks != nil)
         }
     }
 
@@ -45,7 +43,6 @@ enum Backup {
     private static var domainName: String { Bundle.main.bundleIdentifier ?? "" }
     private static var support: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0] }
     private static var soundPacksDir: URL { support.appendingPathComponent("SoundPacks", isDirectory: true) }
-    private static var historyDir: URL { support.appendingPathComponent("History", isDirectory: true) }
 
     /// Keys that are never in a backup: NG Account, iCloud sync, this
     /// install's own, and the system's.
@@ -99,7 +96,6 @@ enum Backup {
         if parts.soundPacks {
             root["soundPacks"] = ["keys": d.filter { isSoundPackKey($0.key) }, "files": files(in: soundPacksDir)] as [String: Any]
         }
-        if parts.history { root["history"] = files(in: historyDir) }
         let data = try PropertyListSerialization.data(fromPropertyList: root, format: .binary, options: 0)
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH.mm"
@@ -130,8 +126,7 @@ enum Backup {
         }
         return Contents(created: root["created"] as? Date ?? .distantPast, servers: servers,
                         passwords: (root["passwords"] as? [String: String])?.count,
-                        settings: root["settings"] is [String: Any], soundPacks: packs,
-                        history: (root["history"] as? [String: Data])?.count, root: root)
+                        settings: root["settings"] is [String: Any], soundPacks: packs, root: root)
     }
 
     /// Replaces the chosen parts with the backup's (the app's model is made
@@ -151,9 +146,6 @@ enum Backup {
             d = d.filter { !isSoundPackKey($0.key) }
             for (k, v) in (p["keys"] as? [String: Any]) ?? [:] where isSoundPackKey(k) { d[k] = v }
             replaceFiles(soundPacksDir, with: p["files"] as? [String: Data] ?? [:])
-        }
-        if parts.history, let h = root["history"] as? [String: Data] {
-            replaceFiles(historyDir, with: h)
         }
         defaults.setPersistentDomain(d, forName: domainName)
         if parts.passwords, let pw = root["passwords"] as? [String: String] {
@@ -194,7 +186,6 @@ struct BackupView: View {
                 Toggle("Server passwords", isOn: $parts.passwords)
                 Toggle("Settings", isOn: $parts.settings)
                 Toggle("Sound packs", isOn: $parts.soundPacks)
-                Toggle("Chat history", isOn: $parts.history)
                 Button("Make a backup") {
                     do {
                         presentShareSheet([try Backup.make(parts)])
@@ -202,7 +193,7 @@ struct BackupView: View {
                         problem = "The backup couldn't be made: \(error.localizedDescription)"
                     }
                 }
-                .disabled(parts == Backup.Parts(servers: false, passwords: false, settings: false, soundPacks: false, history: false))
+                .disabled(parts == Backup.Parts(servers: false, passwords: false, settings: false, soundPacks: false))
             } header: {
                 Text("Back up")
             } footer: {
@@ -254,7 +245,6 @@ struct RestoreBackupView: View {
                     if has.passwords { Toggle("Server passwords (\(count(contents.passwords, "password", "passwords")))", isOn: $parts.passwords) }
                     if has.settings { Toggle("Settings", isOn: $parts.settings) }
                     if has.soundPacks { Toggle("Sound packs (\(count(contents.soundPacks, "pack", "packs")))", isOn: $parts.soundPacks) }
-                    if has.history { Toggle("Chat history (\(count(contents.history, "server", "servers")))", isOn: $parts.history) }
                 } header: {
                     Text("Restore")
                 } footer: {
@@ -267,7 +257,7 @@ struct RestoreBackupView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Restore") { confirming = true }
-                        .disabled(!chosen.servers && !chosen.passwords && !chosen.settings && !chosen.soundPacks && !chosen.history)
+                        .disabled(!chosen.servers && !chosen.passwords && !chosen.settings && !chosen.soundPacks)
                 }
             }
             .confirmationDialog("Restore this backup?", isPresented: $confirming, titleVisibility: .visible) {
@@ -288,7 +278,6 @@ struct RestoreBackupView: View {
     private var chosen: Backup.Parts {
         let h = contents.has
         return Backup.Parts(servers: parts.servers && h.servers, passwords: parts.passwords && h.passwords,
-                            settings: parts.settings && h.settings, soundPacks: parts.soundPacks && h.soundPacks,
-                            history: parts.history && h.history)
+                            settings: parts.settings && h.settings, soundPacks: parts.soundPacks && h.soundPacks)
     }
 }

@@ -53,10 +53,10 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
         case .voiceActivationOn: "Voice activation enabled"
         case .voiceActivationOff: "Voice activation disabled"
         // The desktop's "Voice activation enabled/disabled via "Me" menu"
-        // (vox_me_*): here whenever I turn my microphone on or off
-        // (push to talk, mute, the talk mode).
-        case .voiceActivationMeOn: "Microphone turned on"
-        case .voiceActivationMeOff: "Microphone turned off"
+        // (vox_me_*): here the keyboard shortcut's, and whenever I turn my
+        // microphone on or off (push to talk, mute).
+        case .voiceActivationMeOn: "Voice activation enabled via keyboard shortcut"
+        case .voiceActivationMeOff: "Voice activation disabled via keyboard shortcut"
         case .voiceActivationStarts: "Voice activation triggered"
         case .voiceActivationStops: "Voice activation stopped"
         case .muteAllOn: "Mute master volume"
@@ -560,6 +560,42 @@ final class SoundStore {
         let folder = work.appendingPathComponent(url.deletingPathExtension().lastPathComponent, isDirectory: true)
         do { _ = try unzipFlat(zipPath: url.path, folder: folder.path) } catch { return words(error) }
         return importPack(from: folder)
+    }
+
+    /// Imports a pack from a link to its .zip (http or https). Dropbox's
+    /// share links are fetched as the file itself.
+    func importZip(fromLink text: String) async -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var parts = URLComponents(string: trimmed), let scheme = parts.scheme?.lowercased(),
+              scheme == "https" || scheme == "http", parts.host?.isEmpty == false
+        else { return "That isn't a web link. It starts with https://." }
+        if parts.host?.lowercased().hasSuffix("dropbox.com") == true {
+            var q = (parts.queryItems ?? []).filter { $0.name != "dl" }
+            q.append(URLQueryItem(name: "dl", value: "1"))
+            parts.queryItems = q
+        }
+        guard let url = parts.url else { return "That isn't a web link." }
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("download-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: work) }
+        do {
+            let (file, response) = try await URLSession.shared.download(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                return "The link didn't give a file (the server said \(http.statusCode))."
+            }
+            let size = (try? fm.attributesOfItem(atPath: file.path)[.size] as? Int) ?? 0
+            guard size <= 200 * 1024 * 1024 else { return "That file is bigger than 200 MB." }
+            // The pack is named after the file.
+            var name = response.suggestedFilename ?? url.lastPathComponent
+            if !name.lowercased().hasSuffix(".zip") { name = (name as NSString).deletingPathExtension + ".zip" }
+            if name == ".zip" { name = "Sound pack.zip" }
+            try fm.createDirectory(at: work, withIntermediateDirectories: true)
+            let zip = work.appendingPathComponent(name)
+            try fm.moveItem(at: file, to: zip)
+            return importZip(zip)
+        } catch {
+            return "The pack couldn't be downloaded: \(error.localizedDescription)"
+        }
     }
 
     private static func directory(_ id: String) -> URL {

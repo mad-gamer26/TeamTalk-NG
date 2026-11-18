@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds TTNG Dev for an over-the-air install (the iPhone downloads it over
+# Builds TeamTalk NG for an over-the-air install (the iPhone downloads it over
 # Tailscale, for when it isn't on the Mac's network): archives, exports a
 # development-signed ipa, and puts it with its manifest and an install page
 # in ~/ttng-ota, served (tailnet only) at https://<this Mac>.ts.net by
@@ -38,13 +38,13 @@ cat > "$out/manifest.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>items</key><array><dict>
 <key>assets</key><array><dict><key>kind</key><string>software-package</string><key>url</key><string>https://$host/TeamTalkNG.ipa?b=$build</string></dict></array>
-<key>metadata</key><dict><key>bundle-identifier</key><string>$id</string><key>bundle-version</key><string>$version</string><key>kind</key><string>software</string><key>title</key><string>TTNG Dev</string></dict>
+<key>metadata</key><dict><key>bundle-identifier</key><string>$id</string><key>bundle-version</key><string>$version</string><key>kind</key><string>software</string><key>title</key><string>TeamTalk NG</string></dict>
 </dict></array></dict></plist>
 PLIST
 cat > "$out/index.html" <<HTML
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Install TTNG Dev</title></head>
-<body><main><h1>TTNG Dev</h1><p>Build $build.</p>
-<p><a href="itms-services://?action=download-manifest&amp;url=https://$host/manifest.plist?b=$build">Install TTNG Dev</a></p>
-<p>After tapping, confirm Install. It replaces the TTNG Dev you have, keeping its settings.</p></main></body></html>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Install TeamTalk NG</title></head>
+<body><main><h1>TeamTalk NG</h1><p>Build $build.</p>
+<p><a href="itms-services://?action=download-manifest&amp;url=https://$host/manifest.plist?b=$build">Install TeamTalk NG</a></p>
+<p>After tapping, confirm Install. It replaces the TeamTalk NG you have, keeping its settings.</p></main></body></html>
 HTML
 echo "Build $build ready at https://$host"

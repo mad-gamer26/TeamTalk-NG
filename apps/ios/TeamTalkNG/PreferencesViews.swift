@@ -45,14 +45,13 @@ struct DisplaySettingsView: View {
                 Toggle("Show the server list when the app starts", isOn: $model.serverListOnStart)
             }
             Section {
-                Toggle("Notify me of private messages", isOn: $model.notifyInBackground)
+                NavigationLink("Notifications") { BackgroundNotificationsView() }
             } footer: {
-                Text("While TeamTalk NG is in the background.")
+                Text("Server events that notify while TeamTalk NG is in the background.")
             }
         }
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: model.notifyInBackground) { if model.notifyInBackground { requestNotifications() } }
     }
 }
 

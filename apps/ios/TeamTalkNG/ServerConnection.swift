@@ -79,7 +79,6 @@ final class ServerConnection {
     private(set) var snapshot: Snapshot?
     private(set) var lines: [ChatLine] = [] {
         didSet {
-            History.save(lines, for: server.id)
             LiveActivities.shared.changed(self)
             if lines.count == oldValue.count + 1, let last = lines.last { log(last) }
         }
@@ -102,7 +101,6 @@ final class ServerConnection {
         self.server = server
         self.app = app
         client = TtClient(listener: bridge)
-        lines = History.load(for: server.id)
         bridge.connection = self
     }
 
@@ -214,7 +212,6 @@ final class ServerConnection {
     /// status and gender.
     private func afterFirstLogin() {
         applyTalkMode()
-        app?.monitor.appConnected(server, true)
         // Settings → Connection: the root channel, when the server
         // entry and the account didn't say where.
         if app?.joinRoot == true, (snapshot?.myChannelId ?? 0) == 0 {
@@ -261,6 +258,8 @@ final class ServerConnection {
 
     func knownPassword(_ channelId: Int32) -> String {
         if let p = channelPasswords[channelId] { return p }
+        // Admins see every channel's password.
+        if let p = snapshot?.channels.first(where: { $0.id == channelId })?.password, !p.isEmpty { return p }
         let path = channelId > 0 ? client.channelPath(channelId: channelId) : ""
         return !path.isEmpty && path == server.joinChannel ? server.channelPassword : ""
     }
@@ -1022,19 +1021,24 @@ final class ServerConnection {
     private func sound(_ e: SoundEvent) { app?.sounds.play(e) }
 
     /// Says an event, the desktop's way (its message, if it's on).
-    private func say(_ e: SpeechEvent, _ vars: [String: String] = [:]) {
+    private func say(_ e: SpeechEvent, _ vars: [String: String] = [:], notify: Bool = true) {
         var v = vars
         v["server"] = v["server"] ?? (snapshot?.server.name.nonEmpty ?? server.title)
         app?.speech.say(e, v)
+        if notify { notifyIfAway(e, v) }
     }
 
     /// Says the result of something I did (the desktop's "Menu actions").
     private func note(_ text: String) { app?.speech.say(.menuActions, ["message": text]) }
     func noteMenu(_ text: String) { note(text) }
+    func noteTransmission(_ text: String) { app?.speech.say(.voiceTransmission, ["message": text]) }
 
     /// Says fixed words under a spoken event (the desktop's connectivity,
     /// transmission toggles, menu actions).
-    private func sayText(_ e: SpeechEvent, _ text: String) { app?.speech.say(e, ["message": text]) }
+    private func sayText(_ e: SpeechEvent, _ text: String) {
+        app?.speech.say(e, ["message": text])
+        notifyIfAway(e, ["message": text])
+    }
 
     /// The desktop's names for subscriptions when I change mine (its
     /// SUBCHANGE "{type}"), and the spoken event of each.
@@ -1226,6 +1230,9 @@ final class ServerConnection {
         switch event {
         case .connectionChanged(let s):
             state = s
+            // The Monitor: no notifications about this server to this
+            // iPhone while it's logged in here itself.
+            if monitorId == nil { app?.monitor.appConnected(server, s == .loggedIn) }
             // As the desktop: people already there when I log in aren't
             // announced, only those who come or go after (this event comes
             // after the server has listed everyone).
@@ -1274,6 +1281,9 @@ final class ServerConnection {
                 voiceActive = false
                 expanded = []
                 seenChannels = []
+                // As the desktop: the chat starts over with every session.
+                lines = []
+                unread = []
             default: break
             }
         case .connectionFailed(let m):
@@ -1286,7 +1296,7 @@ final class ServerConnection {
         case .messageReceived(let m):
             let sender = snapshot?.users.first { $0.id == m.fromUserId }
             let from = sender?.displayName ?? m.fromUsername
-            var v = ["user": from, "username": m.fromUsername, "message": m.text]
+            var v = ["user": from, "username": m.fromUsername, "message": m.text, "userid": String(m.fromUserId)]
             let mine = m.fromUserId == snapshot?.myUserId
             switch m.target {
             case .user:
@@ -1299,7 +1309,6 @@ final class ServerConnection {
                 }
                 sound(.privateMessage)
                 say(.privateMessage, v)
-                notifyIfAway("Private message from \(from)", m.text)
             case .channel:
                 lines.append(ChatLine(from: mine ? "Me" : from, text: m.text, privateWith: nil, time: .now, kind: .channelMessage, vars: ["user": from, "content": m.text]))
                 if mine {
@@ -1514,7 +1523,7 @@ final class ServerConnection {
             let t = Self.subscriptionType(sub)
             v["type"] = t.name
             v["state"] = mineNow.contains(sub) ? "Enabled" : "Disabled"
-            say(t.event, v)
+            say(t.event, v, notify: false)
             status(StatusEvent(t.event), vars: v)
         }
         if u.sendingVideo && !before.sendingVideo { sound(.newVideo); status(nil, "New video session from \(u.displayName)") }
@@ -1556,41 +1565,41 @@ final class ServerConnection {
         }
     }
 
-    /// A notification for a private message while the app isn't in front
-    /// (the desktop's popup).
-    private func notifyIfAway(_ title: String, _ body: String) {
-        guard app?.notifyInBackground == true, UIApplication.shared.applicationState != .active else { return }
-        let c = UNMutableNotificationContent()
-        c.title = title
-        c.subtitle = server.title
-        c.body = body
-        c.sound = nil
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+    /// A notification for an event while the app isn't in front (the
+    /// desktop's popups; Settings → Display → Notifications). Not through
+    /// the Monitor: it sends its own.
+    private func notifyIfAway(_ e: SpeechEvent, _ v: [String: String]) {
+        guard monitorId == nil, let app, BackgroundNotifications.events.contains(e), app.notifies(e),
+              UIApplication.shared.applicationState != .active,
+              let body = BackgroundNotifications.body(e, v) else { return }
+        let opens: BackgroundNotifications.Opens = switch e {
+        case .privateMessage: .conversation
+        case .channelMessage: .chat
+        default: .server
+        }
+        BackgroundNotifications.post(server: server, title: snapshot?.server.name.nonEmpty ?? server.title, body: body,
+                                     opens: opens, userId: e == .privateMessage ? v["userid"].flatMap { Int32($0) } : nil)
     }
+
+    // MARK: Opened from a notification
+
+    /// What a tapped notification asked the server screen to show.
+    private(set) var openRequest: (opens: BackgroundNotifications.Opens, userId: Int32?, at: Date)?
+
+    func requestOpen(_ opens: BackgroundNotifications.Opens, userId: Int32?) {
+        openRequest = (opens, userId, .now)
+    }
+
+    func openRequestDone() { openRequest = nil }
 }
 
-/// Each server's conversation, kept between launches (the last 500 lines).
+/// Chat history isn't kept between sessions (as the desktop): what an
+/// earlier version saved goes.
 enum History {
-    private static func url(_ id: UUID) -> URL {
+    static func removeSaved() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("History", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("\(id.uuidString).json")
-    }
-
-    static func load(for id: UUID) -> [ChatLine] {
-        guard let d = try? Data(contentsOf: url(id)) else { return [] }
-        return (try? JSONDecoder().decode([ChatLine].self, from: d)) ?? []
-    }
-
-    static func save(_ lines: [ChatLine], for id: UUID) {
-        let keep = Array(lines.suffix(500))
-        guard let d = try? JSONEncoder().encode(keep) else { return }
-        try? d.write(to: url(id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-    }
-
-    static func delete(for id: UUID) {
-        try? FileManager.default.removeItem(at: url(id))
+        try? FileManager.default.removeItem(at: dir)
     }
 }
 
@@ -1795,7 +1804,7 @@ extension ServerConnection {
         Channel(id: Int32(m.id), parentId: Int32(m.parentId), name: m.name, topic: m.topic, hasPassword: m.passwordProtected,
                 maxUsers: 0, permanent: true, soloTransmit: false, classroom: false, operatorReceiveOnly: false,
                 noVoiceActivation: false, noRecording: false, hidden: false, transmit: [], transmitQueue: [],
-                operatorPassword: "", diskQuota: 0,
+                operatorPassword: "", password: "", diskQuota: 0,
                 codec: AudioCodec(kind: .noAudio, sampleRate: 0, channels: 0, bitrate: 0, vbr: false, dtx: false, music: false,
                                   frameSizeMs: 0, transmitIntervalMs: 0, quality: 0),
                 fixedVolume: false, fixedVolumeLevel: 0, voiceTimeoutMs: 0, mediaTimeoutMs: 0)

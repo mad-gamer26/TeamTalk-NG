@@ -17,10 +17,26 @@ final class AppModel {
             LiveActivities.shared.refreshAll()
             if talkMode != oldValue && (talkMode == .voiceActivation || oldValue == .voiceActivation) {
                 // Switching modes: vox_enable to voice activation, vox_disable
-                // to push to talk (the owner's choice).
-                if !loading { sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff) }
+                // to push to talk (the owner's choice); by the keyboard
+                // shortcut, the microphone's on and off sounds (vox_me_*),
+                // as the desktop's hotkey.
+                let on = talkMode == .voiceActivation
+                if byShortcut {
+                    sounds.play(on ? .voiceActivationMeOn : .voiceActivationMeOff)
+                } else if !loading {
+                    sounds.play(on ? .voiceActivationOn : .voiceActivationOff)
+                }
             }
+            byShortcut = false
         }
+    }
+    @ObservationIgnored private var byShortcut = false
+
+    /// The keyboard shortcut's "Turn Voice Activation On or Off".
+    func toggleVoiceActivationByShortcut() {
+        byShortcut = true
+        talkMode = talkMode == .voiceActivation ? .pushToTalk : .voiceActivation
+        byShortcut = false
     }
     /// The desktop's voice activation level: 0–20, 2 by default.
     var voiceLevel: Double = 2 {
@@ -162,7 +178,20 @@ final class AppModel {
     var showStatusLine = true { didSet { save() } }
     /// The desktop's "Show statusbar events in chat-window", on by default.
     var eventsInChat = true { didSet { save() } }
-    var notifyInBackground = true { didSet { save() } }
+    /// Settings → Display → Notifications: the events that don't notify
+    /// in the background (all do by default; before, only private
+    /// messages could, under "Notify me of private messages").
+    var notifyOff: Set<SpeechEvent> = [] { didSet { save() } }
+    var notifyInBackground: Bool { notifyOff.count < BackgroundNotifications.events.count }
+    func notifies(_ e: SpeechEvent) -> Bool { !notifyOff.contains(e) }
+    func setNotifies(_ e: SpeechEvent, _ on: Bool) {
+        if on { notifyOff.remove(e) } else { notifyOff.insert(e) }
+        if on { requestNotifications() }
+    }
+    func setAllNotifies(_ on: Bool) {
+        notifyOff = on ? [] : Set(BackgroundNotifications.events)
+        if on { requestNotifications() }
+    }
 
     // MARK: Connection (the desktop's Connection tab)
 
@@ -258,7 +287,11 @@ final class AppModel {
         showMOTD = defaults.object(forKey: "showMOTD") as? Bool ?? true
         showStatusLine = defaults.object(forKey: "showStatusLine") as? Bool ?? true
         eventsInChat = defaults.object(forKey: "eventsInChat") as? Bool ?? true
-        notifyInBackground = defaults.object(forKey: "notifyInBackground") as? Bool ?? true
+        if let off = defaults.stringArray(forKey: "notifyOff") {
+            notifyOff = Set(off.compactMap(SpeechEvent.init(rawValue:)))
+        } else if defaults.object(forKey: "notifyInBackground") as? Bool == false {
+            notifyOff = [.privateMessage]
+        }
         reconnect = defaults.object(forKey: "reconnect") as? Bool ?? true
         joinRoot = defaults.object(forKey: "joinRoot") as? Bool ?? true
         defaultSubscriptionsOff = Set((defaults.stringArray(forKey: "subscriptionsOff") ?? []).compactMap { name in
@@ -284,6 +317,7 @@ final class AppModel {
         loading = false
         if convertedSettings { save() }
         sounds.packsChanged = { [weak self] in self?.account.changed() }
+        History.removeSaved()
         // As the desktop when it starts (mainwindow.cpp, loading settings):
         // "Voice activation enabled" or "disabled" (vox_enable / vox_disable).
         sounds.play(talkMode == .voiceActivation ? .voiceActivationOn : .voiceActivationOff)
@@ -337,7 +371,7 @@ final class AppModel {
         statusMessage = ""; awayAfterSeconds = 180; awayMessage = ""; awayStopsVoiceActivation = false
         showUsernames = false; showTopics = false; sortChannelsByName = true; infoStyle = .text; showUserCount = true; showLastTalk = true; showIcons = true; maxTextLength = 50; channelTap = .joinOrLeave; autoExpandChannels = false; restoreUserSettings = true; sendOnReturn = true
         timestampFormat = ""; streamingStatus = false; messagePopup = true; excludedDialog = false; serverListOnStart = false
-        showTimestamps = true; showMOTD = true; showStatusLine = true; eventsInChat = true; notifyInBackground = true
+        showTimestamps = true; showMOTD = true; showStatusLine = true; eventsInChat = true; notifyOff = []
         reconnect = true; joinRoot = true; defaultSubscriptionsOff = []
         sounds.revert()
         sounds.volume = 1
@@ -413,6 +447,30 @@ final class AppModel {
     /// Servers marked to connect when the app starts.
     /// The server screens open (so Siri and Control Center can open one).
     var navigation: [SavedServer] = []
+
+    /// A notification was tapped: its server's screen (connecting if it
+    /// isn't), on its Chat tab or in a conversation.
+    func openFromNotification(serverId: String, opens: BackgroundNotifications.Opens, userId: Int32?) {
+        guard let s = servers.first(where: { $0.id.uuidString == serverId }) else { return }
+        let c = connection(for: s)
+        c.connect()
+        openMonitor = nil
+        navigation = [s]
+        c.requestOpen(opens, userId: userId)
+    }
+
+    /// The Monitor's server to open (a tapped Monitor notification).
+    var openMonitor: MonitorServer?
+
+    func openMonitorFromNotification(monitorId: Int64, opens: BackgroundNotifications.Opens, userId: Int32?) {
+        Task {
+            if monitor.servers.first(where: { $0.id == monitorId }) == nil { await monitor.refresh() }
+            guard let m = monitor.servers.first(where: { $0.id == monitorId }) else { return }
+            navigation = []
+            openMonitor = m
+            monitorConnection(for: m).requestOpen(opens, userId: userId)
+        }
+    }
 
     /// Opens a saved server's screen and connects (Siri, Control Center).
     func openServer(id: String) {
@@ -505,7 +563,7 @@ final class AppModel {
         defaults.set(showMOTD, forKey: "showMOTD")
         defaults.set(showStatusLine, forKey: "showStatusLine")
         defaults.set(eventsInChat, forKey: "eventsInChat")
-        defaults.set(notifyInBackground, forKey: "notifyInBackground")
+        defaults.set(notifyOff.map(\.rawValue).sorted(), forKey: "notifyOff")
         defaults.set(reconnect, forKey: "reconnect")
         defaults.set(joinRoot, forKey: "joinRoot")
         defaults.set(defaultSubscriptionsOff.map { "\($0)" }, forKey: "subscriptionsOff")
@@ -552,7 +610,6 @@ final class AppModel {
         connections[server.id] = nil
         servers.removeAll { $0.id == server.id }
         Passwords.set("", for: server.id)
-        History.delete(for: server.id)
         save()
         account.deleted(server.key)
     }
@@ -583,6 +640,9 @@ final class AppModel {
     /// The server's connection, made (not connected) on first use.
     /// The Monitor's connections, shown as server screens (monitor mode).
     @ObservationIgnored private var monitorConnections: [Int64: ServerConnection] = [:]
+
+    /// That server's Monitor screen is open (connected through the Monitor).
+    func isShowingMonitor(_ id: Int64) -> Bool { monitorConnections[id]?.isConnected == true }
 
     func monitorConnection(for m: MonitorServer) -> ServerConnection {
         if let c = monitorConnections[m.id] { return c }

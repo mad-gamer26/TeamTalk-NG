@@ -36,7 +36,14 @@ final class MonitorStore {
     private var ownToken: String { Passwords.secret(Self.keychainService, "token") }
 
     /// A client with the right token, registering this iPhone if needed.
+    /// With your own Monitor paired, always that one.
     private func client(registering: Bool) async -> MonitorClient? {
+        if let o = own {
+            do { return try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey) } catch {
+                problem = NGAccountStore.words(error)
+                return nil
+            }
+        }
         if let t = app.account.sessionToken { return MonitorClient(baseUrl: Service.base, token: t) }
         if !ownToken.isEmpty { return MonitorClient(baseUrl: Service.base, token: ownToken) }
         guard registering else { return nil }
@@ -69,6 +76,61 @@ final class MonitorStore {
         return r
     }
 
+    // MARK: Your own Monitor
+
+    private static let ownService = "TeamTalk NG own monitor"
+    private struct StoredOwn: Codable { var id: String; var name: String; var key: String }
+
+    /// Your own Monitor (`ng-monitor` on your computer), when this iPhone
+    /// is paired with one: then it's the only Monitor this app uses.
+    private(set) var own: OwnMonitor? = MonitorStore.loadOwn()
+
+    private static func loadOwn() -> OwnMonitor? {
+        let s = Passwords.secret(ownService, "monitor")
+        guard let o = try? JSONDecoder().decode(StoredOwn.self, from: Data(s.utf8)), let k = Data(base64Encoded: o.key) else { return nil }
+        return OwnMonitor(monitorId: o.id, name: o.name, monitorKey: k)
+    }
+
+    /// This iPhone's key for its own Monitors (made once, kept in the Keychain).
+    private static var phoneKey: Data {
+        if let k = Data(base64Encoded: Passwords.secret(ownService, "phone key")), k.count == 32 { return k }
+        let k = ownMonitorNewPhoneKey()
+        Passwords.setSecret(k.base64EncodedString(), ownService, "phone key")
+        return k
+    }
+
+    /// Pairs with the Monitor showing `code`. Returns why not, or nil.
+    func pairOwn(code: String) async -> String? {
+        let relay = Service.base, name = UIDevice.current.name, key = Self.phoneKey
+        switch await Task.detached(operation: { Result { try ownMonitorPair(relay: relay, code: code, phoneName: name, phoneKey: key) } }).value {
+        case .failure(let e):
+            return NGAccountStore.words(e)
+        case .success(let m):
+            let stored = StoredOwn(id: m.monitorId, name: m.name, key: m.monitorKey.base64EncodedString())
+            if let d = try? JSONEncoder().encode(stored) { Passwords.setSecret(String(decoding: d, as: UTF8.self), Self.ownService, "monitor") }
+            own = m
+            problem = nil
+            // Its notifications: the key that opens them, and where they go.
+            if let c = try? MonitorClient.own(relay: relay, monitor: m, phoneKey: key),
+               case .success(let hello) = await Task.detached(operation: { Result { try c.ownHello() } }).value {
+                Service.saveOwnPushKey(hello.pushKey)
+                if let t = pushToken { await sendPushToken(t, via: c) }
+            }
+            accountChanged()
+            return nil
+        }
+    }
+
+    /// Stops using your own Monitor: back to the hosted one. (It keeps
+    /// watching at home; unpair this iPhone there with `ng-monitor unpair`.)
+    func forgetOwn() {
+        Passwords.setSecret("", Self.ownService, "monitor")
+        own = nil
+        Service.forgetOwnPushKey()
+        accountChanged()
+        if let t = pushToken { Task { await setPushToken(t) } }
+    }
+
     // MARK: Notifications
 
     /// The device's APNs token, once Apple gives it.
@@ -85,7 +147,8 @@ final class MonitorStore {
     private func sendPushToken(_ token: String, via c: MonitorClient) async {
         let id = NGAccountStore.installId
         let sandbox = Service.sandbox
-        let r = await Task.detached { Result { try c.setPush(apnsToken: token, sandbox: sandbox, appRef: id, installId: id) } }.value
+        let topic = Bundle.main.bundleIdentifier ?? ""
+        let r = await Task.detached { Result { try c.setPush(apnsToken: token, sandbox: sandbox, appRef: id, installId: id, topic: topic) } }.value
         if case .failure(let e) = r { problem = NGAccountStore.words(e) }
     }
 
@@ -94,6 +157,7 @@ final class MonitorStore {
         defer { loading = false }
         guard let r = await call({ try $0.servers() }) else { servers = []; return }
         if case .success(let s) = r { servers = s; problem = nil }
+        if !connectedHere.isEmpty || !quietIds.isEmpty { await syncQuiet() }
     }
 
     /// Follows events while a Monitor screen is open (every few seconds),
@@ -138,7 +202,8 @@ final class MonitorStore {
         let input = MonitorServerInput(
             name: s.title, host: s.host, tcpPort: s.tcpPort, encrypted: s.encrypted,
             nickname: s.nickname.isEmpty ? app.nickname : s.nickname, username: s.username,
-            password: Passwords.get(s.id), statusMsg: "", channel: "", channelPassword: "", enabled: true)
+            password: Passwords.get(s.id), statusMsg: "", statusMode: Gender.monitorBits(app.gender), channel: "",
+            channelPassword: "", enabled: true)
         guard let r = await call(registering: true, { try $0.addServer(server: input) }) else { return problem }
         switch r {
         case .success: await refresh(); return nil
@@ -151,17 +216,31 @@ final class MonitorStore {
         await refresh()
     }
 
+    /// Turns monitoring of a server on or off, keeping its other settings.
     func setEnabled(_ s: MonitorServer, _ on: Bool) async {
-        // The monitor keeps the password; an empty one leaves it as it is.
-        let input = MonitorServerInput(
-            name: s.name, host: s.host, tcpPort: s.tcpPort, encrypted: s.encrypted, nickname: s.nickname,
-            username: s.username, password: savedPassword(for: s), statusMsg: "", channel: "", channelPassword: "", enabled: on)
-        await call { try $0.updateServer(serverId: s.id, server: input) }
-        await refresh()
+        guard var c = await config(s) else { return }
+        c.enabled = on
+        _ = await save(c)
     }
 
-    private func savedPassword(for m: MonitorServer) -> String {
-        app.servers.first { Self.same($0, m) }.map { Passwords.get($0.id) } ?? ""
+    /// A monitored server's settings as the Monitor keeps them: nickname,
+    /// status message, gender, channel, on or off. Nil when it can't say.
+    func config(_ s: MonitorServer) async -> MonitorServerConfig? {
+        guard case .success(let c)? = await call({ try $0.serverConfig(serverId: s.id) }) else { return nil }
+        return c
+    }
+
+    /// Saves a server's Monitor settings (`channelPassword` empty: kept,
+    /// as its login password always is). Returns why not, or nil.
+    func save(_ c: MonitorServerConfig, channelPassword: String = "") async -> String? {
+        let input = MonitorServerInput(
+            name: c.name, host: c.host, tcpPort: c.tcpPort, encrypted: c.encrypted, nickname: c.nickname,
+            username: c.username, password: "", statusMsg: c.statusMsg, statusMode: c.statusMode,
+            channel: c.channel, channelPassword: channelPassword, enabled: c.enabled)
+        guard let r = await call({ try $0.updateServer(serverId: c.id, server: input) }) else { return problem }
+        await refresh()
+        if case .failure(let e) = r { return NGAccountStore.words(e) }
+        return nil
     }
 
     static func same(_ s: SavedServer, _ m: MonitorServer) -> Bool {
@@ -171,17 +250,66 @@ final class MonitorStore {
     /// The monitor of a saved server, if any.
     func monitor(of s: SavedServer) -> MonitorServer? { servers.first { Self.same(s, $0) } }
 
-    /// This app connected to (or left) a monitored server with the same
-    /// account: the monitor steps back meanwhile, so the two don't clash.
+    // MARK: Logged in here too
+
+    /// Saved servers this app is logged in to itself.
+    private var connectedHere: [UUID: SavedServer] = [:]
+    /// The monitors that send this iPhone nothing now (it's there itself).
+    private var quietIds: Set<Int64> = []
+    private var quietRenewal: Task<Void, Never>?
+    /// How long the Monitor keeps this iPhone quiet without hearing from
+    /// it: renewed well before, so closing the app or restarting the phone
+    /// brings the notifications back within this time.
+    private static let quietSeconds: Int64 = 120
+
+    /// This app logged in to a server (or left it, in any way). The monitor
+    /// stays logged in there, but sends this iPhone no notifications about
+    /// it meanwhile; the account's other phones get them as usual.
     func appConnected(_ s: SavedServer, _ connected: Bool) {
-        guard let m = monitor(of: s) else { return }
-        Task {
-            if connected {
-                await call { try $0.pause(serverId: m.id, minutes: 12 * 60) }
-            } else {
-                await call { try $0.resume(serverId: m.id) }
+        guard (connectedHere[s.id] != nil) != connected else { return }
+        connectedHere[s.id] = connected ? s : nil
+        if connectedHere.isEmpty {
+            quietRenewal?.cancel()
+            quietRenewal = nil
+        } else if quietRenewal == nil {
+            quietRenewal = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(45))
+                    guard !Task.isCancelled else { return }
+                    await self?.syncQuiet(renew: true)
+                }
             }
-            await refresh()
         }
+        Task { servers.isEmpty ? await refresh() : await syncQuiet() }
+    }
+
+    /// Tells the Monitor which of its servers this iPhone is on itself.
+    private func syncQuiet(renew: Bool = false) async {
+        let want = Set(connectedHere.values.compactMap { monitor(of: $0)?.id })
+        let start = renew ? want : want.subtracting(quietIds)
+        let end = quietIds.subtracting(want)
+        quietIds = want
+        guard !start.isEmpty || !end.isEmpty else { return }
+        let install = NGAccountStore.installId, seconds = Self.quietSeconds
+        for id in start { await call { try $0.quiet(serverId: id, installId: install, seconds: seconds) } }
+        for id in end { await call { try $0.unquiet(serverId: id, installId: install) } }
+    }
+}
+
+extension Gender {
+    /// The Monitor's gender as TeamTalk status mode bits.
+    static func monitorBits(_ g: Gender) -> Int64 {
+        switch g {
+        case .female: 256
+        case .neutral: 4096
+        default: 0
+        }
+    }
+
+    /// From the Monitor's status mode bits.
+    static func fromMonitorBits(_ bits: Int64) -> Gender {
+        if bits & 256 != 0 { return .female }
+        if bits & 4096 != 0 { return .neutral }
+        return .male
     }
 }

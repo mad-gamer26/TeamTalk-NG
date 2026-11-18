@@ -39,7 +39,7 @@ struct BearWareView: View {
                 Section {
                     TextField("BearWare.dk username", text: $username).accessibilityLabel("BearWare.dk username")
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Password", text: $password).accessibilityLabel("Password")
+                    PasswordField("Password", text: $password)
                     Button(busy ? "Signing in…" : "Sign in") { signIn() }
                         .disabled(busy || username.isEmpty || password.isEmpty)
                     if let problem { Text(problem) }

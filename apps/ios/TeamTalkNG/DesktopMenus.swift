@@ -551,7 +551,7 @@ struct OperatorPasswordView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Operator password", text: $password).accessibilityLabel("Operator password")
+                    PasswordField("Operator password", text: $password)
                 } footer: {
                     Text("Specify the channel's operator password.")
                 }

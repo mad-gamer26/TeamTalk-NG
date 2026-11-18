@@ -68,6 +68,7 @@ fn every_channel_setting_round_trips() {
             permanent: true,
             operator_receive_only: true,
             operator_password: Some("op-pw".into()),
+            password: Some("join-pw".into()),
             disk_quota: Some(1_000_000),
             codec: Some(opus),
             fixed_volume: Some((true, 50)),
@@ -78,6 +79,8 @@ fn every_channel_setting_round_trips() {
         .expect("made");
     let c = made(&admin, "Studio");
     assert_eq!(c.operator_password, "op-pw", "admins see it");
+    assert_eq!(c.password, "join-pw", "and its password");
+    assert!(c.has_password);
     assert!(c.operator_receive_only);
     assert_eq!(c.disk_quota, 1_000_000);
     assert_eq!(
@@ -124,9 +127,10 @@ fn every_channel_setting_round_trips() {
 
     // Normal people don't see the operator password, but may use it.
     let alice = TestClient::logged_in(&server, "alice");
-    alice.client.join_channel_path("/Studio/", "").unwrap();
+    alice.client.join_channel_path("/Studio/", "join-pw").unwrap();
     let seen = alice.client.snapshot().channel(c.id).cloned().unwrap();
     assert_eq!(seen.operator_password, "");
+    assert_eq!(seen.password, "", "nor its password");
     let me = alice.client.snapshot().my_user_id;
     let wrong = alice.client.set_operator(me, c.id, "nope", true);
     assert!(wrong.is_err(), "{wrong:?}");

@@ -1,3 +1,4 @@
+import UserNotifications
 import Foundation
 
 /// What Siri, the Shortcuts app, Control Center and Live Activities do (the
@@ -146,6 +147,37 @@ extension ShortcutActions {
                     } catch {}
                 }
                 return
+            case "delivered":
+                // The notifications in Notification Center, as "title | text".
+                Task { @MainActor in
+                    let n = await UNUserNotificationCenter.current().deliveredNotifications()
+                    let text = n.map { "\($0.request.content.title) | \($0.request.content.body)" }.joined(separator: " ;; ")
+                    AppModel.shared?.uiTestActionResult = "Delivered: " + text
+                }
+                return
+            case "clearDelivered":
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+                said = "Cleared"
+            case "tapNotification":
+                // As tapping the delivered one whose text has `contains`.
+                let contains = q["contains"] ?? ""
+                Task { @MainActor in
+                    let n = await UNUserNotificationCenter.current().deliveredNotifications()
+                    if let hit = n.first(where: { $0.request.content.body.contains(contains) }) {
+                        BackgroundNotifications.open(hit.request.content.userInfo)
+                        AppModel.shared?.uiTestActionResult = "Opened"
+                    } else {
+                        AppModel.shared?.uiTestActionResult = "No such notification"
+                    }
+                }
+                return
+            case "tapMonitorNotification":
+                // As tapping a Monitor notification about its first server.
+                guard let m = AppModel.shared?.monitor.servers.first else { said = "No monitored server"; break }
+                var d: [String: Any] = ["server_id": NSNumber(value: m.id), "event": q["event"] ?? ""]
+                if let u = q["user_id"].flatMap(Int.init) { d["user_id"] = NSNumber(value: u) }
+                BackgroundNotifications.open(["data": d])
+                said = "Opened"
             case "packSound":
                 // What choosing a sound file does (the file picker can't be
                 // driven by a test): a built-in sound for an event in a pack.

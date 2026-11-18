@@ -33,6 +33,9 @@ enum Host {
         }
     }
 
+    /// What's on the Simulator's pasteboard (read by the host).
+    static func pasteboard() -> String { call("/pasteboard")["text"] as? String ?? "" }
+
     static func messages(_ bot: String = "bob") -> [[String: Any]] { state(bot)["messages"] as? [[String: Any]] ?? [] }
 
     /// Waits up to `timeout` for `ok`.

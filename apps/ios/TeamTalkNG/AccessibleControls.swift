@@ -32,6 +32,17 @@ struct NamedSlider: View {
 
     private var shown: Double { chosen ?? value }
 
+    /// What SwiftUI's Slider can take: since iOS 27 it stops the app when
+    /// its range is empty or shorter than its step (a recording's
+    /// position before its length is known, a clip under a second).
+    private var safeRange: ClosedRange<Double> {
+        range.upperBound > range.lowerBound ? range : range.lowerBound...(range.lowerBound + max(step, 1))
+    }
+    private var safeStep: Double {
+        let span = safeRange.upperBound - safeRange.lowerBound
+        return step > 0 && step <= span ? step : span
+    }
+
     /// A VoiceOver swipe's step: the slider's own, or a twentieth of its
     /// range when that would take too many swipes (5 on 0 to 100).
     private var swipeStep: Double {
@@ -56,7 +67,8 @@ struct NamedSlider: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).accessibilityHidden(true)
-            Slider(value: Binding(get: { shown }, set: { set($0) }), in: range, step: step)
+            Slider(value: Binding(get: { min(safeRange.upperBound, max(safeRange.lowerBound, shown)) }, set: { set($0) }),
+                   in: safeRange, step: safeStep)
                 .accessibilityLabel(label)
                 .accessibilityValue(spoken(shown))
                 .accessibilityAdjustableAction { direction in

@@ -38,6 +38,7 @@ fn the_monitor_administers_the_server() {
             username: "admin".into(),
             password: "admin-pw".into(),
             status_msg: String::new(),
+            status_mode: 0,
             channel: String::new(),
             channel_password: String::new(),
             enabled: true,

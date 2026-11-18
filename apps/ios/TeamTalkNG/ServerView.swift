@@ -41,6 +41,26 @@ struct ServerView: View {
     /// The row VoiceOver is on (the desktop's selected item, for its shortcuts).
     @AccessibilityFocusState private var voFocus: String?
 
+    private func openRequested() {
+        guard let r = connection.openRequest else { return }
+        switch r.opens {
+        case .server:
+            connection.openRequestDone()
+        case .chat:
+            tab = .chat
+            connection.openRequestDone()
+        case .conversation:
+            tab = .chat
+            guard let id = r.userId, let u = connection.snapshot?.users.first(where: { $0.id == id }) else {
+                // Not there (any more): its server, on the Chat tab.
+                if r.userId == nil || Date.now.timeIntervalSince(r.at) > 15 { connection.openRequestDone() }
+                return
+            }
+            connection.openRequestDone()
+            privateWith = u
+        }
+    }
+
     enum Tab: String, CaseIterable, Identifiable {
         case channels = "Channels", chat = "Chat", files = "Files"
         var id: Self { self }
@@ -104,11 +124,12 @@ struct ServerView: View {
         // A hardware keyboard: the desktop's shortcuts (Help lists them).
         .background { DesktopShortcuts(run: perform) }
         .onAppear { connection.screenOpen = true; connection.connect() }
+        .modifier(OpenRequests(connection: connection, open: openRequested))
         .onDisappear { connection.screenOpen = false }
         // The Monitor's view is followed while it's on screen.
         .onDisappear { connection.leaveMonitorView() }
         .alert("Channel password", isPresented: Binding(get: { passwordFor != nil }, set: { if !$0 { passwordFor = nil } })) {
-            SecureField("Password", text: $channelPassword).accessibilityLabel("Password")
+            TextField("Password", text: $channelPassword).accessibilityLabel("Password").textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Join") {
                 if let c = passwordFor { connection.join(c, password: channelPassword) }
                 channelPassword = ""
@@ -143,7 +164,7 @@ struct ServerView: View {
         .alert("Join a channel by its path", isPresented: $joiningByPath) {
             TextField("Path, like /Lobby/Secret/", text: $joinPath).accessibilityLabel("Channel path")
                 .textInputAutocapitalization(.never)
-            SecureField("Password (if any)", text: $joinPassword).accessibilityLabel("Password (if any)")
+            TextField("Password (if any)", text: $joinPassword).accessibilityLabel("Password (if any)").textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Join") { connection.joinByPath(joinPath, password: joinPassword); joinPassword = "" }
             Button("Cancel", role: .cancel) { joinPassword = "" }
         } message: {
@@ -258,7 +279,7 @@ struct ServerView: View {
                            bans: { bansOf = c }, classroom: { classroomOf = c }, info: { infoOf = c },
                            picked: connection.pickedToMove, movePicked: { connection.movePicked(to: c) },
                            copyLink: {
-                               UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
+                               UIPasteboard.general.string = connection.link(to: c, withAccount: true, channelPassword: connection.knownPassword(c.id))
                                announce("Link to \(c.parentId == 0 ? "the root channel" : c.name) copied")
                            },
                            showTopic: model.showTopics, tap: model.channelTap,
@@ -687,7 +708,8 @@ struct ChatView: View {
     private var showTimes: Bool { model.showTimestamps }
 
     private var lines: [ChatLine] {
-        connection.lines.filter { privateWith == nil ? true : $0.privateWith == privateWith!.displayName }
+        // As the desktop: private messages only in their own conversation.
+        connection.lines.filter { privateWith == nil ? $0.privateWith == nil : $0.privateWith == privateWith!.displayName }
     }
 
     var body: some View {
@@ -701,7 +723,7 @@ struct ChatView: View {
                     } else {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(line.privateWith != nil && privateWith == nil ? "\(line.from) (private)" : line.from)
+                            Text(line.from)
                                 .font(.caption.weight(.semibold))
                             Spacer()
                             if showTimes {
@@ -1024,7 +1046,7 @@ private struct DesktopDialogs: ViewModifier {
                 connection.retryChannelPassword = nil
             }
             .alert("Join channel error", isPresented: Binding(get: { askPassword != nil }, set: { if !$0 { askPassword = nil } })) {
-                SecureField("Password", text: $password).accessibilityLabel("Password")
+                TextField("Password", text: $password).accessibilityLabel("Password").textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("Join") {
                     if let c = askPassword { connection.join(c, password: password) }
                     password = ""
@@ -1033,7 +1055,7 @@ private struct DesktopDialogs: ViewModifier {
             } message: { Text("Incorrect channel password. Try again.") }
             .alert("Login error", isPresented: Binding(get: { connection.loginRetry }, set: { if !$0 { connection.loginRetry = false } })) {
                 TextField("Username", text: $username).accessibilityLabel("Username")
-                SecureField("Password", text: $password).accessibilityLabel("Password")
+                TextField("Password", text: $password).accessibilityLabel("Password").textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("Login") { connection.retryLogin(username: username, password: password); password = "" }
                 Button("Cancel", role: .cancel) { password = "" }
             } message: { Text("Incorrect username or password. Try again.") }
@@ -1148,8 +1170,9 @@ extension ServerView {
         case .hearMyself: connection.setHearMyself(!connection.hearingMyself)
         case .pushToTalk: model.talkMode = model.talkMode == .pushToTalk ? .voiceActivation : .pushToTalk
             connection.noteMenu(model.talkMode == .pushToTalk ? "Push to talk on" : "Push to talk off")
-        case .voiceActivation: model.talkMode = model.talkMode == .voiceActivation ? .pushToTalk : .voiceActivation
-            connection.noteMenu(model.talkMode == .voiceActivation ? "Voice activation enabled" : "Voice activation disabled")
+        case .voiceActivation: model.toggleVoiceActivationByShortcut()
+            // The desktop's hotkey: under "Voice transmission mode toggled".
+            connection.noteTransmission(model.talkMode == .voiceActivation ? "Voice activation enabled" : "Voice activation disabled")
         case .speechEvents: model.speech.toggleEnabled()
         case .soundEvents:
             model.sounds.enabled.toggle()
@@ -1186,7 +1209,7 @@ extension ServerView {
         case .speakChannelInfo: if let c { connection.speakChannelInfo(c) }
         case .speakChannelState: connection.speakChannelState()
         case .ttURL:
-            UIPasteboard.general.string = connection.link(to: c, withAccount: false, channelPassword: "")
+            UIPasteboard.general.string = connection.link(to: c, withAccount: true, channelPassword: c.map { connection.knownPassword($0.id) } ?? "")
             connection.noteMenu("Link copied to clipboard")
         case .channelBans: if let c { bansOf = c }
         case .stream: pickingStream = true
@@ -1224,5 +1247,19 @@ private struct MoreMenu: View, Equatable {
         .accessibilityActions {
             ForEach(items.reversed()) { i in Button(i.title, action: i.action) }
         }
+    }
+}
+
+/// A tapped notification: the Chat tab, or a conversation (once the person
+/// is known).
+private struct OpenRequests: ViewModifier {
+    let connection: ServerConnection
+    let open: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { open() }
+            .onChange(of: connection.openRequest?.at) { open() }
+            .onChange(of: connection.snapshot?.users.count) { open() }
     }
 }

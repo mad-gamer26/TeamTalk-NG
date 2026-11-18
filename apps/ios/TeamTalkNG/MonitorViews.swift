@@ -3,15 +3,13 @@ import SwiftUI
 /// The Monitor: servers it watches, their conversations and events.
 struct MonitorListView: View {
     @Environment(AppModel.self) private var model
-    @State private var adding = false
-    @State private var soundChoice = MonitorSound.choice
 
     var body: some View {
         let monitor = model.monitor
         List {
             Section {
                 if monitor.servers.isEmpty && !monitor.loading {
-                    Text("The Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Add a server to start.")
+                    Text("The Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Add a server in Settings → Monitor.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(monitor.servers, id: \.id) { s in
@@ -25,19 +23,9 @@ struct MonitorListView: View {
                         }
                         .accessibilityElement(children: .combine)
                     }
-                    .swipeActions { Button("Stop monitoring", role: .destructive) { Task { await monitor.remove(s) } } }
-                    .accessibilityActions { Button("Stop monitoring") { Task { await monitor.remove(s) } } }
                 }
             } footer: {
                 if let p = monitor.problem { Text(p) }
-            }
-            Section {
-                Picker("Notification sound", selection: Binding(get: { MonitorSound.choice }, set: { MonitorSound.choice = $0; soundChoice = $0 })) {
-                    ForEach(MonitorSound.Choice.allCases) { Text($0.label).tag($0) }
-                }
-                .id(soundChoice)
-            } footer: {
-                Text("The sound pack's sounds follow Settings → Sounds: a sound turned off there is silent here too.")
             }
             if !monitor.events.isEmpty {
                 Section("Recent") {
@@ -48,16 +36,10 @@ struct MonitorListView: View {
             }
         }
         .navigationTitle("Monitor")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Add a server", systemImage: "plus") { adding = true }
-            }
-        }
         .refreshable { await monitor.refresh() }
         .task { await monitor.refresh() }
         .onAppear { monitor.startFollowing() }
         .onDisappear { monitor.stopFollowing() }
-        .sheet(isPresented: $adding) { AddMonitorView() }
     }
 
     private func details(_ s: MonitorServer) -> String {
@@ -84,7 +66,7 @@ private struct EventRow: View {
 }
 
 /// Choosing a saved server to monitor.
-private struct AddMonitorView: View {
+struct AddMonitorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var busy: UUID?
@@ -141,7 +123,8 @@ struct MonitorServerView: View {
             if let server {
                 Section {
                     Text(server.statusText)
-                    LiveToggle("Monitoring", isOn: Binding(get: { server.enabled }, set: { on in Task { await monitor.setEnabled(server, on) } }))
+                } footer: {
+                    Text("Its settings are in Settings → Monitor.")
                 }
             }
             Section("Private conversations") {
@@ -255,6 +238,274 @@ struct MonitorConversationView: View {
                 try $0.sendMessage(serverId: s, to: .user(userId: u, conversationId: c), text: text)
             }
             if case .failure(let e)? = r { announce("Couldn't send: \(NGAccountStore.words(e))") } else { await load() }
+        }
+    }
+}
+
+/// Settings → Monitor: the servers it watches (each with its own settings),
+/// adding one, and its notification sound.
+struct MonitorSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var adding = false
+    @State private var soundChoice = MonitorSound.choice
+    @State private var stopping: MonitorServer?
+    @State private var forgetting = false
+
+    var body: some View {
+        let monitor = model.monitor
+        Form {
+            Section {
+                if let own = monitor.own {
+                    LabeledContent("Using", value: "My own Monitor, \(own.name)")
+                    Button("Stop using my own Monitor", role: .destructive) { forgetting = true }
+                } else {
+                    LabeledContent("Using", value: "The TeamTalk NG Monitor")
+                    NavigationLink("Use my own Monitor") { OwnMonitorPairView() }
+                        .accessibilityIdentifier("monitor-use-own")
+                }
+            } header: {
+                Text("Which Monitor")
+            } footer: {
+                if monitor.own != nil {
+                    Text("Your own Monitor runs on your computer: your server passwords and messages stay there. TeamTalk NG reaches it through its relay, end-to-end encrypted.")
+                } else {
+                    Text("Run the Monitor on your own computer instead, so your server passwords and messages never leave it.")
+                }
+            }
+            Section {
+                if monitor.servers.isEmpty && !monitor.loading {
+                    Text("No servers yet.").foregroundStyle(.secondary)
+                }
+                ForEach(monitor.servers, id: \.id) { s in
+                    NavigationLink {
+                        MonitorServerSettingsView(serverId: s.id)
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(verbatim: s.name).font(.headline)
+                            Text(s.enabled ? s.statusText : "Off").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                    .swipeActions { Button("Stop monitoring", role: .destructive) { stopping = s } }
+                    .accessibilityActions { Button("Stop monitoring") { stopping = s } }
+                }
+                Button("Monitor a server") { adding = true }
+            } header: {
+                Text("Servers")
+            } footer: {
+                if let p = monitor.problem {
+                    Text(p)
+                } else {
+                    Text("The Monitor stays logged in to these servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Choose one for its nickname, status, gender and channel.")
+                }
+            }
+            Section {
+                Picker("Notification sound", selection: Binding(get: { MonitorSound.choice }, set: { MonitorSound.choice = $0; soundChoice = $0 })) {
+                    ForEach(MonitorSound.Choice.allCases) { Text($0.label).tag($0) }
+                }
+                .id(soundChoice)
+            } footer: {
+                Text("The sound pack's sounds follow Settings → Sounds: a sound turned off there is silent here too.")
+            }
+        }
+        .navigationTitle("Monitor")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await monitor.refresh() }
+        .sheet(isPresented: $adding) { AddMonitorView() }
+        .confirmationDialog("Stop using your own Monitor?", isPresented: $forgetting, titleVisibility: .visible) {
+            Button("Stop using it", role: .destructive) {
+                monitor.forgetOwn()
+                announce("Using the TeamTalk NG Monitor")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This iPhone goes back to the TeamTalk NG Monitor. Your own keeps running on your computer; to unpair this iPhone there, run ng-monitor phones, then ng-monitor unpair with its number.")
+        }
+        .confirmationDialog("Stop monitoring \(stopping?.name ?? "")?", isPresented: Binding(get: { stopping != nil }, set: { if !$0 { stopping = nil } }),
+                            titleVisibility: .visible, presenting: stopping) { s in
+            Button("Stop monitoring", role: .destructive) {
+                Task { await monitor.remove(s); announce("No longer monitoring \(s.name)") }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The Monitor logs out of it, and its conversations there go.")
+        }
+    }
+}
+
+/// Pairing with your own Monitor: how to install it on a computer, and
+/// the code it shows.
+struct OwnMonitorPairView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var code = ""
+    @State private var pairing = false
+    @State private var problem: String?
+
+    private static let windows = "irm https://ttmonitor.mad-gamer.com/install.ps1 | iex"
+    private static let macLinux = "curl -fsSL https://ttmonitor.mad-gamer.com/install.sh | sh"
+
+    var body: some View {
+        Form {
+            Section {
+                Text("The Monitor can run on your own computer (Windows, Mac or Linux) instead of on TeamTalk NG's. It watches your servers from there and sends your notifications, and your server passwords and private messages never leave it.")
+            }
+            Section {
+                Text(verbatim: Self.windows).font(.body.monospaced()).textSelection(.enabled)
+                Button("Copy the Windows command") { copy(Self.windows) }
+            } header: {
+                Text("On Windows")
+            } footer: {
+                Text("In PowerShell. Windows asks once for administrator permission: the Monitor runs as a service, even before anyone signs in.")
+            }
+            Section {
+                Text(verbatim: Self.macLinux).font(.body.monospaced()).textSelection(.enabled)
+                Button("Copy the Mac and Linux command") { copy(Self.macLinux) }
+            } header: {
+                Text("On a Mac or Linux")
+            } footer: {
+                Text("In Terminal. It installs for you alone and starts with the computer.")
+            }
+            Section {
+                TextField("Pairing code", text: $code)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("own-monitor-code")
+                Button(pairing ? "Pairing…" : "Pair") { Task { await pair() } }
+                    .disabled(pairing || code.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("own-monitor-pair")
+            } header: {
+                Text("Pairing code")
+            } footer: {
+                if let problem {
+                    Text(problem)
+                } else {
+                    Text("When it's installed, the Monitor shows a code like ABCD-1234-5678. It works for 10 minutes, for one iPhone. For another code, run ng-monitor pair on the computer.")
+                }
+            }
+        }
+        .navigationTitle("Use my own Monitor")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func copy(_ s: String) {
+        UIPasteboard.general.string = s
+        announce("Copied")
+    }
+
+    private func pair() async {
+        pairing = true
+        defer { pairing = false }
+        problem = await model.monitor.pairOwn(code: code)
+        if let problem {
+            announce(problem)
+        } else {
+            announce("Paired with \(model.monitor.own?.name ?? "your Monitor")")
+            dismiss()
+        }
+    }
+}
+
+/// One monitored server's settings: on or off, how the Monitor appears
+/// there (nickname, status message, gender), and the channel it joins.
+struct MonitorServerSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let serverId: Int64
+    @State private var config: MonitorServerConfig?
+    @State private var loadProblem: String?
+    @State private var nickname = ""
+    @State private var statusMessage = ""
+    @State private var gender: Gender = .male
+    @State private var channel = ""
+    @State private var channelPassword = ""
+    @State private var busy = false
+
+    var body: some View {
+        let monitor = model.monitor
+        let server = monitor.servers.first { $0.id == serverId }
+        Form {
+            if let server {
+                Section {
+                    LiveToggle("Monitoring", isOn: Binding(get: { server.enabled }, set: { on in
+                        Task {
+                            await monitor.setEnabled(server, on)
+                            config = await monitor.config(server)
+                        }
+                    }))
+                    Text(server.enabled ? server.statusText : "Off")
+                }
+            }
+            if config != nil {
+                Section {
+                    TextField("Nickname", text: $nickname).accessibilityLabel("Nickname")
+                    TextField("Status message", text: $statusMessage).accessibilityLabel("Status message")
+                    Picker("Gender", selection: $gender) {
+                        Text("Male").tag(Gender.male)
+                        Text("Female").tag(Gender.female)
+                        Text("Neutral").tag(Gender.neutral)
+                    }
+                } header: {
+                    Text("How others see it")
+                }
+                Section {
+                    TextField("Channel to join", text: $channel)
+                        .accessibilityLabel("Channel to join")
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    PasswordField("Channel password", text: $channelPassword)
+                } header: {
+                    Text("Channel")
+                } footer: {
+                    Text("The channel's path, such as /Lobby/; empty for the server's first channel. Leave the password empty to keep the one saved.")
+                }
+                Section {
+                    Button("Save") { save() }.disabled(busy)
+                }
+            } else if let loadProblem {
+                Section { Text(loadProblem) }
+            } else {
+                Section { ProgressView("Loading its settings") }
+            }
+        }
+        .navigationTitle(server?.name ?? "Monitor")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let s = model.monitor.servers.first(where: { $0.id == serverId }) else {
+            loadProblem = "This server isn't monitored any more."
+            return
+        }
+        guard let c = await model.monitor.config(s) else {
+            loadProblem = model.monitor.problem ?? "The Monitor didn't answer. Try again in a moment."
+            return
+        }
+        config = c
+        nickname = c.nickname
+        statusMessage = c.statusMsg
+        gender = Gender.fromMonitorBits(c.statusMode)
+        channel = c.channel
+    }
+
+    private func save() {
+        guard var c = config else { return }
+        c.nickname = nickname
+        c.statusMsg = statusMessage
+        c.statusMode = Gender.monitorBits(gender)
+        c.channel = channel
+        busy = true
+        Task {
+            let problem = await model.monitor.save(c, channelPassword: channelPassword)
+            busy = false
+            if let problem {
+                announce(problem)
+            } else {
+                channelPassword = ""
+                config = c
+                announce("Saved")
+            }
         }
     }
 }

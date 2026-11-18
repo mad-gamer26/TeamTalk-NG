@@ -62,8 +62,36 @@ pub struct MonitorServerInput {
     pub username: String,
     pub password: String,
     pub status_msg: String,
+    /// The monitor's gender as TeamTalk status mode bits (female 256,
+    /// neutral 4096; neither is male). The service keeps only these bits.
+    pub status_mode: i64,
     pub channel: String,
+    /// Empty keeps the one the service has (as does an empty `password`).
     pub channel_password: String,
+    pub enabled: bool,
+}
+
+/// A monitored server's settings as the service keeps them (its passwords
+/// are never sent back).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct MonitorServerConfig {
+    pub id: i64,
+    pub name: String,
+    pub host: String,
+    pub tcp_port: u16,
+    #[serde(default)]
+    pub encrypted: bool,
+    #[serde(default)]
+    pub nickname: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub status_msg: String,
+    #[serde(default)]
+    pub status_mode: i64,
+    #[serde(default)]
+    pub channel: String,
+    #[serde(default)]
     pub enabled: bool,
 }
 
@@ -236,6 +264,8 @@ pub struct Monitor {
     base: String,
     token: Option<String>,
     agent: ureq::Agent,
+    /// Your own Monitor, through the relay (instead of `base`).
+    tunnel: Option<std::sync::Arc<std::sync::Mutex<crate::tunnel::Tunnel>>>,
 }
 
 impl std::fmt::Debug for Monitor {
@@ -266,11 +296,33 @@ impl Monitor {
                 .timeout_global(Some(std::time::Duration::from_secs(30)))
                 .build()
                 .into(),
+            tunnel: None,
+        }
+    }
+
+    /// Your own paired Monitor, reached through the relay at `relay`.
+    pub fn own(relay: &str, monitor: crate::tunnel::PairedMonitor, phone_key: &[u8; 32]) -> Monitor {
+        let mut m = Monitor::new(relay, None);
+        m.tunnel = Some(std::sync::Arc::new(std::sync::Mutex::new(crate::tunnel::Tunnel::new(
+            relay, monitor, phone_key,
+        ))));
+        m
+    }
+
+    /// Your own Monitor's name and the key that opens its notifications
+    /// (`{name, push_key, device_id, version}`); hosted Monitors have none.
+    pub fn hello(&self) -> Result<Value> {
+        match &self.tunnel {
+            Some(t) => t.lock().unwrap_or_else(|e| e.into_inner()).hello(),
+            None => Err(crate::ServiceError::Refused {
+                status: 404,
+                message: "Only your own Monitor says hello.".into(),
+            }),
         }
     }
 
     pub fn has_token(&self) -> bool {
-        self.token.is_some()
+        self.token.is_some() || self.tunnel.is_some()
     }
 
     /// Registers this install on its own; it then uses the new token.
@@ -285,10 +337,23 @@ impl Monitor {
     /// turns them off), from a development build or not (Apple's sandbox),
     /// with the app's own reference returned in every push.
     pub fn set_push(&self, apns_token: Option<&str>, sandbox: bool, app_ref: &str, install_id: &str) -> Result<()> {
+        self.set_push_for(apns_token, sandbox, app_ref, install_id, "")
+    }
+
+    /// As `set_push`, saying the app's bundle ID (`topic`): a build other
+    /// than the main one (TTNG Dev) gets its pushes under its own.
+    pub fn set_push_for(
+        &self,
+        apns_token: Option<&str>,
+        sandbox: bool,
+        app_ref: &str,
+        install_id: &str,
+        topic: &str,
+    ) -> Result<()> {
         self.call(
             "PUT",
             "/v1/me/push",
-            Some(json!({ "apns_token": apns_token, "sandbox": sandbox, "app_ref": app_ref, "install_id": install_id })),
+            Some(json!({ "apns_token": apns_token, "sandbox": sandbox, "app_ref": app_ref, "install_id": install_id, "topic": topic })),
         )
         .map(|_| ())
     }
@@ -322,6 +387,12 @@ impl Monitor {
         Ok(v.get("id").and_then(Value::as_i64).unwrap_or(0))
     }
 
+    /// A monitored server's settings (nickname, status message, gender,
+    /// channel, enabled…).
+    pub fn server_config(&self, id: i64) -> Result<MonitorServerConfig> {
+        decode(self.call("GET", &format!("/v1/servers/{id}/config"), None)?)
+    }
+
     pub fn update_server(&self, id: i64, s: &MonitorServerInput) -> Result<()> {
         self.call("PUT", &format!("/v1/servers/{id}"), Some(json!(s)))
             .map(|_| ())
@@ -343,6 +414,30 @@ impl Monitor {
 
     pub fn resume(&self, id: i64) -> Result<()> {
         self.call("DELETE", &format!("/v1/servers/{id}/pause"), None)
+            .map(|_| ())
+    }
+
+    /// This install's app is logged in to the server itself: the monitor
+    /// stays, but sends this install no notifications about the server for
+    /// `seconds` (renewed while connected; it runs out by itself when the
+    /// app is closed or the phone restarts). The account's other phones
+    /// are notified as usual.
+    pub fn quiet(&self, id: i64, install_id: &str, seconds: i64) -> Result<()> {
+        self.call(
+            "POST",
+            &format!("/v1/servers/{id}/pause"),
+            Some(json!({ "install_id": install_id, "seconds": seconds })),
+        )
+        .map(|_| ())
+    }
+
+    /// The app left the server: this install's notifications come back.
+    pub fn unquiet(&self, id: i64, install_id: &str) -> Result<()> {
+        let install: String = install_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect();
+        self.call("DELETE", &format!("/v1/servers/{id}/pause?install_id={install}"), None)
             .map(|_| ())
     }
 
@@ -469,6 +564,9 @@ impl Monitor {
     }
 
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
+        if let Some(t) = &self.tunnel {
+            return t.lock().unwrap_or_else(|e| e.into_inner()).call(method, path, body);
+        }
         let url = format!("{}{path}", self.base);
         let auth = self.token.as_ref().map(|t| format!("Bearer {t}"));
         let r = match (method, body) {

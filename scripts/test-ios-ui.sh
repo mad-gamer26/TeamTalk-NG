@@ -56,6 +56,35 @@ ng_email="ui-test@example.com"
 ng_password="ui test password 1"
 python3 "$root/scripts/uitest_seed_ng.py" "$ng_url" "$ng_email" "$ng_password" "$work/ngmon/outbox" "$work/ng-token"
 
+# Your own Monitor: ng-monitor on this Mac, paired through the private
+# service's relay (only the new NG service has one: NGMON_BIN=…/ng-service).
+own_code=""
+own_name="UI Test PC"
+own_bin=${NG_MONITOR_BIN:-$HOME/ng-build/target/release/ng-monitor}
+if [ -x "$own_bin" ] && curl -fs "$ng_url/install.sh" >/dev/null 2>&1; then
+    export NG_MONITOR_HOME="$work/own-monitor"
+    "$own_bin" setup --relay "$ng_url" --name "$own_name" --no-service --no-pair >/dev/null
+    "$own_bin" run 2>"$work/own-monitor.log" &
+    pids="$pids $!"
+    for _ in $(seq 1 100); do "$own_bin" status | grep -q "connected to the relay;" && break; sleep 0.2; done
+    "$own_bin" pair >"$work/own-pair.out" 2>&1 &
+    pids="$pids $!"
+    for _ in $(seq 1 100); do own_code=$(grep -oE '[A-Z0-9]{4}-[0-9]{4}-[0-9]{4}' "$work/own-pair.out" || true); [ -n "$own_code" ] && break; sleep 0.2; done
+    unset NG_MONITOR_HOME
+    echo "Own Monitor \"$own_name\" on this Mac, a pairing code ready"
+else
+    echo "No ng-monitor ($own_bin) or no relay in $ngmon: the own-Monitor test skips"
+fi
+
+# A sound pack's .zip on a local web server, for importing from a link.
+mkdir -p "$work/web/pack"
+cp "$root/apps/ios/TeamTalkNG/Sounds/logged_on.wav" "$root/apps/ios/TeamTalkNG/Sounds/user_msg.wav" "$work/web/pack/"
+(cd "$work/web/pack" && zip -q "../Link pack.zip" logged_on.wav user_msg.wav)
+web_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+(cd "$work/web" && exec python3 -m http.server "$web_port" --bind 127.0.0.1 >"$work/web.log" 2>&1) &
+pids="$pids $!"
+pack_url="http://127.0.0.1:$web_port/Link%20pack.zip"
+
 # AudioNet: a private server, an account, this Mac as a visible device.
 an_env=""
 an=$HOME/audionet-ttng
@@ -83,11 +112,15 @@ cd "$root/apps/ios"
 xcodegen -q
 xcrun simctl boot "$sim" 2>/dev/null || true
 # The microphone without asking (the Simulator's; the tests talk).
-xcrun simctl privacy "$sim" grant microphone com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
+xcrun simctl privacy "$sim" grant microphone com.matthewdovi.TeamTalk-NG 2>/dev/null || true
+# The old development app (TTNG Dev) also opens teamtalkng:// links: gone,
+# so the tests' links reach this one.
+xcrun simctl uninstall "$sim" com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
 set +e
 env TEST_RUNNER_TT_PORT="$tt_port" TEST_RUNNER_CONTROL_PORT="$control_port" \
     TEST_RUNNER_NG_EMAIL="$ng_email" TEST_RUNNER_NG_PASSWORD="$ng_password" TEST_RUNNER_NG_URL="$ng_url" TEST_RUNNER_NG_OUTBOX="$work/ngmon/outbox" \
-    TEST_RUNNER_AN_URL="${an_url:-}" TEST_RUNNER_AN_USER=tester TEST_RUNNER_AN_PASSWORD="${an_password:-}" \
+    TEST_RUNNER_OWN_CODE="$own_code" TEST_RUNNER_OWN_NAME="$own_name" \
+    TEST_RUNNER_PACK_URL="$pack_url" TEST_RUNNER_AN_URL="${an_url:-}" TEST_RUNNER_AN_USER=tester TEST_RUNNER_AN_PASSWORD="${an_password:-}" \
     xcodebuild test -project TeamTalkNG.xcodeproj -scheme TeamTalkNG \
     -destination "platform=iOS Simulator,id=$sim" -derivedDataPath build/uitest \
     ${only:+"$only"} TTNG_SERVICE_URL="$ng_url" >"$work/test.log" 2>&1

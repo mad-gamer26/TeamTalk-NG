@@ -291,7 +291,7 @@ private struct AudioNetSignIn: View {
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Account name", text: $username).accessibilityLabel("Account name")
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Password", text: $password).accessibilityLabel("Password")
+                    PasswordField("Password", text: $password)
                 } footer: {
                     Text("Your AudioNet server's address, account name and password.")
                 }

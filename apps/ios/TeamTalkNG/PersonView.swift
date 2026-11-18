@@ -167,7 +167,7 @@ struct PersonView: View {
                     if rights.operatorEnable {
                         LiveToggle("Operator of their channel", isOn: Binding(get: { u.operator }, set: { connection.setOperator(u, $0) }))
                     } else {
-                        SecureField("Channel's operator password", text: $opPassword).accessibilityLabel("Channel's operator password")
+                        PasswordField("Channel's operator password", text: $opPassword)
                         Button(u.operator ? "Remove Channel Operator" : (isMe ? "Become operator" : "Make operator")) {
                             connection.setOperator(u, !u.operator, password: opPassword)
                         }

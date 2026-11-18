@@ -151,3 +151,26 @@ other than WAV don't stream). Decisions:
   the SDK writes WAVs, and each becomes an MP3 when the SDK says it's
   finished (CLIENTEVENT_USER_RECORD_MEDIAFILE); if converting fails the
   WAV stays. Tests decode the MP3s (symphonia) and look for the tone.
+
+## Your own Monitor (2026-11-18)
+
+People can run the Monitor on their own computer (`ng-monitor`, from the
+NG service's repo; install with `irm https://ttmonitor.mad-gamer.com/install.ps1 | iex`
+or `curl -fsSL https://ttmonitor.mad-gamer.com/install.sh | sh`), so their
+server passwords and messages never leave it. The app uses one Monitor or
+the other: Settings → Monitor → Use my own Monitor pairs this phone with
+the code the Monitor shows (SPAKE2; each phone its own code), and from then
+on every Monitor call goes through the NG service's relay inside a Noise IK
+session (`ttng-services/src/tunnel.rs`), end to end encrypted; the relay
+only passes pieces along. The phone's key and the Monitor's (ID, name,
+key) are in the Keychain ("TeamTalk NG own monitor"). Its notifications are
+sealed by the home Monitor with its own push key (saved for the
+notification extension while it's in use; the hosted key comes back after
+"Stop using my own Monitor").
+
+`crates/ng-relay` is a byte-for-byte copy of the NG service's
+(`scripts/check-ng-relay-copy.sh`; formatting off there). Tests:
+`cargo test -p ttng-services --test own_monitor` (the real ng-service and
+ng-monitor from ~/ng-service/target/debug), and the UI test
+OwnMonitorUITests (scripts/test-ios-ui.sh with NGMON_BIN = the new
+ng-service; ng-monitor from ~/ng-build on the Mac).

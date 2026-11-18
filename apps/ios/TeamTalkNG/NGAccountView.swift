@@ -71,8 +71,8 @@ private struct ChangePasswordView: View {
     var body: some View {
         NavigationStack {
             Form {
-                SecureField("Current password", text: $current).accessibilityLabel("Current password").textContentType(.password)
-                SecureField("New password", text: $new).accessibilityLabel("New password").textContentType(.newPassword)
+                PasswordField("Current password", text: $current, showLabel: "Show current password", contentType: .password)
+                PasswordField("New password", text: $new, showLabel: "Show new password", contentType: .newPassword)
                 if let problem { Text(problem) }
             }
             .navigationTitle("Change password")
@@ -120,7 +120,7 @@ private struct SignInView: View {
                     .accessibilityLabel("Sign in or make an account")
                 Section {
                     emailField
-                    SecureField("Password", text: $password).accessibilityLabel("Password")
+                    PasswordField("Password", text: $password)
                         .textContentType(mode == .signIn ? .password : .newPassword)
                 }
                 Section {
@@ -148,7 +148,7 @@ private struct SignInView: View {
                 Section {
                     Text("Type the code we emailed to \(email), and your new password.")
                     codeField
-                    SecureField("New password", text: $password).accessibilityLabel("New password").textContentType(.newPassword)
+                    PasswordField("New password", text: $password, contentType: .newPassword)
                     Button("Set password and sign in") { submit() }.disabled(busy || code.isEmpty || password.isEmpty)
                     Button("Back") { step = .form }
                 }
