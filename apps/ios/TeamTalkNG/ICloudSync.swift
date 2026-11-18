@@ -1,15 +1,16 @@
 import Foundation
 import SwiftUI
 
-/// Opt-in iCloud sync of the settings and server list (the old app's): the
-/// app's whole settings store goes to iCloud's key-value store as one
-/// snapshot with a time, as it changes; a newer snapshot from another
-/// device is applied when the app starts (before anything loads them).
-/// Passwords stay in this iPhone's keychain (NG Account carries those).
+/// iCloud sync (on unless turned off): the app's whole settings store and
+/// server list go to iCloud's key-value store as one snapshot with a time,
+/// as they change; a newer snapshot from another device is applied when
+/// the app starts (before anything loads them). Server passwords and the
+/// paired Monitor go through iCloud Keychain (Passwords), end to end
+/// encrypted by Apple; your own sound packs through iCloud Drive.
 @MainActor
 final class ICloudSync {
     static let shared = ICloudSync()
-    static let enabledKey = "icloudSync"
+    nonisolated static let enabledKey = "icloudSync"
     private let snapshotKey = "settingsSnapshot"
     private let timeKey = "settingsSnapshotTime"
     private let appliedKey = "icloudAppliedTime"
@@ -19,7 +20,12 @@ final class ICloudSync {
     /// Changes from another device, waiting for the next launch.
     private(set) var pendingFromCloud = false
 
-    var enabled: Bool { defaults.bool(forKey: Self.enabledKey) }
+    var enabled: Bool { Self.isOn }
+
+    /// On unless turned off, and only with an iCloud account.
+    nonisolated static var isOn: Bool {
+        (UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true) && FileManager.default.ubiquityIdentityToken != nil
+    }
 
     /// What isn't synced: this install's own values.
     private func shared(_ key: String) -> Bool {
@@ -35,7 +41,18 @@ final class ICloudSync {
     func startAtLaunch() {
         guard enabled else { return }
         store.synchronize()
-        applyIfNewer()
+        if defaults.object(forKey: Self.enabledKey) == nil {
+            // On for the first time (now the default). A new install takes
+            // what iCloud has (a new device); one already in use keeps its
+            // own settings and servers and sends them, rather than taking an
+            // older snapshot over them.
+            defaults.set(true, forKey: Self.enabledKey)
+            let fresh = !defaults.bool(forKey: "setUp") && defaults.data(forKey: "servers") == nil
+            if fresh || store.data(forKey: snapshotKey) == nil { applyIfNewer() } else { publish() }
+            Passwords.resync()
+        } else {
+            applyIfNewer()
+        }
         observe()
     }
 
@@ -43,6 +60,7 @@ final class ICloudSync {
     /// take iCloud's (applied when the app next starts).
     func enable(keepThisPhone: Bool) {
         defaults.set(true, forKey: Self.enabledKey)
+        Passwords.resync()
         store.synchronize()
         if keepThisPhone || store.data(forKey: snapshotKey) == nil {
             publish()
@@ -55,6 +73,7 @@ final class ICloudSync {
 
     func disable() {
         defaults.set(false, forKey: Self.enabledKey)
+        Passwords.resync()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -126,7 +145,11 @@ struct ICloudSyncView: View {
                     }
                 }))
             } footer: {
-                Text("Your settings and server list go to your iCloud account and to your other devices with this app. Passwords stay on each device, and sound packs and your NG Account stay too. Changes from another device apply the next time the app starts.")
+                if FileManager.default.ubiquityIdentityToken == nil {
+                    Text("Sign in to iCloud in the Settings app to sync.")
+                } else {
+                    Text("Your settings, servers and their passwords, your own sound packs and your paired Monitor go to your iCloud account and to your other devices with this app. Passwords travel through iCloud Keychain, end-to-end encrypted. Settings changed on another device apply the next time the app starts.")
+                }
             }
             if pending {
                 Section {

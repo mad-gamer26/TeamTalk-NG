@@ -1,5 +1,5 @@
-"""For scripts/test-ios-ui.sh: an NG Account on the private ngmon, with a
-server in it (as another device would add it).
+"""For scripts/test-ios-ui.sh: an NG Account on the private NG service
+(accounts are for publishing sound packs now).
     uitest_seed_ng.py URL EMAIL PASSWORD OUTBOX TOKEN_FILE"""
 import json, os, sys, time, urllib.request
 
@@ -18,7 +18,7 @@ def call(method, path, body=None, token=None):
 
 for _ in range(100):
     try:
-        urllib.request.urlopen(url + "/v1/catalog")
+        urllib.request.urlopen(url + "/v1/info")
         break
     except Exception:
         time.sleep(0.1)
@@ -34,8 +34,5 @@ for _ in range(50):
         break
     time.sleep(0.1)
 s = call("POST", "/v1/account/verify", {"email": email, "code": code, "install_id": "seed-device", "device_name": "Seeder"})
-call("POST", "/v1/sync", {"changes": [{"kind": "server", "key": "seed-1", "base_rev": 0, "deleted": False, "data": {
-    "name": "Seeded Server", "ipaddr": "seeded.example.com", "tcpport": 10333, "udpport": 10333, "encrypted": False,
-    "username": "", "nickname": "", "statusmsg": "", "channel": "", "sync_password": True, "password": "", "order": 0}}]}, s["token"])
 open(token_file, "w").write(s["token"])
-print("NG Account made, with a server")
+print("NG Account made")

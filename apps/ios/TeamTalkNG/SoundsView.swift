@@ -72,14 +72,14 @@ struct CatalogView: View {
     private func row(_ p: CatalogPack) -> some View {
         let have = model.sounds.installedVersion(of: p)
         let action = have == nil ? "Download" : (have == p.version ? "Download again" : "Update")
-        let size = ByteCountFormatter.string(fromByteCount: Int64(p.size), countStyle: .file)
+        let size = p.size.map { ", " + ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? ""
         let state = have == nil ? "" : (have == p.version ? ", downloaded" : ", update available")
         return Button {
             Task { await install(p) }
         } label: {
             VStack(alignment: .leading) {
-                Text(p.official ? "\(p.name) (official)" : p.name)
-                Text("By \(p.author), \(size)\(state)").font(.caption).foregroundStyle(.secondary)
+                Text(p.official == true ? "\(p.name) (official)" : p.name)
+                Text("By \(p.author)\(size)\(state)").font(.caption).foregroundStyle(.secondary)
                 if !p.description.isEmpty {
                     Text(p.description).font(.caption).foregroundStyle(.secondary)
                 }

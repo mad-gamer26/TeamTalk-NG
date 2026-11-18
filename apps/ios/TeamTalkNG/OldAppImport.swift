@@ -117,7 +117,8 @@ enum OldAppImport {
     // MARK: NG Account
 
     /// The old app's NG Account sign-in (its keychain item in the shared
-    /// App Group): the session, used here as this app's.
+    /// App Group): the session, used here as this app's (for publishing
+    /// sound packs; the hosted Monitor it also served has ended).
     private static func importSignIn(_ d: UserDefaults) {
         guard d.string(forKey: "ngEmail") == nil,
               let group = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String else { return }
@@ -143,6 +144,5 @@ enum OldAppImport {
         else { return }
         Passwords.setSecret(s.token, "TeamTalk NG account", "token")
         d.set(email, forKey: "ngEmail")
-        if !s.pushKey.isEmpty { Service.savePushKey(s.pushKey) }
     }
 }

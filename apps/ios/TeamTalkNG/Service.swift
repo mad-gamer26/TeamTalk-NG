@@ -19,26 +19,20 @@ enum Service {
         (Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String).flatMap { UserDefaults(suiteName: $0) }
     }
 
-    /// The key that opens this install's notifications from the hosted
-    /// Monitor (kept aside while your own Monitor's is in use).
-    static func savePushKey(_ key: String) {
-        group?.set(key, forKey: "hostedPushKey")
-        if group?.bool(forKey: "ownMonitor") != true { group?.set(key, forKey: "pushKey") }
-    }
-
-    /// Your own Monitor's notifications key: in use instead of the hosted one.
+    /// The key that opens your own Monitor's notifications (for the
+    /// notification extension).
     static func saveOwnPushKey(_ key: String) {
-        if group?.bool(forKey: "ownMonitor") != true, let hosted = group?.string(forKey: "pushKey") {
-            group?.set(hosted, forKey: "hostedPushKey")
-        }
-        group?.set(true, forKey: "ownMonitor")
         group?.set(key, forKey: "pushKey")
+        group?.set(true, forKey: "ownMonitor")
     }
 
-    /// Back to the hosted Monitor's key.
+    static var hasPushKey: Bool { group?.bool(forKey: "ownMonitor") == true && !(group?.string(forKey: "pushKey") ?? "").isEmpty }
+
+    /// No Monitor paired any more.
     static func forgetOwnPushKey() {
         group?.set(false, forKey: "ownMonitor")
-        group?.set(group?.string(forKey: "hostedPushKey") ?? "", forKey: "pushKey")
+        group?.removeObject(forKey: "pushKey")
+        group?.removeObject(forKey: "hostedPushKey")
     }
 
     /// A development build gets its pushes from Apple's sandbox.
@@ -112,16 +106,6 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         }
     }
 
-    /// NG Account's silent notice that the account changed on another
-    /// device ({"ttng": {"sync": rev}}): synced now, in the background too.
-    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        guard (userInfo["ttng"] as? [String: Any])?["sync"] != nil else { completionHandler(.noData); return }
-        Task { @MainActor in
-            await AppModel.shared?.account.sync()
-            completionHandler(.newData)
-        }
-    }
 }
 
 /// Hands a notification's plain values to the main actor.

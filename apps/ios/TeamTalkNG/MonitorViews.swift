@@ -7,9 +7,16 @@ struct MonitorListView: View {
     var body: some View {
         let monitor = model.monitor
         List {
+            if monitor.own == nil {
+                Section {
+                    Text("A Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. It runs on your own computer, so nobody else holds your server passwords.")
+                    NavigationLink("Set up your Monitor") { OwnMonitorPairView() }
+                        .accessibilityIdentifier("monitor-set-up")
+                }
+            }
             Section {
-                if monitor.servers.isEmpty && !monitor.loading {
-                    Text("The Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Add a server in Settings → Monitor.")
+                if monitor.own != nil && monitor.servers.isEmpty && !monitor.loading {
+                    Text("Your Monitor isn't watching any servers yet. Add one in Settings → Monitor.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(monitor.servers, id: \.id) { s in
@@ -256,70 +263,69 @@ struct MonitorSettingsView: View {
         Form {
             Section {
                 if let own = monitor.own {
-                    LabeledContent("Using", value: "My own Monitor, \(own.name)")
-                    Button("Stop using my own Monitor", role: .destructive) { forgetting = true }
+                    LabeledContent("Your Monitor", value: own.name)
+                    Button("Forget this Monitor", role: .destructive) { forgetting = true }
                 } else {
-                    LabeledContent("Using", value: "The TeamTalk NG Monitor")
-                    NavigationLink("Use my own Monitor") { OwnMonitorPairView() }
+                    NavigationLink("Set up your Monitor") { OwnMonitorPairView() }
                         .accessibilityIdentifier("monitor-use-own")
                 }
-            } header: {
-                Text("Which Monitor")
             } footer: {
                 if monitor.own != nil {
-                    Text("Your own Monitor runs on your computer: your server passwords and messages stay there. TeamTalk NG reaches it through its relay, end-to-end encrypted.")
+                    Text("Your Monitor runs on your computer: your server passwords and messages stay there. TeamTalk NG reaches it through its relay, end-to-end encrypted.")
                 } else {
-                    Text("Run the Monitor on your own computer instead, so your server passwords and messages never leave it.")
+                    Text("Run the Monitor on your own computer: it watches your servers and sends your notifications, and your server passwords never leave it.")
                 }
             }
-            Section {
-                if monitor.servers.isEmpty && !monitor.loading {
-                    Text("No servers yet.").foregroundStyle(.secondary)
-                }
-                ForEach(monitor.servers, id: \.id) { s in
-                    NavigationLink {
-                        MonitorServerSettingsView(serverId: s.id)
-                    } label: {
-                        VStack(alignment: .leading) {
-                            Text(verbatim: s.name).font(.headline)
-                            Text(s.enabled ? s.statusText : "Off").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        .accessibilityElement(children: .combine)
+            if monitor.own != nil {
+                Section {
+                    if monitor.servers.isEmpty && !monitor.loading {
+                        Text("No servers yet.").foregroundStyle(.secondary)
                     }
-                    .swipeActions { Button("Stop monitoring", role: .destructive) { stopping = s } }
-                    .accessibilityActions { Button("Stop monitoring") { stopping = s } }
+                    ForEach(monitor.servers, id: \.id) { s in
+                        NavigationLink {
+                            MonitorServerSettingsView(serverId: s.id)
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(verbatim: s.name).font(.headline)
+                                Text(s.enabled ? s.statusText : "Off").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                        .swipeActions { Button("Stop monitoring", role: .destructive) { stopping = s } }
+                        .accessibilityActions { Button("Stop monitoring") { stopping = s } }
+                    }
+                    Button("Monitor a server") { adding = true }
+                } header: {
+                    Text("Servers")
+                } footer: {
+                    if let p = monitor.problem {
+                        Text(p)
+                    } else {
+                        Text("The Monitor stays logged in to these servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Choose one for its nickname, status, gender and channel.")
+                    }
                 }
-                Button("Monitor a server") { adding = true }
-            } header: {
-                Text("Servers")
-            } footer: {
-                if let p = monitor.problem {
-                    Text(p)
-                } else {
-                    Text("The Monitor stays logged in to these servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. Choose one for its nickname, status, gender and channel.")
+                Section {
+                    Picker("Notification sound", selection: Binding(get: { MonitorSound.choice }, set: { MonitorSound.choice = $0; soundChoice = $0 })) {
+                        ForEach(MonitorSound.Choice.allCases) { Text($0.label).tag($0) }
+                    }
+                    .id(soundChoice)
+                } footer: {
+                    Text("The sound pack's sounds follow Settings → Sounds: a sound turned off there is silent here too.")
                 }
-            }
-            Section {
-                Picker("Notification sound", selection: Binding(get: { MonitorSound.choice }, set: { MonitorSound.choice = $0; soundChoice = $0 })) {
-                    ForEach(MonitorSound.Choice.allCases) { Text($0.label).tag($0) }
-                }
-                .id(soundChoice)
-            } footer: {
-                Text("The sound pack's sounds follow Settings → Sounds: a sound turned off there is silent here too.")
             }
         }
         .navigationTitle("Monitor")
         .navigationBarTitleDisplayMode(.inline)
         .task { await monitor.refresh() }
         .sheet(isPresented: $adding) { AddMonitorView() }
-        .confirmationDialog("Stop using your own Monitor?", isPresented: $forgetting, titleVisibility: .visible) {
-            Button("Stop using it", role: .destructive) {
+        .confirmationDialog("Forget your Monitor?", isPresented: $forgetting, titleVisibility: .visible) {
+            Button("Forget it", role: .destructive) {
                 monitor.forgetOwn()
-                announce("Using the TeamTalk NG Monitor")
+                announce("Monitor forgotten")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This iPhone goes back to the TeamTalk NG Monitor. Your own keeps running on your computer; to unpair this iPhone there, run ng-monitor phones, then ng-monitor unpair with its number.")
+            Text("TeamTalk NG stops using it on this iPhone and your other devices. It keeps running on your computer; to unpair there, run ng-monitor phones, then ng-monitor unpair with the number.")
         }
         .confirmationDialog("Stop monitoring \(stopping?.name ?? "")?", isPresented: Binding(get: { stopping != nil }, set: { if !$0 { stopping = nil } }),
                             titleVisibility: .visible, presenting: stopping) { s in
@@ -348,7 +354,7 @@ struct OwnMonitorPairView: View {
     var body: some View {
         Form {
             Section {
-                Text("The Monitor can run on your own computer (Windows, Mac or Linux) instead of on TeamTalk NG's. It watches your servers from there and sends your notifications, and your server passwords and private messages never leave it.")
+                Text("The Monitor runs on your own computer (Windows, Mac or Linux), or anything that stays on, like a Raspberry Pi. It stays logged in to your servers, keeps your private messages and sends your notifications, and your server passwords never leave it. Install it with one command, then type the code it shows.")
             }
             Section {
                 Text(verbatim: Self.windows).font(.body.monospaced()).textSelection(.enabled)
@@ -380,11 +386,11 @@ struct OwnMonitorPairView: View {
                 if let problem {
                     Text(problem)
                 } else {
-                    Text("When it's installed, the Monitor shows a code like ABCD-1234-5678. It works for 10 minutes, for one iPhone. For another code, run ng-monitor pair on the computer.")
+                    Text("When it's installed, the Monitor shows a code like ABCD-1234-5678. It works for 10 minutes. Your other devices with TeamTalk NG use the same Monitor through iCloud. For another code, run ng-monitor pair on the computer.")
                 }
             }
         }
-        .navigationTitle("Use my own Monitor")
+        .navigationTitle("Set up your Monitor")
         .navigationBarTitleDisplayMode(.inline)
     }
 

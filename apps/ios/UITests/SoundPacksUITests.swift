@@ -135,7 +135,7 @@ final class SoundPacksUITests: NGTestCase {
     func testPublishedToTheCatalogAndWithdrawn() throws {
         let env = ProcessInfo.processInfo.environment
         let email = try XCTUnwrap(env["NG_EMAIL"]), password = try XCTUnwrap(env["NG_PASSWORD"])
-        let service = try XCTUnwrap(env["NG_URL"].flatMap(URL.init(string:)))
+        let catalogURL = try XCTUnwrap(env["CATALOG_URL"].flatMap(URL.init(string:)))
         // Signed in to NG Account (the private service).
         app.buttons["Settings"].tap()
         let account = app.buttons["NG Account"]
@@ -168,7 +168,8 @@ final class SoundPacksUITests: NGTestCase {
         func inCatalog() -> Bool {
             let sem = DispatchSemaphore(value: 0)
             var found = false
-            URLSession.shared.dataTask(with: service.appendingPathComponent("v1/catalog")) { d, _, _ in
+            // The static packs.json the app reads (written by the service).
+            URLSession.shared.dataTask(with: catalogURL) { d, _, _ in
                 if let d, let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
                    let packs = o["packs"] as? [[String: Any]] {
                     found = packs.contains { $0["name"] as? String == "Shared pack" && $0["author"] as? String == "Tester" }
@@ -184,6 +185,63 @@ final class SoundPacksUITests: NGTestCase {
         withdraw.tap()
         waitFor(button("Publish to the catalog"), "withdrawn", timeout: 30)
         Host.until("out of the catalog", timeout: 15) { !inCatalog() }
+    }
+
+    /// A JSON call to the private service.
+    @discardableResult
+    private func api(_ method: String, _ path: String, json: [String: Any]? = nil, raw: Data? = nil, token: String? = nil) -> [String: Any] {
+        let base = URL(string: Host.env["NG_URL"] ?? "")!
+        var req = URLRequest(url: base.appendingPathComponent(path))
+        req.httpMethod = method
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let json {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: json)
+        } else if let raw {
+            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            req.httpBody = raw
+        }
+        let sem = DispatchSemaphore(value: 0)
+        var out: [String: Any] = [:]
+        URLSession.shared.dataTask(with: req) { d, _, _ in
+            out = d.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            sem.signal()
+        }.resume()
+        sem.wait()
+        return out
+    }
+
+    /// A pack someone published shows in Get sound packs (the catalog's
+    /// packs.json), and downloads from there: its zip, checked, unpacked,
+    /// in use.
+    func testDownloadingAPackFromTheCatalog() throws {
+        let env = ProcessInfo.processInfo.environment
+        let email = try XCTUnwrap(env["NG_EMAIL"]), password = try XCTUnwrap(env["NG_PASSWORD"])
+        let token = try XCTUnwrap(api("POST", "v1/account/signin", json: ["email": email, "password": password, "install_id": "publisher", "device_name": "Publisher"])["token"] as? String)
+        let pack = try XCTUnwrap(api("POST", "v1/packs", json: ["local_id": "catalog-test-\(UUID().uuidString.prefix(6))", "name": "Catalog pack"], token: token)["id"] as? String)
+        var wav = Data("RIFF".utf8) + Data([0x24, 0, 0, 0]) + Data("WAVEfmt ".utf8)
+        wav.append(Data(count: 2000))
+        api("PUT", "v1/packs/\(pack)/files/logged_on.wav", raw: wav, token: token)
+        api("PATCH", "v1/packs/\(pack)", json: ["name": "Catalog pack", "author": "Someone", "description": "From the catalog", "public": true], token: token)
+
+        app.buttons["Settings"].tap()
+        let sounds = app.buttons["Sounds"]
+        if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
+        sounds.tap()
+        button("Get sound packs").tap()
+        // packs.json is written within seconds: look again until it's there.
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Catalog pack'")).firstMatch
+        for _ in 0..<10 where !row.waitForExistence(timeout: 2) {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            button("Get sound packs").tap()
+        }
+        waitFor(row, "the published pack in Get sound packs")
+        XCTAssertTrue(row.label.contains("By Someone"), row.label)
+        row.tap()
+        Host.until("downloaded and in use", timeout: 30) { row.label.contains("downloaded") }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        button("Sound packs").tap()
+        waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Catalog pack'")).firstMatch, "listed among my packs")
     }
 
     /// A pack from a link to its .zip: downloaded and imported.

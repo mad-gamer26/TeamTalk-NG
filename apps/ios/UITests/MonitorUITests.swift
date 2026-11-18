@@ -2,6 +2,12 @@ import XCTest
 
 /// The Monitor: a server explored through it, as if connected.
 final class MonitorUITests: NGTestCase {
+    /// The run's own Monitor is shared: each test starts with it watching nothing.
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run { run("clearMonitor", says: "Monitor cleared") }
+    }
+
     func testAMonitoredServerLooksConnectedWithoutAudio() {
         // A saved server (as admin), the app itself not connected to it.
         connect("admin")

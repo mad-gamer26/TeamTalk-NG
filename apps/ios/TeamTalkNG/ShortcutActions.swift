@@ -171,6 +171,17 @@ extension ShortcutActions {
                     }
                 }
                 return
+            case "clearMonitor":
+                // The run's own Monitor is shared by every test: what an
+                // earlier test had it watch goes.
+                Task { @MainActor in
+                    guard let m = AppModel.shared?.monitor else { return }
+                    await m.refresh()
+                    let n = m.servers.count
+                    for s in m.servers { await m.remove(s) }
+                    AppModel.shared?.uiTestActionResult = "Monitor cleared (\(n))"
+                }
+                return
             case "tapMonitorNotification":
                 // As tapping a Monitor notification about its first server.
                 guard let m = AppModel.shared?.monitor.servers.first else { said = "No monitored server"; break }

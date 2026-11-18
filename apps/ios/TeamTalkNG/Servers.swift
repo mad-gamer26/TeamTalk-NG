@@ -111,12 +111,23 @@ enum TalkMode: String, Codable, CaseIterable, Identifiable {
 
 /// Passwords, one keychain item per saved server.
 enum Passwords {
-    private static func query(_ id: UUID) -> [String: Any] { query(service: "TeamTalk NG server", account: id.uuidString) }
+    private static func query(_ id: UUID) -> [String: Any] { query(service: serverService, account: id.uuidString) }
+    static let serverService = "TeamTalk NG server"
+    /// Kept in iCloud Keychain while iCloud sync is on (end to end
+    /// encrypted by Apple): server passwords and the paired Monitor.
+    static let syncedServices: Set<String> = [serverService, "TeamTalk NG own monitor"]
 
     static func query(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
+         kSecAttrAccount as String: account,
+         // Whether in iCloud Keychain or only on this device.
+         kSecAttrSynchronizable as String: kSecAttrSynchronizableAny]
+    }
+
+    /// Whether a service's items go to iCloud Keychain now.
+    private static func synced(_ service: String) -> Bool {
+        syncedServices.contains(service) && ICloudSync.isOn
     }
 
     /// A secret in the keychain by service and name ("" when none).
@@ -132,25 +143,32 @@ enum Passwords {
         SecItemDelete(query(service: service, account: account) as CFDictionary)
         guard !value.isEmpty else { return }
         var q = query(service: service, account: account)
+        q[kSecAttrSynchronizable as String] = synced(service) ? kCFBooleanTrue : kCFBooleanFalse
         q[kSecValueData as String] = Data(value.utf8)
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(q as CFDictionary, nil)
     }
 
-    static func get(_ id: UUID) -> String {
-        var q = query(id)
-        q[kSecReturnData as String] = true
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return "" }
-        return String(decoding: d, as: UTF8.self)
-    }
+    static func get(_ id: UUID) -> String { secret(serverService, id.uuidString) }
 
-    static func set(_ password: String, for id: UUID) {
-        SecItemDelete(query(id) as CFDictionary)
-        guard !password.isEmpty else { return }
-        var q = query(id)
-        q[kSecValueData as String] = Data(password.utf8)
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(q as CFDictionary, nil)
+    static func set(_ password: String, for id: UUID) { setSecret(password, serverService, id.uuidString) }
+
+    /// iCloud sync turned on or off: the synced services' items move into
+    /// or out of iCloud Keychain.
+    static func resync() {
+        for service in syncedServices {
+            let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service,
+                                    kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+                                    kSecMatchLimit as String: kSecMatchLimitAll,
+                                    kSecReturnAttributes as String: true,
+                                    kSecReturnData as String: true]
+            var out: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let items = out as? [[String: Any]] else { continue }
+            for item in items {
+                guard let account = item[kSecAttrAccount as String] as? String, let data = item[kSecValueData as String] as? Data else { continue }
+                setSecret(String(decoding: data, as: UTF8.self), service, account)
+            }
+        }
     }
 }

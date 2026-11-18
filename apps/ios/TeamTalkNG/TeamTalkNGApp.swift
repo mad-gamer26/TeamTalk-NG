@@ -71,9 +71,8 @@ struct TeamTalkNGApp: App {
             // audio was set up again each time). An interruption that ends
             // (a phone call) makes the session active again (AppModel).
             if p == .active { model.activeChanged(true) } else if p == .background { model.activeChanged(false) }
-            // NG Account: what changed on other devices meanwhile (their
-            // push may not have come, or came while the app wasn't running).
-            if p == .active, model.account.email != nil { Task { await model.account.sync() } }
+            // My sound packs changed on another device meanwhile.
+            if p == .active { Task { await model.sounds.syncPacksWithCloud() } }
         }
     }
 
@@ -227,7 +226,19 @@ enum UITestReset {
         if let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String, let gd = UserDefaults(suiteName: g) {
             for k in gd.dictionaryRepresentation().keys { gd.removeObject(forKey: k) }
         }
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword] as CFDictionary)
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrSynchronizable as String: kSecAttrSynchronizableAny] as CFDictionary)
+        // Paired with the test's own Monitor (scripts/test-ios-ui.sh):
+        // {"monitor_id", "name", "key", "phone_key"}, keys in base64.
+        if let json = ProcessInfo.processInfo.environment["UITEST_OWN_MONITOR"], !json.isEmpty,
+           let m = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
+           let id = m["monitor_id"], let key = m["key"], let phone = m["phone_key"] {
+            let stored = ["id": id, "name": m["name"] ?? "Monitor", "key": key]
+            if let d = try? JSONSerialization.data(withJSONObject: stored) {
+                Passwords.setSecret(String(decoding: d, as: UTF8.self), "TeamTalk NG own monitor", "monitor")
+            }
+            Passwords.setSecret(phone, "TeamTalk NG own monitor", "phone key")
+        }
         let fm = FileManager.default
         for dir in [FileManager.SearchPathDirectory.documentDirectory, .applicationSupportDirectory] {
             if let u = fm.urls(for: dir, in: .userDomainMask).first,

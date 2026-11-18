@@ -316,7 +316,6 @@ final class AppModel {
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if convertedSettings { save() }
-        sounds.packsChanged = { [weak self] in self?.account.changed() }
         History.removeSaved()
         // As the desktop when it starts (mainwindow.cpp, loading settings):
         // "Voice activation enabled" or "disabled" (vox_enable / vox_disable).
@@ -581,13 +580,10 @@ final class AppModel {
         }
         Passwords.set(password, for: server.id)
         save()
-        account.changed()
         // Renamed: the Monitor's notifications use the new name too.
         if monitor.monitor(of: server).map({ $0.name != server.title }) == true { Task { await monitor.refresh() } }
     }
 
-    /// From NG Account: the servers as the account has them now (no sync
-    /// back of this change).
     /// A server's own volumes changed (kept on this iPhone, not synced).
     func setVolumes(of server: SavedServer) {
         guard let i = servers.firstIndex(where: { $0.id == server.id }) else { return }
@@ -601,25 +597,17 @@ final class AppModel {
         }
     }
 
-    func applySynced(_ list: [SavedServer], passwords: [UUID: String]) {
-        servers = list
-        for (id, p) in passwords { Passwords.set(p, for: id) }
-        save()
-    }
-
     func delete(_ server: SavedServer) {
         connections[server.id]?.disconnect()
         connections[server.id] = nil
         servers.removeAll { $0.id == server.id }
         Passwords.set("", for: server.id)
         save()
-        account.deleted(server.key)
     }
 
     func move(from: IndexSet, to: Int) {
         servers.move(fromOffsets: from, toOffset: to)
         save()
-        account.changed()
     }
 
     /// A server dragged onto another: it takes that one's place.

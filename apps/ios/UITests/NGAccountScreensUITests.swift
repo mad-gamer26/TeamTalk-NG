@@ -2,9 +2,9 @@ import XCTest
 
 /// NG Account through the app's own screens, on the private service (mail
 /// to an outbox the tests read): making an account with its emailed code,
-/// a forgotten password reset, the password changed, another device's
-/// change arriving, the session ended by the service, Sync sound packs.
-/// The test plays the other device through the service's API.
+/// a forgotten password reset, the password changed. (NG Account is only
+/// for publishing sound packs now.) The test plays another device through
+/// the service's API.
 final class NGAccountScreensUITests: NGTestCase {
     var service: URL { URL(string: ProcessInfo.processInfo.environment["NG_URL"] ?? "")! }
     var outbox: String { ProcessInfo.processInfo.environment["NG_OUTBOX"] ?? "" }
@@ -138,78 +138,5 @@ final class NGAccountScreensUITests: NGTestCase {
         }
         XCTAssertNil(api("POST", "v1/account/signin", ["email": email, "password": "the second password", "install_id": "check3", "device_name": "Check"])["token"],
                      "the old one doesn't")
-    }
-
-    func testAnotherDevicesChangeArrivesAndAnEndedSessionSignsOut() {
-        let email = unique("two")
-        let ipad = accountMadeElsewhere(email, "two devices password")
-        openAccount()
-        signIn(email, "two devices password")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        button("Done").tap()
-
-        // The iPad adds a server: it arrives here when the app comes back.
-        api("POST", "v1/sync", ["changes": [["kind": "server", "key": "ipad-1", "base_rev": 0, "deleted": false, "data": [
-            "name": "From the iPad", "ipaddr": "ipad.example.com", "tcpport": 10333, "udpport": 10333, "encrypted": false,
-            "username": "", "nickname": "", "statusmsg": "", "channel": "", "sync_password": true, "password": "", "order": 0]]]], token: ipad)
-        backgroundAndBack()
-        waitFor(app.staticTexts["From the iPad"], "the iPad's server here", timeout: 20)
-
-        // The iPad ends this iPhone's session: the app says so and stops syncing.
-        let sessions = api("GET", "v1/account/sessions", token: ipad)["sessions"] as? [[String: Any]] ?? []
-        let mine = sessions.first { $0["install_id"] as? String != "other-device" }
-        XCTAssertNotNil(mine, "this iPhone's session: \(sessions)")
-        if let id = mine?["id"] { api("DELETE", "v1/account/sessions/\(id)", token: ipad) }
-        backgroundAndBack()
-        // Settings once the app is back (a tap at once is lost).
-        let settings = app.buttons["Settings"]
-        waitFor(settings, "the app back")
-        let account = app.buttons["NG Account"]
-        for _ in 0..<3 where !account.waitForExistence(timeout: 2) { settings.tap() }
-        if !account.waitForExistence(timeout: 3) { app.swipeUp() }
-        Host.until("signed out here", timeout: 20) { account.label.contains("Not signed in") || (account.value as? String)?.contains("Not signed in") == true }
-        // The servers stay.
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.staticTexts["From the iPad"].exists, "its servers stay")
-    }
-
-    func testSyncSoundPacksSendsTheChosenPackOnlyWhenOn() {
-        let email = unique("packs")
-        let ipad = accountMadeElsewhere(email, "packs password")
-        func chosenOnTheAccount() -> String {
-            let records = api("GET", "v1/sync?since=0", token: ipad)["records"] as? [[String: Any]] ?? []
-            let r = records.first { $0["key"] as? String == "ng_selected_sound_pack" }
-            return r.map { "\($0["data"] ?? "")" } ?? ""
-        }
-        openAccount()
-        signIn(email, "packs password")
-        // On: choosing a pack here reaches the account.
-        let sync = app.switches["Sync sound packs"]
-        XCTAssertEqual(sync.value as? String, "1", "on at first")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.buttons["Sounds"].tap()
-        app.buttons["Sound packs"].tap()
-        button("New sound pack").tap()
-        let field = app.alerts.firstMatch.textFields.firstMatch
-        waitFor(field, "the new pack's name")
-        field.tap(); field.typeText("Mine")
-        app.alerts.firstMatch.buttons["Make"].tap()
-        button("Use this pack").tap()
-        Host.until("the account has it chosen", timeout: 20) { chosenOnTheAccount().contains("local:own-") }
-
-        // Off: choosing another one stays here.
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.buttons["NG Account"].tap()
-        sync.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        Host.until("off") { (sync.value as? String) == "0" }
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.buttons["Sounds"].tap()
-        app.buttons["Sound packs"].tap()
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'TeamTalk (built in)'")).firstMatch.tap()
-        button("Use this pack").tap()
-        Thread.sleep(forTimeInterval: 4)
-        XCTAssertTrue(chosenOnTheAccount().contains("local:own-"), "not sent while off: \(chosenOnTheAccount())")
     }
 }

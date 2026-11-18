@@ -174,3 +174,23 @@ notification extension while it's in use; the hosted key comes back after
 ng-monitor from ~/ng-service/target/debug), and the UI test
 OwnMonitorUITests (scripts/test-ios-ui.sh with NGMON_BIN = the new
 ng-service; ng-monitor from ~/ng-build on the Mac).
+
+## No hosted Monitor, no server sync (decided 2026-11-18)
+
+The owner ended the hosted Monitor and NG Account's server sync, so no
+central service holds anyone's TeamTalk credentials:
+
+- **Monitor**: only your own (`ng-monitor`), paired once; the pairing (and
+  this app's key for it) is in iCloud Keychain, so all your devices use it.
+  Without one, the Monitor screens offer to set one up.
+- **NG Account**: only for publishing sound packs (keeps them yours after a
+  reinstall or on a new device).
+- **Catalog**: the static packs.json at ttng-soundpacks.mad-gamer.com (the
+  old app's format plus each zip's sha256 and size); a pack downloads as its
+  zip, checked, then unpacked.
+- **iCloud sync** (on by default): settings and servers (key-value store),
+  server passwords and the paired Monitor (iCloud Keychain), your own packs
+  (the app's iCloud Drive folder, SoundStore.syncPacksWithCloud).
+- UI tests run against the new service and a real ng-monitor on the Mac;
+  every test starts paired with it (UITEST_OWN_MONITOR) and clears what
+  it watches (uitest-action clearMonitor).

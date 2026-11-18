@@ -25,26 +25,12 @@ private struct SignedInView: View {
     @State private var changing = false
 
     var body: some View {
-        @Bindable var account = model.account
+        let account = model.account
         Form {
             Section {
                 LabeledContent("Signed in as", value: email)
             } footer: {
-                Text("Your saved servers are the same on every device signed in to this account, the old TeamTalk NG included.")
-            }
-            Section {
-                Toggle("Sync sound packs", isOn: $account.syncPacks)
-            } footer: {
-                Text("Sound packs from the catalog installed on one device are downloaded on the others, and the chosen pack is chosen everywhere.")
-            }
-            Section {
-                Button(account.syncing ? "Syncing…" : "Sync now") { Task { await account.sync() } }
-                    .disabled(account.syncing)
-                if let p = account.problem {
-                    Text("Last sync failed: \(p)")
-                } else if let d = account.lastSynced {
-                    Text("Synced \(d.formatted(date: .omitted, time: .shortened))")
-                }
+                Text("Your NG Account is for publishing sound packs: packs you publish stay yours to update or withdraw, on any device and after reinstalling the app. Your servers and settings sync through iCloud (Settings → iCloud sync).")
             }
             Section {
                 Button("Change password") { changing = true }
@@ -54,7 +40,7 @@ private struct SignedInView: View {
         .confirmationDialog("Sign out of NG Account?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await account.signOut() } }
         } message: {
-            Text("Your servers stay on this iPhone, but stop syncing.")
+            Text("Packs you published stay in the catalog. Sign in again to update or withdraw them.")
         }
         .sheet(isPresented: $changing) { ChangePasswordView() }
     }
@@ -158,7 +144,7 @@ private struct SignInView: View {
             }
             if step == .form {
                 Section {
-                    Text("An NG Account keeps your saved servers the same on all your devices.")
+                    Text("An NG Account is only for publishing sound packs to the catalog. Your servers and settings sync through iCloud.")
                         .foregroundStyle(.secondary)
                 }
             }

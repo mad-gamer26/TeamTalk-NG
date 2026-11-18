@@ -17,10 +17,13 @@ settings:
     DEVELOPMENT_TEAM: 5NJK4F832Z
     TTNG_BUNDLE_ID: com.matthewdovi.TeamTalk-NG
     TTNG_DISPLAY_NAME: TeamTalk NG
-    # The Monitor and NG Account service: empty means the live one
-    # (https://ttmonitor.mad-gamer.com; since 2026-11-17 for the dev app
-    # too). The UI tests set a private one on localhost.
+    # TeamTalk NG's service (NG Account for publishing packs, the relay to
+    # your own Monitor, its push gateway): empty means the live one
+    # (https://ttmonitor.mad-gamer.com). The UI tests set a private one.
     TTNG_SERVICE_URL: ""
+    # The sound pack catalog's packs.json: empty means the live one
+    # (https://ttng-soundpacks.mad-gamer.com/packs.json).
+    TTNG_CATALOG_URL: ""
     TTNG_APP_GROUP: "group.$(TTNG_BUNDLE_ID)"
 targets:
   TeamTalkNG:
@@ -39,6 +42,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         TTNGServiceURL: "$(TTNG_SERVICE_URL)"
+        TTNGCatalogURL: "$(TTNG_CATALOG_URL)"
         TTNGAppGroup: "$(TTNG_APP_GROUP)"
         # Plain HTTP only on this device and the local network (the UI
         # tests' private services on localhost); everything else HTTPS.
@@ -103,8 +107,12 @@ targets:
         # Monitor notifications (development builds: Apple's sandbox).
         aps-environment: development
         com.apple.security.application-groups: ["$(TTNG_APP_GROUP)"]
-        # Settings sync through iCloud (opt-in).
+        # iCloud sync: settings and servers (key-value store), your own
+        # sound packs (iCloud Drive, the app's own container).
         com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)$(CFBundleIdentifier)"
+        com.apple.developer.icloud-services: [CloudDocuments]
+        com.apple.developer.icloud-container-identifiers: ["iCloud.$(CFBundleIdentifier)"]
+        com.apple.developer.ubiquity-container-identifiers: ["iCloud.$(CFBundleIdentifier)"]
     dependencies:
       - target: TeamTalkNGNotifications
         embed: true

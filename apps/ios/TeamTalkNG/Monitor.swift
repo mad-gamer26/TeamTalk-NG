@@ -2,11 +2,11 @@ import Foundation
 import Observation
 import UIKit
 
-/// The Monitor (ttmonitor.mad-gamer.com): it stays logged in to servers
-/// while this app isn't, keeps private conversations, and says what
-/// happened. With NG Account, the account's monitors; without, this
-/// iPhone's own registration. (Notifications come once the new app has
-/// the real app ID.)
+/// Your own Monitor (`ng-monitor` on your computer): it stays logged in to
+/// servers while this app isn't, keeps private conversations, and says
+/// what happened. Reached through TeamTalk NG's relay, end to end
+/// encrypted; nobody else holds your server passwords. Paired once (the
+/// pairing is in iCloud Keychain, so your other devices use it too).
 @MainActor @Observable
 final class MonitorStore {
     private unowned let app: AppModel
@@ -17,7 +17,6 @@ final class MonitorStore {
     private(set) var events: [MonitorEvent] = []
     private var lastSeq: Int64?
     private var polling: Task<Void, Never>?
-    private static let keychainService = "TeamTalk NG monitor"
 
     init(app: AppModel) {
         self.app = app
@@ -25,38 +24,24 @@ final class MonitorStore {
 
     var unread: Int64 { servers.reduce(0) { $0 + $1.unreadPrivateMessages } }
 
-    /// Signed in or out of NG Account: a different set of monitors.
-    func accountChanged() {
+    /// Paired or unpaired: a different Monitor, or none.
+    func monitorChanged() {
         servers = []
         events = []
         lastSeq = nil
         Task { await refresh() }
     }
 
-    private var ownToken: String { Passwords.secret(Self.keychainService, "token") }
-
-    /// A client with the right token, registering this iPhone if needed.
-    /// With your own Monitor paired, always that one.
-    private func client(registering: Bool) async -> MonitorClient? {
-        if let o = own {
-            do { return try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey) } catch {
-                problem = NGAccountStore.words(error)
-                return nil
-            }
-        }
-        if let t = app.account.sessionToken { return MonitorClient(baseUrl: Service.base, token: t) }
-        if !ownToken.isEmpty { return MonitorClient(baseUrl: Service.base, token: ownToken) }
-        guard registering else { return nil }
-        let c = MonitorClient(baseUrl: Service.base, token: nil)
-        let name = UIDevice.current.name
-        switch await Task.detached(operation: { Result { try c.registerWithKey(deviceName: name) } }).value {
-        case .success(let r):
-            Passwords.setSecret(r.token, Self.keychainService, "token")
-            Service.savePushKey(r.pushKey)
-            if let t = pushToken { await sendPushToken(t, via: c) }
+    /// A client for your own Monitor; nil while none is paired.
+    private func client(registering: Bool = false) async -> MonitorClient? {
+        if own == nil { own = Self.loadOwn() }
+        guard let o = own else { return nil }
+        do {
+            let c = try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey)
+            await ensurePushKey(c)
             return c
-        case .failure(let e):
-            problem = NGAccountStore.words(e)
+        } catch {
+            problem = NGAccountStore.words(error)
             return nil
         }
     }
@@ -66,13 +51,7 @@ final class MonitorStore {
     func call<T: Sendable>(registering: Bool = false, _ f: @escaping @Sendable (MonitorClient) throws -> T) async -> Result<T, Error>? {
         guard let c = await client(registering: registering) else { return nil }
         let r = await Task.detached { Result { try f(c) } }.value
-        if case .failure(let e) = r {
-            if case .SignedOut = e as? NgError, app.account.sessionToken == nil {
-                // This iPhone's registration is gone: start again next time.
-                Passwords.setSecret("", Self.keychainService, "token")
-            }
-            problem = NGAccountStore.words(e)
-        }
+        if case .failure(let e) = r { problem = NGAccountStore.words(e) }
         return r
     }
 
@@ -110,25 +89,33 @@ final class MonitorStore {
             if let d = try? JSONEncoder().encode(stored) { Passwords.setSecret(String(decoding: d, as: UTF8.self), Self.ownService, "monitor") }
             own = m
             problem = nil
-            // Its notifications: the key that opens them, and where they go.
-            if let c = try? MonitorClient.own(relay: relay, monitor: m, phoneKey: key),
-               case .success(let hello) = await Task.detached(operation: { Result { try c.ownHello() } }).value {
-                Service.saveOwnPushKey(hello.pushKey)
-                if let t = pushToken { await sendPushToken(t, via: c) }
-            }
-            accountChanged()
+            pushKeySaved = false
+            monitorChanged()
             return nil
         }
     }
 
-    /// Stops using your own Monitor: back to the hosted one. (It keeps
-    /// watching at home; unpair this iPhone there with `ng-monitor unpair`.)
+    /// Forgets the paired Monitor here (and on your other devices: the
+    /// pairing is in iCloud Keychain). It keeps watching at home; unpair
+    /// there with `ng-monitor unpair`.
     func forgetOwn() {
         Passwords.setSecret("", Self.ownService, "monitor")
         own = nil
+        pushKeySaved = false
         Service.forgetOwnPushKey()
-        accountChanged()
-        if let t = pushToken { Task { await setPushToken(t) } }
+        monitorChanged()
+    }
+
+    /// The key that opens this Monitor's notifications (asked once per
+    /// device: a pairing from another device arrives without it), and this
+    /// device's Apple token given to it.
+    private var pushKeySaved = Service.hasPushKey
+    private func ensurePushKey(_ c: MonitorClient) async {
+        guard !pushKeySaved else { return }
+        guard case .success(let hello) = await Task.detached(operation: { Result { try c.ownHello() } }).value else { return }
+        Service.saveOwnPushKey(hello.pushKey)
+        pushKeySaved = true
+        if let t = pushToken { await sendPushToken(t, via: c) }
     }
 
     // MARK: Notifications
@@ -223,7 +210,8 @@ final class MonitorStore {
             nickname: s.nickname.isEmpty ? app.nickname : s.nickname, username: s.username,
             password: Passwords.get(s.id), statusMsg: "", statusMode: Gender.monitorBits(app.gender), channel: "",
             channelPassword: "", enabled: true)
-        guard let r = await call(registering: true, { try $0.addServer(server: input) }) else { return problem }
+        guard own != nil || Self.loadOwn() != nil else { return "Set up your Monitor first: Settings → Monitor." }
+        guard let r = await call(registering: true, { try $0.addServer(server: input) }) else { return problem ?? "Your Monitor can't be reached." }
         switch r {
         case .success: await refresh(); return nil
         case .failure(let e): return NGAccountStore.words(e)

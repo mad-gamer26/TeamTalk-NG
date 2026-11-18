@@ -65,6 +65,8 @@ enum Host {
 @MainActor
 class NGTestCase: XCTestCase {
     var app: XCUIApplication!
+    /// Starts paired with the run's own Monitor.
+    var pairedWithMonitor: Bool { true }
 
     override func setUp() async throws {
         continueAfterFailure = false
@@ -82,6 +84,8 @@ class NGTestCase: XCTestCase {
         // A small text size: long menus (an admin's More) fit without
         // scrolling (a swipe in a menu would choose an item).
         app.launchArguments = ["-UITestReset", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXS"]
+        // Paired with the run's own Monitor (most tests; not the pairing test).
+        if pairedWithMonitor, let m = Host.env["OWN_MONITOR"] { app.launchEnvironment["UITEST_OWN_MONITOR"] = m }
         app.launch()
     }
 

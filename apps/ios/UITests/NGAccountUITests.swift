@@ -1,9 +1,9 @@
 import XCTest
 
 /// NG Account through the app itself, as a person uses it (VoiceOver's
-/// labels): sign in, the account's server arrives, a server added here
-/// goes to the account, sign out. scripts/test-ng-account-ui.sh runs it
-/// against a private copy of the service with an account and a server.
+/// labels): sign in (it's for publishing sound packs; servers sync through
+/// iCloud), sign out. scripts/test-ios-ui.sh runs it against a private
+/// copy of the service with an account.
 @MainActor
 final class NGAccountUITests: XCTestCase {
     private var env: [String: String] { ProcessInfo.processInfo.environment }
@@ -12,8 +12,8 @@ final class NGAccountUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testSignInSyncAndSignOut() throws {
-        let email = try XCTUnwrap(env["NG_EMAIL"], "run through scripts/test-ng-account-ui.sh")
+    func testSignInAndSignOut() throws {
+        let email = try XCTUnwrap(env["NG_EMAIL"], "run through scripts/test-ios-ui.sh")
         let password = try XCTUnwrap(env["NG_PASSWORD"])
         let app = XCUIApplication()
         app.launchArguments = ["-UITestReset"]
@@ -50,30 +50,11 @@ final class NGAccountUITests: XCTestCase {
                       || app.descendants(matching: .any).matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", email, email)).firstMatch.exists,
                       "shows the account")
 
-        // Back to the servers: the account's server has arrived.
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.staticTexts["Seeded Server"].waitForExistence(timeout: 20), "the account's server is in the list")
+        // What it's for now: publishing sound packs, not syncing servers.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'publishing sound packs'")).firstMatch.exists, "says it's for publishing packs")
+        XCTAssertFalse(app.buttons["Sync now"].exists, "no server sync")
 
-        // A server added here goes to the account.
-        app.buttons["Add server"].tap()
-        app.buttons["Type its details"].tap()
-        let name = app.textFields["Name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        name.typeText("Typed Server")
-        let address = app.textFields["Address"]
-        address.tap()
-        address.typeText("typed.example.com")
-        app.buttons["Save"].tap()
-        XCTAssertTrue(app.staticTexts["Typed Server"].waitForExistence(timeout: 5))
-        // Synced (the script checks the account has it).
-        app.buttons["Settings"].tap()
-        app.buttons["NG Account"].tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Synced'")).firstMatch.waitForExistence(timeout: 20),
-                      "a sync after adding it")
-
-        // Sign out: back to the sign-in form; the servers stay.
+        // Sign out: back to the sign-in form.
         app.buttons["Sign out"].firstMatch.tap()
         // The confirmation's own button (the form's is covered by it).
         let confirm = app.buttons.matching(NSPredicate(format: "label == 'Sign out'"))
@@ -81,8 +62,5 @@ final class NGAccountUITests: XCTestCase {
         let hittable = confirm.allElementsBoundByIndex.first { $0.isHittable }
         try XCTUnwrap(hittable, "the confirmation's button").tap()
         XCTAssertTrue(app.textFields["Email"].waitForExistence(timeout: 10), "signed out")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.staticTexts["Typed Server"].exists && app.staticTexts["Seeded Server"].exists, "the servers stay on the iPhone")
     }
 }

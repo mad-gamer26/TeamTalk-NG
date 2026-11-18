@@ -88,21 +88,33 @@ enum SoundEvent: String, CaseIterable, Identifiable, Codable {
     var onByDefault: Bool { true }
 }
 
-/// A pack in the catalog (ttmonitor.mad-gamer.com).
+/// A pack in the catalog (packs.json at ttng-soundpacks.mad-gamer.com, the
+/// format TeamTalk NG has always read, with the zip's checksum and size).
 struct CatalogPack: Decodable, Identifiable, Hashable {
-    struct File: Decodable, Hashable {
-        let name: String
-        let size: Int
-        let hash: String
-    }
     let id: String
     let name: String
     let author: String
     let description: String
     let version: String
-    let official: Bool
-    let size: Int
-    let files: [File]
+    let downloadUrl: URL
+    let sha256: String?
+    let size: Int?
+    let official: Bool?
+
+    init(from decoder: Decoder) throws {
+        enum K: String, CodingKey { case id, name, author, description, version, downloadUrl, sha256, size, official }
+        let c = try decoder.container(keyedBy: K.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        author = try c.decodeIfPresent(String.self, forKey: .author) ?? ""
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        // A number or a string.
+        if let v = try? c.decode(String.self, forKey: .version) { version = v } else { version = String(try c.decodeIfPresent(Int.self, forKey: .version) ?? 0) }
+        downloadUrl = try c.decode(URL.self, forKey: .downloadUrl)
+        sha256 = try c.decodeIfPresent(String.self, forKey: .sha256)
+        size = try c.decodeIfPresent(Int.self, forKey: .size)
+        official = try c.decodeIfPresent(Bool.self, forKey: .official)
+    }
 }
 
 /// A pack on this iPhone: the built-in one, one from the catalog, one
@@ -139,12 +151,19 @@ struct InstalledPack: Codable, Identifiable, Hashable {
 /// Sound packs, the chosen one, volume and which events sound; plays them.
 @MainActor @Observable
 final class SoundStore {
-    static var catalogBase: URL { Service.baseURL }
+    /// The catalog's packs.json (the build's TTNGCatalogURL in tests).
+    static var catalogURL: URL {
+        let set = (Bundle.main.object(forInfoDictionaryKey: "TTNGCatalogURL") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        return URL(string: set.isEmpty ? "https://ttng-soundpacks.mad-gamer.com/packs.json" : set)!
+    }
 
     private(set) var installed: [InstalledPack] = []
     var selectedId: String = InstalledPack.builtIn.id { didSet { save(); if !loading, oldValue != selectedId { packsChanged?() } } }
-    /// Installed or chosen packs changed here (NG Account sends them).
+    /// Installed or chosen packs changed here.
     @ObservationIgnored var packsChanged: (() -> Void)?
+    /// Syncing my packs with iCloud Drive now.
+    @ObservationIgnored var cloudBusy = false
+    @ObservationIgnored private var cloudSoon: Task<Void, Never>?
     /// 0–1; the desktop's default is 100 (SOUNDEVENT_VOLUME_DEFAULT).
     var volume: Double = 1 { didSet { save() } }
     private(set) var disabled: Set<SoundEvent> = []
@@ -207,6 +226,7 @@ final class SoundStore {
     private func save() {
         // Not while loading (see AppModel.save).
         guard !loading else { return }
+        packsMayHaveChanged()
         defaults.set(try? JSONEncoder().encode(installed), forKey: "soundPacks")
         defaults.set(selectedId, forKey: "soundPack")
         defaults.set(volume, forKey: "soundVolume")
@@ -333,7 +353,9 @@ final class SoundStore {
 
     func catalog() async throws -> [CatalogPack] {
         struct Answer: Decodable { let packs: [CatalogPack] }
-        let (data, response) = try await URLSession.shared.data(from: Self.catalogBase.appendingPathComponent("v1/catalog"))
+        var req = URLRequest(url: Self.catalogURL)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await URLSession.shared.data(for: req)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -344,28 +366,38 @@ final class SoundStore {
         installed.first { $0.id == pack.id }?.version
     }
 
-    /// Downloads a pack's sounds (each checked against the catalog's hash)
-    /// and chooses it.
+    /// Downloads a pack's zip (checked against the catalog's checksum),
+    /// keeps its sounds (by the desktop's names) and chooses it.
     func install(_ pack: CatalogPack) async throws {
+        let fm = FileManager.default
         let dir = Self.directory(pack.id)
-        let staging = dir.deletingLastPathComponent().appendingPathComponent(".\(pack.id)-new")
-        try? FileManager.default.removeItem(at: staging)
-        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: staging) }
-        for f in pack.files where SoundEvent.extensions.contains((f.name as NSString).pathExtension.lowercased()) {
-            // Names come from the catalog: keep them to plain file names.
-            guard !f.name.contains("/"), !f.name.hasPrefix(".") else { continue }
-            // The desktop's hotkey sound isn't used here.
-            if SoundEvent.unused.contains(((f.name as NSString).deletingPathExtension).lowercased()) { continue }
-            let url = Self.catalogBase.appendingPathComponent("v1/packs/\(pack.id)/files/\(f.name)")
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-            let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            guard hash == f.hash else { throw URLError(.cannotDecodeContentData) }
-            try data.write(to: staging.appendingPathComponent(f.name))
+        let work = fm.temporaryDirectory.appendingPathComponent("catalog-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: work) }
+        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+        let (file, response) = try await URLSession.shared.download(from: pack.downloadUrl)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        let zip = work.appendingPathComponent("pack.zip")
+        try fm.moveItem(at: file, to: zip)
+        if let want = pack.sha256?.lowercased() {
+            let data = try Data(contentsOf: zip)
+            guard SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == want else { throw URLError(.cannotDecodeContentData) }
         }
-        try? FileManager.default.removeItem(at: dir)
-        try FileManager.default.moveItem(at: staging, to: dir)
+        let unzipped = work.appendingPathComponent("files", isDirectory: true)
+        _ = try unzipFlat(zipPath: zip.path, folder: unzipped.path)
+        let staging = dir.deletingLastPathComponent().appendingPathComponent(".\(pack.id)-new")
+        try? fm.removeItem(at: staging)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: staging) }
+        var kept = 0
+        for f in (try? fm.contentsOfDirectory(at: unzipped, includingPropertiesForKeys: nil)) ?? [] {
+            let ext = f.pathExtension.lowercased(), base = f.deletingPathExtension().lastPathComponent
+            guard SoundEvent.extensions.contains(ext), !base.hasPrefix("."), !SoundEvent.unused.contains(base.lowercased()) else { continue }
+            try fm.moveItem(at: f, to: staging.appendingPathComponent(f.lastPathComponent))
+            kept += 1
+        }
+        guard kept > 0 else { throw URLError(.cannotDecodeContentData) }
+        try? fm.removeItem(at: dir)
+        try fm.moveItem(at: staging, to: dir)
         installed.removeAll { $0.id == pack.id }
         installed.append(InstalledPack(id: pack.id, name: pack.name, author: pack.author, version: pack.version))
         installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -373,7 +405,7 @@ final class SoundStore {
         save()
         packsChanged?()
         // Counted in the catalog (best effort).
-        var req = URLRequest(url: Self.catalogBase.appendingPathComponent("v1/catalog/\(pack.id)/installed"))
+        var req = URLRequest(url: Service.baseURL.appendingPathComponent("v1/catalog/\(pack.id)/installed"))
         req.httpMethod = "POST"
         _ = try? await URLSession.shared.data(for: req)
     }
@@ -521,7 +553,18 @@ final class SoundStore {
     }
 
     /// Changes whenever a pack's sounds change (screens showing them follow).
-    private(set) var packEdited = UUID()
+    private(set) var packEdited = UUID() { didSet { packsMayHaveChanged() } }
+
+    /// My packs go to iCloud Drive a moment after they change.
+    private func packsMayHaveChanged() {
+        guard ICloudSync.isOn, !cloudBusy else { return }
+        cloudSoon?.cancel()
+        cloudSoon = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await self?.syncPacksWithCloud()
+        }
+    }
 
     /// The pack's own sounds by the desktop's names (for sharing and publishing).
     func soundFiles(_ pack: InstalledPack) -> [(name: String, url: URL)] {
@@ -681,5 +724,161 @@ extension SoundStore {
         var h: UInt64 = 1469598103934665603
         for b in s.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
         return h
+    }
+}
+
+// MARK: Your own packs through iCloud Drive
+
+/// What iCloud Drive keeps of one of my packs (beside its sounds).
+private struct CloudPackInfo: Codable {
+    var id: String
+    var name: String
+    var author: String
+    var description: String
+    var fingerprint: String
+    var updated: Double
+}
+
+extension SoundStore {
+    /// My packs (made or imported) in the app's iCloud Drive folder, one
+    /// folder each: sent when they change here, taken when they change on
+    /// another device, gone everywhere when deleted. While iCloud sync is on.
+    private static let syncedKey = "cloudPacks"
+
+    /// The app's iCloud Drive folder for packs (nil: no iCloud). Not on the
+    /// main thread: the first call can take a while.
+    nonisolated private static func cloudRoot() -> URL? {
+        FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("Sound packs", isDirectory: true)
+    }
+
+    /// A pack's contents in one string: its sounds (names and sizes) and words.
+    nonisolated private static func fingerprint(dir: URL, name: String, author: String, description: String) -> String {
+        let fm = FileManager.default
+        let sounds = ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? [])
+            .filter { SoundEvent.extensions.contains($0.pathExtension.lowercased()) }
+            .map { "\($0.lastPathComponent):\((try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)" }
+            .sorted()
+        let all = ([name, author, description] + sounds).joined(separator: "\n")
+        return SHA256.hash(data: Data(all.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private var synced: [String: String] {
+        get { (UserDefaults.standard.dictionary(forKey: Self.syncedKey) as? [String: String]) ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.syncedKey) }
+    }
+
+    /// Sends what changed here, then takes what changed elsewhere.
+    func syncPacksWithCloud() async {
+        guard ICloudSync.isOn, !cloudBusy else { return }
+        cloudBusy = true
+        defer { cloudBusy = false }
+        guard let root = await Task.detached(operation: { Self.cloudRoot() }).value else { return }
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let mine = installed.filter(\.editable)
+        var known = synced
+
+        // Taken: new or changed elsewhere (unchanged here since), and
+        // deleted elsewhere (unchanged here).
+        let cloud: [CloudPackInfo] = await Task.detached(operation: { Self.readCloud(root) }).value
+        let cloudIds = Set(cloud.map(\.id))
+        for c in cloud {
+            let local = mine.first { $0.id == c.id }
+            let here = local.map { Self.fingerprint(dir: Self.directory($0.id), name: $0.name, author: $0.author, description: $0.description ?? "") }
+            if here == c.fingerprint { known[c.id] = c.fingerprint; continue }
+            let unchangedHere = here == nil ? known[c.id] == nil : here == known[c.id]
+            guard unchangedHere else { continue }  // changed here too: sent below
+            let src = root.appendingPathComponent(c.id, isDirectory: true), dst = Self.directory(c.id)
+            guard await Task.detached(operation: { Self.copySounds(from: src, to: dst) }).value else { continue }  // still downloading
+            installed.removeAll { $0.id == c.id }
+            installed.append(InstalledPack(id: c.id, name: c.name, author: c.author, version: "", description: c.description))
+            installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            known[c.id] = c.fingerprint
+            packEdited = UUID()
+        }
+        for (id, fp) in known where !cloudIds.contains(id) {
+            guard let p = mine.first(where: { $0.id == id }) else { known[id] = nil; continue }
+            if Self.fingerprint(dir: Self.directory(id), name: p.name, author: p.author, description: p.description ?? "") == fp {
+                // Deleted on another device.
+                try? FileManager.default.removeItem(at: Self.directory(id))
+                installed.removeAll { $0.id == id }
+                if selectedId == id { selectedId = InstalledPack.builtIn.id }
+                known[id] = nil
+            }
+        }
+
+        // Sent: changed here (or new), and deleted here.
+        for p in installed.filter(\.editable) {
+            let fp = Self.fingerprint(dir: Self.directory(p.id), name: p.name, author: p.author, description: p.description ?? "")
+            guard known[p.id] != fp else { continue }
+            let info = CloudPackInfo(id: p.id, name: p.name, author: p.author, description: p.description ?? "", fingerprint: fp, updated: Date().timeIntervalSince1970)
+            let src = Self.directory(p.id), dst = root.appendingPathComponent(p.id, isDirectory: true)
+            if await Task.detached(operation: { Self.writeCloud(info, from: src, to: dst) }).value { known[p.id] = fp }
+        }
+        for id in cloudIds where known[id] != nil && !installed.contains(where: { $0.id == id }) {
+            let dir = root.appendingPathComponent(id, isDirectory: true)
+            await Task.detached { try? FileManager.default.removeItem(at: dir) }.value
+            known[id] = nil
+        }
+        synced = known
+        save()
+    }
+
+    nonisolated private static func readCloud(_ root: URL) -> [CloudPackInfo] {
+        let fm = FileManager.default
+        var out: [CloudPackInfo] = []
+        for dir in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
+            let info = dir.appendingPathComponent("pack.json")
+            if !fm.fileExists(atPath: info.path) {
+                try? fm.startDownloadingUbiquitousItem(at: info)
+                continue
+            }
+            if let d = try? Data(contentsOf: info), let c = try? JSONDecoder().decode(CloudPackInfo.self, from: d), c.id == dir.lastPathComponent {
+                out.append(c)
+            }
+        }
+        return out
+    }
+
+    /// The pack's sounds from iCloud Drive into this device; false while
+    /// some are still downloading (asked for; taken next time).
+    nonisolated private static func copySounds(from src: URL, to dst: URL) -> Bool {
+        let fm = FileManager.default
+        let items = (try? fm.contentsOfDirectory(at: src, includingPropertiesForKeys: nil, options: [])) ?? []
+        // Not downloaded yet: ".name.wav.icloud".
+        let waiting = items.filter { $0.lastPathComponent.hasPrefix(".") && $0.pathExtension == "icloud" }
+        if !waiting.isEmpty {
+            for w in waiting {
+                let real = w.deletingLastPathComponent().appendingPathComponent(String(w.deletingPathExtension().lastPathComponent.dropFirst()))
+                try? fm.startDownloadingUbiquitousItem(at: real)
+            }
+            return false
+        }
+        let staging = dst.deletingLastPathComponent().appendingPathComponent(".\(dst.lastPathComponent)-cloud")
+        try? fm.removeItem(at: staging)
+        guard (try? fm.createDirectory(at: staging, withIntermediateDirectories: true)) != nil else { return false }
+        for f in items where SoundEvent.extensions.contains(f.pathExtension.lowercased()) {
+            guard (try? fm.copyItem(at: f, to: staging.appendingPathComponent(f.lastPathComponent))) != nil else { return false }
+        }
+        try? fm.removeItem(at: dst)
+        return (try? fm.moveItem(at: staging, to: dst)) != nil
+    }
+
+    nonisolated private static func writeCloud(_ info: CloudPackInfo, from src: URL, to dst: URL) -> Bool {
+        let fm = FileManager.default
+        guard (try? fm.createDirectory(at: dst, withIntermediateDirectories: true)) != nil else { return false }
+        let mine = ((try? fm.contentsOfDirectory(at: src, includingPropertiesForKeys: nil)) ?? []).filter { SoundEvent.extensions.contains($0.pathExtension.lowercased()) }
+        let names = Set(mine.map(\.lastPathComponent))
+        for old in (try? fm.contentsOfDirectory(at: dst, includingPropertiesForKeys: nil)) ?? [] where !names.contains(old.lastPathComponent) && old.lastPathComponent != "pack.json" {
+            try? fm.removeItem(at: old)
+        }
+        for f in mine {
+            let to = dst.appendingPathComponent(f.lastPathComponent)
+            try? fm.removeItem(at: to)
+            guard (try? fm.copyItem(at: f, to: to)) != nil else { return false }
+        }
+        guard let d = try? JSONEncoder().encode(info) else { return false }
+        return (try? d.write(to: dst.appendingPathComponent("pack.json"), options: .atomic)) != nil
     }
 }
