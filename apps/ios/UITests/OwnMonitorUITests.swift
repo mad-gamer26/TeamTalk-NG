@@ -27,8 +27,6 @@ final class OwnMonitorUITests: NGTestCase {
         connect("admin")
         more("Disconnect")
         let admins = { ((Host.state()["users"] as? [[String: Any]]) ?? []).filter { $0["username"] as? String == "admin" }.count }
-        Thread.sleep(forTimeInterval: 2)
-        let before = admins()
 
         app.buttons["Settings"].tap()
         let link = app.buttons["settings-monitor"]
@@ -56,6 +54,9 @@ final class OwnMonitorUITests: NGTestCase {
         // Monitoring through it: the Mac's Monitor logs in to the server
         // (what earlier tests had it watch cleared first).
         run("clearMonitor", says: "Monitor cleared")
+        // Counted once what earlier tests left has logged out.
+        Thread.sleep(forTimeInterval: 3)
+        let before = admins()
         button("Monitor a server").tap()
         waitFor(app.navigationBars["Monitor a server"], "the servers to choose from")
         let rows = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'"))
