@@ -1577,7 +1577,7 @@ final class ServerConnection {
         case .channelMessage: .chat
         default: .server
         }
-        BackgroundNotifications.post(server: server, title: snapshot?.server.name.nonEmpty ?? server.title, body: body,
+        BackgroundNotifications.post(server: server, title: server.title, body: body,
                                      opens: opens, userId: e == .privateMessage ? v["userid"].flatMap { Int32($0) } : nil)
     }
 

@@ -48,6 +48,10 @@ final class NotificationsUITests: NGTestCase {
             XCTAssertTrue(list.contains(want), "\(want) in \(list)")
         }
         XCTAssertFalse(list.contains("Bob |"), "titled with the server, not a person: \(list)")
+        // Titled with its name in the server list (here its address: it was
+        // added from a link), not the name the server gives itself.
+        XCTAssertTrue(list.contains("127.0.0.1 | Carol logged out"), "the list's name: \(list)")
+        XCTAssertFalse(list.contains("TTNG Test |"), "not the server's own name: \(list)")
 
         // A channel message opens the server's Chat tab, without the private one.
         run("tapNotification", ["contains": "Channel message"], says: "Opened")

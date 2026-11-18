@@ -114,6 +114,28 @@ final class MonitorUITests: NGTestCase {
         }
     }
 
+    /// The Monitor titles its notifications with the server's name in the
+    /// list: renamed there, renamed on the Monitor too.
+    func testRenamingAServerRenamesItOnTheMonitor() {
+        connect("admin")
+        more("Disconnect")
+        monitorFromSettings()
+        closeSettings(from: "Monitor")
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(row, "the server in the list")
+        action("Edit", on: row)
+        let n = app.textFields["Name"]
+        waitFor(n, "the editor")
+        replace(n, with: "Home Base")
+        button("Save").tap()
+        waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Home Base'")).firstMatch, "renamed in the list")
+        app.buttons["Settings"].tap()
+        let link = app.buttons["settings-monitor"]
+        if !link.waitForExistence(timeout: 3) { app.swipeUp() }
+        link.tap()
+        waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Home Base'")).firstMatch, "the Monitor's name for it, renamed", timeout: 20)
+    }
+
     /// Private messages the Monitor received while the app wasn't watching
     /// are there when the server is opened through it.
     func testPrivateMessagesKeptByTheMonitorShowWhenItsServerOpens() {

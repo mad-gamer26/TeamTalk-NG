@@ -158,6 +158,25 @@ final class MonitorStore {
         guard let r = await call({ try $0.servers() }) else { servers = []; return }
         if case .success(let s) = r { servers = s; problem = nil }
         if !connectedHere.isEmpty || !quietIds.isEmpty { await syncQuiet() }
+        await syncNames()
+    }
+
+    /// The Monitor titles its notifications with its own name for a server:
+    /// kept the same as the name in the server list (renamed there, renamed
+    /// here). Without logging in again.
+    private func syncNames() async {
+        var renamed = false
+        for saved in app.servers {
+            guard let m = monitor(of: saved), m.name != saved.title, var c = await config(m) else { continue }
+            c.name = saved.title
+            let input = MonitorServerInput(
+                name: c.name, host: c.host, tcpPort: c.tcpPort, encrypted: c.encrypted, nickname: c.nickname,
+                username: c.username, password: "", statusMsg: c.statusMsg, statusMode: c.statusMode,
+                channel: c.channel, channelPassword: "", enabled: c.enabled)
+            let id = c.id
+            if case .success? = await call({ try $0.updateServer(serverId: id, server: input) }) { renamed = true }
+        }
+        if renamed, case .success(let s)? = await call({ try $0.servers() }) { servers = s }
     }
 
     /// Follows events while a Monitor screen is open (every few seconds),

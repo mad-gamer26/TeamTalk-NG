@@ -582,6 +582,8 @@ final class AppModel {
         Passwords.set(password, for: server.id)
         save()
         account.changed()
+        // Renamed: the Monitor's notifications use the new name too.
+        if monitor.monitor(of: server).map({ $0.name != server.title }) == true { Task { await monitor.refresh() } }
     }
 
     /// From NG Account: the servers as the account has them now (no sync
