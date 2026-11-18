@@ -54,11 +54,22 @@ final class NotificationsUITests: NGTestCase {
         waitFor(any("Hello all"), "the Chat tab with the channel message")
         XCTAssertTrue(app.buttons["Chat"].isSelected, "on the Chat tab")
         XCTAssertFalse(app.staticTexts["Hi"].exists, "the private message isn't in the channel chat")
-        // A private message opens its conversation.
+        // A private message opens its conversation, over the tab I was on.
+        app.buttons["Channels"].tap()
         backToList()
         run("tapNotification", ["contains": "Private message"], says: "Opened")
         waitFor(app.textFields["Message Bob"], "the conversation with Bob")
         waitFor(any("Hi"), "Bob's message in it")
+        button("Done").tap()
+        waitFor(app.buttons["Channels"], "the server under the conversation")
+        XCTAssertTrue(app.buttons["Channels"].isSelected, "still on the Channels tab, not Chat")
+        // Anything else opens the server on the tab I was last on.
+        app.buttons["Files"].tap()
+        backToList()
+        run("tapNotification", ["contains": "Carol logged out"], says: "Opened")
+        waitFor(app.buttons["Files"], "the server")
+        XCTAssertTrue(app.buttons["Files"].isSelected, "on the Files tab, as I left it")
+        XCTAssertFalse(app.buttons["Chat"].isSelected, "not the Chat tab")
     }
 
     func testTheChatStartsOverAfterDisconnecting() {
@@ -70,8 +81,9 @@ final class NotificationsUITests: NGTestCase {
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
         waitFor(row, "the server list")
         row.tap()
-        waitFor(any("Lobby"), "connected again")
-        app.buttons["Chat"].tap()
+        // Back on the tab it was left on (the Chat tab), connected again.
+        waitFor(any("Status: Connected"), "connected again")
+        XCTAssertTrue(app.buttons["Chat"].isSelected, "on the Chat tab, as it was left")
         Thread.sleep(forTimeInterval: 1)
         XCTAssertFalse(any("Before disconnecting").exists, "the old session's chat is gone")
     }

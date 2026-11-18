@@ -117,12 +117,20 @@ final class MonitorUITests: NGTestCase {
     /// Private messages the Monitor received while the app wasn't watching
     /// are there when the server is opened through it.
     func testPrivateMessagesKeptByTheMonitorShowWhenItsServerOpens() {
-        connect("alice")
+        // As admin (not alice: the Monitor stays logged in for the rest of
+        // the run, and other tests talk to Alice), with a name of its own.
+        connect("admin")
         more("Disconnect")
         monitorFromSettings()
+        visibleServerRow("it in Settings → Monitor").tap()
+        let nick = app.textFields["Nickname"]
+        waitFor(nick, "its nickname")
+        replace(nick, with: "Keeper")
+        button("Save").tap()
+        Host.until("the Monitor logged in as Keeper", timeout: 30) { Host.user("Keeper") != nil }
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
         closeSettings(from: "Monitor")
-        Host.until("the Monitor logged in as alice", timeout: 30) { Host.user("alice") != nil }
-        Host.call("/pm", ["bot": "bob", "to": "alice", "text": "Kept for you"])
+        Host.call("/pm", ["bot": "bob", "to": "Keeper", "text": "Kept for you"])
         Thread.sleep(forTimeInterval: 2)
         app.buttons["Monitor"].tap()
         let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch

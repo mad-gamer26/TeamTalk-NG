@@ -5,7 +5,14 @@ import SwiftUI
 struct ServerView: View {
     @Environment(AppModel.self) private var model
     let connection: ServerConnection
-    @State private var tab = Tab.channels
+    /// The tab, as it was left on this server (opened again, or from a
+    /// notification, it's the same).
+    @State private var tab: Tab
+
+    init(connection: ServerConnection) {
+        self.connection = connection
+        _tab = State(initialValue: Tab(rawValue: connection.lastTab) ?? .channels)
+    }
     @State private var passwordFor: Channel?
     @State private var channelPassword = ""
     @State private var privateWith: User?
@@ -41,6 +48,9 @@ struct ServerView: View {
     /// The row VoiceOver is on (the desktop's selected item, for its shortcuts).
     @AccessibilityFocusState private var voFocus: String?
 
+    /// A tapped notification: a channel message shows the Chat tab; anything
+    /// else shows the server on the tab I was last on (a private message
+    /// opens its conversation over it).
     private func openRequested() {
         guard let r = connection.openRequest else { return }
         switch r.opens {
@@ -50,9 +60,8 @@ struct ServerView: View {
             tab = .chat
             connection.openRequestDone()
         case .conversation:
-            tab = .chat
             guard let id = r.userId, let u = connection.snapshot?.users.first(where: { $0.id == id }) else {
-                // Not there (any more): its server, on the Chat tab.
+                // Not there (any more): just its server.
                 if r.userId == nil || Date.now.timeIntervalSince(r.at) > 15 { connection.openRequestDone() }
                 return
             }
@@ -100,6 +109,7 @@ struct ServerView: View {
                 }
             }
         }
+        .onChange(of: tab) { connection.lastTab = tab.rawValue }
         .navigationTitle(connection.snapshot?.server.name.nonEmpty ?? connection.server.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

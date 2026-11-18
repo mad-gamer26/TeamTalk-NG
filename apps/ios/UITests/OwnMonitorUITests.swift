@@ -8,8 +8,9 @@ import XCTest
 final class OwnMonitorUITests: NGTestCase {
     func testPairingWithMyOwnMonitorAndMonitoringThroughIt() throws {
         let env = ProcessInfo.processInfo.environment
-        let code = try XCTUnwrap(env["OWN_CODE"].flatMap { $0.isEmpty ? nil : $0 },
-                                 "no ng-monitor or new NG service on the Mac (see scripts/test-ios-ui.sh)")
+        guard let code = env["OWN_CODE"].flatMap({ $0.isEmpty ? nil : $0 }) else {
+            throw XCTSkip("no ng-monitor or new NG service on the Mac (see scripts/test-ios-ui.sh)")
+        }
         let name = env["OWN_NAME"] ?? "UI Test PC"
         connect("admin")
         more("Disconnect")

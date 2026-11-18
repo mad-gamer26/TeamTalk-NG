@@ -1585,6 +1585,8 @@ final class ServerConnection {
 
     /// What a tapped notification asked the server screen to show.
     private(set) var openRequest: (opens: BackgroundNotifications.Opens, userId: Int32?, at: Date)?
+    /// The server screen's tab when last left ("Channels", "Chat", "Files").
+    var lastTab = "Channels"
 
     func requestOpen(_ opens: BackgroundNotifications.Opens, userId: Int32?) {
         openRequest = (opens, userId, .now)
