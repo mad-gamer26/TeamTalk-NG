@@ -7,15 +7,18 @@ struct MonitorListView: View {
     var body: some View {
         let monitor = model.monitor
         List {
-            if monitor.own == nil {
+            if monitor.own == nil && !monitor.hosted {
                 Section {
-                    Text("A Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened. It runs on your own computer, so nobody else holds your server passwords.")
-                    NavigationLink("Set up your Monitor") { OwnMonitorPairView() }
+                    Text("A Monitor stays logged in to your servers while TeamTalk NG isn't, keeps your private messages, and tells you what happened.")
+                    NavigationLink("Set up your own Monitor (recommended)") { OwnMonitorPairView() }
                         .accessibilityIdentifier("monitor-set-up")
+                    NavigationLink("Use TeamTalk NG's Monitor") { MonitorSettingsView() }
+                } footer: {
+                    Text("Your own Monitor runs on your computer, so nobody else holds your server passwords. Without a computer, TeamTalk NG's Monitor can watch your servers for you.")
                 }
             }
             Section {
-                if monitor.own != nil && monitor.servers.isEmpty && !monitor.loading {
+                if (monitor.own != nil || monitor.hosted) && monitor.servers.isEmpty && !monitor.loading {
                     Text("Your Monitor isn't watching any servers yet. Add one in Settings → Monitor.")
                         .foregroundStyle(.secondary)
                 }
@@ -257,6 +260,8 @@ struct MonitorSettingsView: View {
     @State private var soundChoice = MonitorSound.choice
     @State private var stopping: MonitorServer?
     @State private var forgetting = false
+    @State private var choosingHosted = false
+    @State private var leavingHosted = false
 
     var body: some View {
         let monitor = model.monitor
@@ -265,18 +270,29 @@ struct MonitorSettingsView: View {
                 if let own = monitor.own {
                     LabeledContent("Your Monitor", value: own.name)
                     Button("Forget this Monitor", role: .destructive) { forgetting = true }
-                } else {
-                    NavigationLink("Set up your Monitor") { OwnMonitorPairView() }
+                } else if monitor.hosted {
+                    LabeledContent("Using", value: "TeamTalk NG's Monitor")
+                    NavigationLink("Set up your own Monitor (recommended)") { OwnMonitorPairView() }
                         .accessibilityIdentifier("monitor-use-own")
+                    Button("Stop using TeamTalk NG's Monitor", role: .destructive) { leavingHosted = true }
+                } else {
+                    NavigationLink("Set up your own Monitor (recommended)") { OwnMonitorPairView() }
+                        .accessibilityIdentifier("monitor-use-own")
+                    Button("Use TeamTalk NG's Monitor") { choosingHosted = true }
+                        .accessibilityIdentifier("monitor-use-hosted")
                 }
+            } header: {
+                Text("Which Monitor")
             } footer: {
                 if monitor.own != nil {
                     Text("Your Monitor runs on your computer: your server passwords and messages stay there. TeamTalk NG reaches it through its relay, end-to-end encrypted.")
+                } else if monitor.hosted {
+                    Text("TeamTalk NG's Monitor keeps the passwords of the servers it watches on TeamTalk NG's server, encrypted. Your own Monitor, on your computer, keeps them there instead; setting it up moves these servers to it.")
                 } else {
-                    Text("Run the Monitor on your own computer: it watches your servers and sends your notifications, and your server passwords never leave it.")
+                    Text("Your own Monitor runs on your computer (Windows, Mac or Linux), so your server passwords never leave it. Without a computer, TeamTalk NG's Monitor can watch your servers instead; it keeps their passwords on its server, encrypted.")
                 }
             }
-            if monitor.own != nil {
+            if monitor.own != nil || monitor.hosted {
                 Section {
                     if monitor.servers.isEmpty && !monitor.loading {
                         Text("No servers yet.").foregroundStyle(.secondary)
@@ -318,6 +334,23 @@ struct MonitorSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await monitor.refresh() }
         .sheet(isPresented: $adding) { AddMonitorView() }
+        .confirmationDialog("Use TeamTalk NG's Monitor?", isPresented: $choosingHosted, titleVisibility: .visible) {
+            Button("Use TeamTalk NG's Monitor") {
+                monitor.useHosted()
+                announce("Using TeamTalk NG's Monitor")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It watches the servers you choose from TeamTalk NG's server, so it keeps their accounts' passwords there, encrypted. Your own Monitor, on your computer, keeps them to yourself; you can move to it any time.")
+        }
+        .confirmationDialog("Stop using TeamTalk NG's Monitor?", isPresented: $leavingHosted, titleVisibility: .visible) {
+            Button("Stop using it", role: .destructive) {
+                Task { await monitor.stopHosted(); announce("No longer using TeamTalk NG's Monitor") }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It logs out of your servers and deletes them and their passwords from TeamTalk NG's server, on all your devices.")
+        }
         .confirmationDialog("Forget your Monitor?", isPresented: $forgetting, titleVisibility: .visible) {
             Button("Forget it", role: .destructive) {
                 monitor.forgetOwn()
@@ -354,7 +387,7 @@ struct OwnMonitorPairView: View {
     var body: some View {
         Form {
             Section {
-                Text("The Monitor runs on your own computer (Windows, Mac or Linux), or anything that stays on, like a Raspberry Pi. It stays logged in to your servers, keeps your private messages and sends your notifications, and your server passwords never leave it. Install it with one command, then type the code it shows.")
+                Text("Your own Monitor runs on your computer (Windows, Mac or Linux), or anything that stays on, like a Raspberry Pi. It stays logged in to your servers, keeps your private messages and sends your notifications, and your server passwords never leave it. Install it with one command, then type the code it shows.")
             }
             Section {
                 Text(verbatim: Self.windows).font(.body.monospaced()).textSelection(.enabled)
@@ -386,7 +419,8 @@ struct OwnMonitorPairView: View {
                 if let problem {
                     Text(problem)
                 } else {
-                    Text("When it's installed, the Monitor shows a code like ABCD-1234-5678. It works for 10 minutes. Your other devices with TeamTalk NG use the same Monitor through iCloud. For another code, run ng-monitor pair on the computer.")
+                    Text("When it's installed, the Monitor shows a code like ABCD-1234-5678. It works for 10 minutes. Your other devices with TeamTalk NG use the same Monitor through iCloud. For another code, run ng-monitor pair on the computer."
+                         + (model.monitor.hosted ? " Pairing moves the servers TeamTalk NG's Monitor watches to your own, and deletes them and their passwords from TeamTalk NG's server." : ""))
                 }
             }
         }

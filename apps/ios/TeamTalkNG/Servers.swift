@@ -114,8 +114,9 @@ enum Passwords {
     private static func query(_ id: UUID) -> [String: Any] { query(service: serverService, account: id.uuidString) }
     static let serverService = "TeamTalk NG server"
     /// Kept in iCloud Keychain while iCloud sync is on (end to end
-    /// encrypted by Apple): server passwords and the paired Monitor.
-    static let syncedServices: Set<String> = [serverService, "TeamTalk NG own monitor"]
+    /// encrypted by Apple): server passwords, the paired Monitor and the
+    /// hosted Monitor's registration.
+    static let syncedServices: Set<String> = [serverService, "TeamTalk NG own monitor", "TeamTalk NG monitor"]
 
     static func query(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,

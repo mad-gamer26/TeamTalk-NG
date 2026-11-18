@@ -333,6 +333,14 @@ impl Monitor {
         Ok(r)
     }
 
+    /// Ends this install's registration on the hosted Monitor: it logs out
+    /// of every server it watched for it and deletes them (passwords too).
+    pub fn forget_registration(&mut self) -> Result<()> {
+        self.call("DELETE", "/v1/me", None)?;
+        self.token = None;
+        Ok(())
+    }
+
     /// Where this install's notifications go: its APNs device token (None
     /// turns them off), from a development build or not (Apple's sandbox),
     /// with the app's own reference returned in every push.

@@ -194,3 +194,14 @@ central service holds anyone's TeamTalk credentials:
 - UI tests run against the new service and a real ng-monitor on the Mac;
   every test starts paired with it (UITEST_OWN_MONITOR) and clears what
   it watches (uitest-action clearMonitor).
+
+**Later the same day:** many people have no computer, so TeamTalk NG's
+hosted Monitor is offered again, beside your own (recommended). One or the
+other: Settings → Monitor offers both, saying what the hosted one keeps
+(the servers' passwords on TeamTalk NG's server, encrypted). It's a
+registration of this install (not NG Account), kept in iCloud Keychain
+with its notification key so your other devices use it. Pairing your own
+Monitor moves the hosted one's servers to it and ends the registration
+(the service deletes them and their passwords). Tests: ttng-services
+monitor `leaving_the_hosted_monitor_deletes_what_it_kept`, UI test
+HostedMonitorUITests.

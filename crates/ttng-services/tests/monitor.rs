@@ -235,3 +235,36 @@ fn the_apps_own_login_quiets_only_this_install() {
     mon.quiet(id, "install-1", 30).expect("quiet again");
     mon.remove_server(id).unwrap();
 }
+
+/// Leaving the hosted Monitor (for your own): the registration ends, its
+/// servers (and their passwords) are deleted there, and the monitor logs out.
+#[test]
+fn leaving_the_hosted_monitor_deletes_what_it_kept() {
+    let Some(ng) = Ngmon::start() else { return };
+    let server = tt::Server::start();
+    let mut mon = Monitor::new(&ng.url, None);
+    let reg = mon.register("Test iPhone").expect("registered");
+    let id = mon
+        .add_server(&MonitorServerInput {
+            name: "Test".into(),
+            host: "127.0.0.1".into(),
+            tcp_port: server.port,
+            nickname: "Leaving".into(),
+            username: "alice".into(),
+            password: "alice-pw".into(),
+            enabled: true,
+            ..Default::default()
+        })
+        .expect("added");
+    until("the monitor logging in", || {
+        mon.servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id && s.status == "logged_in")
+    });
+    mon.forget_registration().expect("left");
+    assert!(!mon.has_token(), "no registration any more");
+    // The old token no longer works: everything it had is gone.
+    let old = Monitor::new(&ng.url, Some(&reg.token));
+    assert!(old.servers().is_err(), "the registration is gone");
+}

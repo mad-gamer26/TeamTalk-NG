@@ -308,6 +308,12 @@ impl MonitorClient {
         })
     }
 
+    /// Ends this install's hosted registration: its servers (and their
+    /// passwords) are deleted from the hosted Monitor.
+    pub fn forget_registration(&self) -> Result<()> {
+        self.with(|m| m.forget_registration())
+    }
+
     /// Where this install's notifications go (see the services crate).
     pub fn set_push(
         &self,

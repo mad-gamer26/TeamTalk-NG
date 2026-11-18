@@ -2,11 +2,14 @@ import Foundation
 import Observation
 import UIKit
 
-/// Your own Monitor (`ng-monitor` on your computer): it stays logged in to
-/// servers while this app isn't, keeps private conversations, and says
-/// what happened. Reached through TeamTalk NG's relay, end to end
-/// encrypted; nobody else holds your server passwords. Paired once (the
-/// pairing is in iCloud Keychain, so your other devices use it too).
+/// The Monitor: it stays logged in to servers while this app isn't, keeps
+/// private conversations, and says what happened. Your own (`ng-monitor`
+/// on your computer, reached through TeamTalk NG's relay, end to end
+/// encrypted: nobody else holds your server passwords) is recommended;
+/// for those without a computer, TeamTalk NG's hosted one (it keeps the
+/// servers' passwords on TeamTalk NG's server, encrypted). One or the
+/// other; the pairing or registration is in iCloud Keychain, so your
+/// other devices use it too.
 @MainActor @Observable
 final class MonitorStore {
     private unowned let app: AppModel
@@ -32,18 +35,74 @@ final class MonitorStore {
         Task { await refresh() }
     }
 
-    /// A client for your own Monitor; nil while none is paired.
+    /// A client for the Monitor in use; nil while there's none (the hosted
+    /// one registers this install first when `registering`).
     private func client(registering: Bool = false) async -> MonitorClient? {
         if own == nil { own = Self.loadOwn() }
-        guard let o = own else { return nil }
-        do {
-            let c = try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey)
-            await ensurePushKey(c)
+        if let o = own {
+            do {
+                let c = try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey)
+                await ensurePushKey(c)
+                return c
+            } catch {
+                problem = NGAccountStore.words(error)
+                return nil
+            }
+        }
+        guard hosted else { return nil }
+        let token = Passwords.secret(Self.hostedService, "token")
+        if !token.isEmpty {
+            // A registration made on another device: its notification key too.
+            let key = Passwords.secret(Self.hostedService, "push key")
+            if !key.isEmpty, !Service.hasPushKey(for: "hosted") { Service.savePushKey(key, for: "hosted") }
+            return MonitorClient(baseUrl: Service.base, token: token)
+        }
+        guard registering else { return nil }
+        let c = MonitorClient(baseUrl: Service.base, token: nil)
+        let name = UIDevice.current.name
+        switch await Task.detached(operation: { Result { try c.registerWithKey(deviceName: name) } }).value {
+        case .success(let r):
+            Passwords.setSecret(r.token, Self.hostedService, "token")
+            Passwords.setSecret(r.pushKey, Self.hostedService, "push key")
+            Service.savePushKey(r.pushKey, for: "hosted")
+            if let t = pushToken { await sendPushToken(t, via: c) }
             return c
-        } catch {
-            problem = NGAccountStore.words(error)
+        case .failure(let e):
+            problem = NGAccountStore.words(e)
             return nil
         }
+    }
+
+    // MARK: TeamTalk NG's hosted Monitor
+
+    private static let hostedService = "TeamTalk NG monitor"
+
+    /// Using TeamTalk NG's hosted Monitor (chosen; your own is recommended).
+    private(set) var hosted: Bool = UserDefaults.standard.bool(forKey: "monitorHosted")
+        || !Passwords.secret(MonitorStore.hostedService, "token").isEmpty
+
+    /// Uses the hosted Monitor (it registers this install when a server is
+    /// first monitored).
+    func useHosted() {
+        guard own == nil else { return }
+        hosted = true
+        UserDefaults.standard.set(true, forKey: "monitorHosted")
+        problem = nil
+        monitorChanged()
+    }
+
+    /// Stops using the hosted Monitor: its registration ends, so it logs out
+    /// of these servers and deletes them and their passwords there.
+    func stopHosted() async {
+        if let c = await client() {
+            _ = await Task.detached(operation: { Result { try c.forgetRegistration() } }).value
+        }
+        Passwords.setSecret("", Self.hostedService, "token")
+        Passwords.setSecret("", Self.hostedService, "push key")
+        hosted = false
+        UserDefaults.standard.set(false, forKey: "monitorHosted")
+        if own == nil { Service.forgetPushKey() }
+        monitorChanged()
     }
 
     /// Runs a call; failures in words (nil: it worked).
@@ -85,12 +144,19 @@ final class MonitorStore {
         case .failure(let e):
             return NGAccountStore.words(e)
         case .success(let m):
+            // One or the other: the hosted Monitor lets go (and deletes what
+            // it kept) once your own is paired.
+            let moving = hosted ? app.servers.filter { monitor(of: $0) != nil } : []
+            if hosted { await stopHosted() }
             let stored = StoredOwn(id: m.monitorId, name: m.name, key: m.monitorKey.base64EncodedString())
             if let d = try? JSONEncoder().encode(stored) { Passwords.setSecret(String(decoding: d, as: UTF8.self), Self.ownService, "monitor") }
             own = m
             problem = nil
             pushKeySaved = false
             monitorChanged()
+            // What the hosted Monitor watched, now watched by your own (the
+            // passwords saved on this iPhone).
+            for saved in moving { _ = await add(saved) }
             return nil
         }
     }
@@ -102,18 +168,18 @@ final class MonitorStore {
         Passwords.setSecret("", Self.ownService, "monitor")
         own = nil
         pushKeySaved = false
-        Service.forgetOwnPushKey()
+        Service.forgetPushKey()
         monitorChanged()
     }
 
     /// The key that opens this Monitor's notifications (asked once per
     /// device: a pairing from another device arrives without it), and this
     /// device's Apple token given to it.
-    private var pushKeySaved = Service.hasPushKey
+    private var pushKeySaved = Service.hasPushKey(for: "own")
     private func ensurePushKey(_ c: MonitorClient) async {
         guard !pushKeySaved else { return }
         guard case .success(let hello) = await Task.detached(operation: { Result { try c.ownHello() } }).value else { return }
-        Service.saveOwnPushKey(hello.pushKey)
+        Service.savePushKey(hello.pushKey, for: "own")
         pushKeySaved = true
         if let t = pushToken { await sendPushToken(t, via: c) }
     }
@@ -210,7 +276,7 @@ final class MonitorStore {
             nickname: s.nickname.isEmpty ? app.nickname : s.nickname, username: s.username,
             password: Passwords.get(s.id), statusMsg: "", statusMode: Gender.monitorBits(app.gender), channel: "",
             channelPassword: "", enabled: true)
-        guard own != nil || Self.loadOwn() != nil else { return "Set up your Monitor first: Settings → Monitor." }
+        guard own != nil || Self.loadOwn() != nil || hosted else { return "Choose a Monitor first: Settings → Monitor." }
         guard let r = await call(registering: true, { try $0.addServer(server: input) }) else { return problem ?? "Your Monitor can't be reached." }
         switch r {
         case .success: await refresh(); return nil

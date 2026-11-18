@@ -19,20 +19,20 @@ enum Service {
         (Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String).flatMap { UserDefaults(suiteName: $0) }
     }
 
-    /// The key that opens your own Monitor's notifications (for the
-    /// notification extension).
-    static func saveOwnPushKey(_ key: String) {
+    /// The key that opens the Monitor's notifications (for the
+    /// notification extension), and which Monitor it's for: "own" or "hosted".
+    static func savePushKey(_ key: String, for kind: String) {
         group?.set(key, forKey: "pushKey")
-        group?.set(true, forKey: "ownMonitor")
+        group?.set(kind, forKey: "pushKeyKind")
     }
 
-    static var hasPushKey: Bool { group?.bool(forKey: "ownMonitor") == true && !(group?.string(forKey: "pushKey") ?? "").isEmpty }
+    static func hasPushKey(for kind: String) -> Bool {
+        group?.string(forKey: "pushKeyKind") == kind && !(group?.string(forKey: "pushKey") ?? "").isEmpty
+    }
 
-    /// No Monitor paired any more.
-    static func forgetOwnPushKey() {
-        group?.set(false, forKey: "ownMonitor")
-        group?.removeObject(forKey: "pushKey")
-        group?.removeObject(forKey: "hostedPushKey")
+    /// No Monitor in use any more.
+    static func forgetPushKey() {
+        for k in ["pushKey", "pushKeyKind", "ownMonitor", "hostedPushKey"] { group?.removeObject(forKey: k) }
     }
 
     /// A development build gets its pushes from Apple's sandbox.
