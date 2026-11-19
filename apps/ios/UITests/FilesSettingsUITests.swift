@@ -206,3 +206,15 @@ final class ICloudEraseSafetyUITests: NGTestCase {
         XCTAssertEqual(done.label, "Erase safety: sent 1, after erase 1")
     }
 }
+
+/// A reinstall (or new device) that got another device's record of what it
+/// sent takes my pack from iCloud Drive and leaves it there (it skipped it
+/// and deleted it from iCloud before); deleting it here deletes it there.
+final class PackCloudReinstallUITests: NGTestCase {
+    func testAReinstallTakesMyPacksAndNeverDeletesThem() {
+        run("packReinstall", says: "Pack reinstall:")
+        let done = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH 'Pack reinstall: taken'")).firstMatch
+        waitFor(done, "the test's result", timeout: 30)
+        XCTAssertEqual(done.label, "Pack reinstall: taken true, still in iCloud true, deleted there true")
+    }
+}

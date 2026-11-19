@@ -41,7 +41,12 @@ final class ICloudSync {
     /// What isn't synced: this install's own values.
     private func shared(_ key: String) -> Bool {
         !(key.hasPrefix("Apple") || key.hasPrefix("NS") || key.hasPrefix("com.apple") || key.hasPrefix("WebKit")
-          || [Self.enabledKey, appliedKey, "installId", "setUp", "ngEmail", "ngSyncState", "soundPacks", "soundPack"].contains(key))
+          || [Self.enabledKey, appliedKey, "installId", "setUp", "ngEmail", "ngSyncState", "soundPacks", "soundPack",
+              // What this device sent to iCloud Drive, and deleted (another
+              // device taking them skipped the packs, then deleted them).
+              "cloudPacks", "cloudPacksDeleted",
+              // Each device's own sound system (the owner's choice).
+              "speaker", "bluetoothMic", "preferredInput"].contains(key))
     }
 
     private var domain: [String: Any] {

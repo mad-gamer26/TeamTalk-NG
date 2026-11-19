@@ -509,6 +509,7 @@ final class SoundStore {
 
     func remove(_ pack: InstalledPack) {
         guard pack.id != InstalledPack.builtIn.id else { return }
+        if pack.editable { deletedHere.insert(pack.id) }
         try? FileManager.default.removeItem(at: Self.directory(pack.id))
         installed.removeAll { $0.id == pack.id }
         if selectedId == pack.id { selectedId = InstalledPack.builtIn.id }
@@ -793,10 +794,47 @@ extension SoundStore {
     /// The app's iCloud Drive folder for packs (nil: no iCloud). Not on the
     /// main thread: the first call can take a while.
     nonisolated private static func cloudRoot() -> URL? {
-        FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+        #if DEBUG
+        if let t = testCloudRoot { return t }
+        #endif
+        return FileManager.default.url(forUbiquityContainerIdentifier: nil)?
             .appendingPathComponent("Documents", isDirectory: true)
             .appendingPathComponent("Sound packs", isDirectory: true)
     }
+
+    #if DEBUG
+    /// UI tests: a plain folder playing iCloud Drive.
+    nonisolated(unsafe) static var testCloudRoot: URL?
+
+    /// UI test: a new install (or device) that got another device's record
+    /// of what it sent (as the settings sync did) takes my pack from iCloud
+    /// Drive and leaves it there; deleting it here deletes it there.
+    func reinstallCloudTest() async -> String {
+        ICloudSync.forceOnForTests = true
+        defer { ICloudSync.forceOnForTests = false; Self.testCloudRoot = nil }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cloud-\(UUID().uuidString)/Sound packs", isDirectory: true)
+        Self.testCloudRoot = root
+        let id = "imported-cloudtest"
+        let dir = root.appendingPathComponent(id, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let wav = Bundle.main.url(forResource: SoundEvent.loggedIn.rawValue, withExtension: "wav") {
+            try? FileManager.default.copyItem(at: wav, to: dir.appendingPathComponent("logged_on.wav"))
+        }
+        let info = CloudPackInfo(id: id, name: "Cloud test pack", author: "Me", description: "", fingerprint: "elsewhere", updated: 0)
+        try? JSONEncoder().encode(info).write(to: dir.appendingPathComponent("pack.json"))
+        // The other device's record (as a settings sync used to bring).
+        synced = [id: "elsewhere"]
+        deletedHere = []
+        await syncPacksWithCloud()
+        let taken = installed.contains { $0.id == id }
+        let stillInCloud = FileManager.default.fileExists(atPath: dir.path)
+        if let p = installed.first(where: { $0.id == id }) { remove(p) }
+        cloudSoon?.cancel()
+        await syncPacksWithCloud()
+        let goneFromCloud = !FileManager.default.fileExists(atPath: dir.path)
+        return "Pack reinstall: taken \(taken), still in iCloud \(stillInCloud), deleted there \(goneFromCloud)"
+    }
+    #endif
 
     /// A pack's contents in one string: its sounds (names and sizes) and words.
     nonisolated private static func fingerprint(dir: URL, name: String, author: String, description: String) -> String {
@@ -807,6 +845,15 @@ extension SoundStore {
             .sorted()
         let all = ([name, author, description] + sounds).joined(separator: "\n")
         return SHA256.hash(data: Data(all.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// My packs deleted on this device, to delete from iCloud Drive too
+    /// (only these: a pack in iCloud that isn't here is taken, never
+    /// deleted, unless it was deleted here).
+    private static let deletedKey = "cloudPacksDeleted"
+    private var deletedHere: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.deletedKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.deletedKey) }
     }
 
     private var synced: [String: String] {
@@ -837,7 +884,8 @@ extension SoundStore {
             let local = mine.first { $0.id == c.id }
             let here = local.map { Self.fingerprint(dir: Self.directory($0.id), name: $0.name, author: $0.author, description: $0.description ?? "") }
             if here == c.fingerprint { known[c.id] = c.fingerprint; continue }
-            let unchangedHere = here == nil ? known[c.id] == nil : here == known[c.id]
+            // Not here: taken, unless deleted here (then it goes from iCloud below).
+            let unchangedHere = here == nil ? !deletedHere.contains(c.id) : here == known[c.id]
             guard unchangedHere else { continue }  // changed here too: sent below
             let src = root.appendingPathComponent(c.id, isDirectory: true), dst = Self.directory(c.id)
             guard await Task.detached(operation: { Self.coordinated(reading: src) { Self.copySounds(from: $0, to: dst) } ?? false }).value else { continue }  // still downloading
@@ -866,11 +914,16 @@ extension SoundStore {
             let src = Self.directory(p.id), dst = root.appendingPathComponent(p.id, isDirectory: true)
             if await Task.detached(operation: { Self.coordinated(writing: dst) { Self.writeCloud(info, from: src, to: $0) } ?? false }).value { known[p.id] = fp }
         }
-        for id in cloudIds where known[id] != nil && !installed.contains(where: { $0.id == id }) {
-            let dir = root.appendingPathComponent(id, isDirectory: true)
-            await Task.detached { _ = Self.coordinated(writing: dir) { try? FileManager.default.removeItem(at: $0) } }.value
+        var deleted = deletedHere
+        for id in deleted {
+            if cloudIds.contains(id), !installed.contains(where: { $0.id == id }) {
+                let dir = root.appendingPathComponent(id, isDirectory: true)
+                await Task.detached { _ = Self.coordinated(writing: dir) { try? FileManager.default.removeItem(at: $0) } }.value
+            }
             known[id] = nil
+            deleted.remove(id)
         }
+        deletedHere = deleted
         synced = known
         save()
     }

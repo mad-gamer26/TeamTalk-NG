@@ -204,6 +204,12 @@ extension ShortcutActions {
                 let off = read().joined(separator: ",")
                 clear()
                 said = "Keychain merge: on [\(on)] off [\(off)]"
+            case "packReinstall":
+                Task { @MainActor in
+                    guard let m = AppModel.shared else { return }
+                    m.uiTestActionResult = await m.sounds.reinstallCloudTest()
+                }
+                said = "Pack reinstall: started"
             case "eraseSafety":
                 Task { @MainActor in
                     AppModel.shared?.uiTestActionResult = await ICloudSync.shared.eraseSafetyTest()
