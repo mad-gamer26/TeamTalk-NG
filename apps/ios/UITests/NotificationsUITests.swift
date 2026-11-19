@@ -40,17 +40,23 @@ final class NotificationsUITests: NGTestCase {
         toBackground()
         Host.call("/say", ["bot": "bob", "text": "Hello all"])
         Host.call("/pm", ["bot": "bob", "to": "alice", "text": "Hi"])
+        Host.call("/join", ["bot": "bob", "path": "/Lobby/"])
+        Thread.sleep(forTimeInterval: 1)
         Host.call("/logout", ["bot": "carol"])
         Thread.sleep(forTimeInterval: 3)
         app.activate()
         let list = delivered()
-        for want in ["Channel message from Bob: Hello all", "Private message from Bob: Hi", "Carol logged out"] {
+        // Worded as the app says them (Settings → Spoken events), not
+        // "User left current channel: Bob".
+        for want in ["Channel message from Bob: Hello all", "Private message from Bob: Hi", "Bob left channel",
+                     "Bob joined channel Lobby", "Carol has logged out from TTNG Test"] {
             XCTAssertTrue(list.contains(want), "\(want) in \(list)")
         }
+        XCTAssertFalse(list.contains("current channel"), "not the event's name: \(list)")
         XCTAssertFalse(list.contains("Bob |"), "titled with the server, not a person: \(list)")
         // Titled with its name in the server list (here its address: it was
         // added from a link), not the name the server gives itself.
-        XCTAssertTrue(list.contains("127.0.0.1 | Carol logged out"), "the list's name: \(list)")
+        XCTAssertTrue(list.contains("127.0.0.1 | Carol has logged out"), "the list's name: \(list)")
         XCTAssertFalse(list.contains("TTNG Test |"), "not the server's own name: \(list)")
 
         // A channel message opens the server's Chat tab, without the private one.
@@ -70,7 +76,7 @@ final class NotificationsUITests: NGTestCase {
         // Anything else opens the server on the tab I was last on.
         app.buttons["Files"].tap()
         backToList()
-        run("tapNotification", ["contains": "Carol logged out"], says: "Opened")
+        run("tapNotification", ["contains": "Carol has logged out"], says: "Opened")
         waitFor(app.buttons["Files"], "the server")
         XCTAssertTrue(app.buttons["Files"].isSelected, "on the Files tab, as I left it")
         XCTAssertFalse(app.buttons["Chat"].isSelected, "not the Chat tab")

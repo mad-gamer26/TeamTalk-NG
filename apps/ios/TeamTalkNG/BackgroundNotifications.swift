@@ -4,8 +4,9 @@ import UserNotifications
 
 /// Notifications while TeamTalk NG is in the background (the desktop's
 /// popups): a server's events, each on or off by itself (Settings →
-/// Display → Notifications). Titled with the server's name; the text is the
-/// event's name, then what happened ("Private message from Matthew: Hi").
+/// Display → Notifications). Titled with the server's name as in the server
+/// list; the text is the event as the app says it (Settings → Spoken
+/// events: "Matthew joined channel", "Private message from Matthew: Hi").
 /// Tapping one opens the server: a channel message on its Chat tab, a
 /// private message in its conversation.
 enum BackgroundNotifications {
@@ -16,8 +17,18 @@ enum BackgroundNotifications {
           .menuActions, .voiceTransmission, .videoTransmission, .desktopSharing].contains($0)
     }
 
-    /// The notification's text for an event: its name, then what happened.
+    /// The notification's text: the event as the app says it (its spoken
+    /// wording, as changed in Settings → Spoken events); the older "Event:
+    /// what happened" only if that says nothing.
     @MainActor static func body(_ e: SpeechEvent, _ v: [String: String]) -> String? {
+        if let said = AppModel.shared?.speech.text(e, v).trimmingCharacters(in: .whitespacesAndNewlines),
+           !said.isEmpty, !said.contains("{") {
+            return said
+        }
+        return fallbackBody(e, v)
+    }
+
+    @MainActor private static func fallbackBody(_ e: SpeechEvent, _ v: [String: String]) -> String? {
         let user = v["user"] ?? v["username"] ?? ""
         let message = v["message"] ?? ""
         switch e {
