@@ -204,6 +204,26 @@ extension ShortcutActions {
                 let off = read().joined(separator: ",")
                 clear()
                 said = "Keychain merge: on [\(on)] off [\(off)]"
+            case "monitorWording":
+                // The Monitor's pushes reworded as the app says its events:
+                // the default wording, then a changed one, then back.
+                if let speech = AppModel.shared?.speech, let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String {
+                    func reword(_ d: [String: Any], _ body: String) -> String {
+                        speech.shareWithNotifications()
+                        let w = UserDefaults(suiteName: g)?.dictionary(forKey: MonitorWording.groupKey) as? [String: String] ?? [:]
+                        return MonitorWording.reword(data: d, title: "My Server", body: body, wording: w) ?? "unchanged"
+                    }
+                    let out = reword(["event": "logged_out", "nickname": "Carol", "username": "carol"], "Carol logged out")
+                    let pm = reword(["event": "private_message", "nickname": "Bob", "username": "bob"], "Private message from Bob: Hi: there")
+                    let old = speech.template(.channelMessage)
+                    speech.setTemplate(.channelMessage, "{user} said {message}")
+                    let ch = reword(["event": "channel_message"], "Channel message from Bob: Hello all")
+                    speech.setTemplate(.channelMessage, old)
+                    let other = reword(["event": "kicked"], "Kicked")
+                    said = "Monitor wording: [\(out)] [\(pm)] [\(ch)] [\(other)]"
+                } else {
+                    said = "Monitor wording: unavailable"
+                }
             case "packReinstall":
                 Task { @MainActor in
                     guard let m = AppModel.shared else { return }

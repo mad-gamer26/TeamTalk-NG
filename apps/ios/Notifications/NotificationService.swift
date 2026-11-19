@@ -23,6 +23,12 @@ final class NotificationService: UNNotificationServiceExtension {
         if let t = f["thread"] as? String, !t.isEmpty { content.threadIdentifier = t }
         if let t = f["category"] as? String, !t.isEmpty { content.categoryIdentifier = t }
         if let d = f["data"] as? [String: Any] {
+            // Worded as the app says its events (Settings → Spoken events).
+            let group = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String ?? ""
+            if let wording = UserDefaults(suiteName: group)?.dictionary(forKey: MonitorWording.groupKey) as? [String: String],
+               let text = MonitorWording.reword(data: d, title: content.title, body: content.body, wording: wording) {
+                content.body = text
+            }
             var info = content.userInfo
             info["data"] = d
             content.userInfo = info

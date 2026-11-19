@@ -98,3 +98,12 @@ final class NotificationsUITests: NGTestCase {
         XCTAssertFalse(any("Before disconnecting").exists, "the old session's chat is gone")
     }
 }
+
+/// The Monitor's notifications worded as the app says its events (Settings
+/// → Spoken events), changes there included; events without an app wording
+/// keep the Monitor's text.
+final class MonitorWordingUITests: NGTestCase {
+    func testMonitorPushesUseTheAppsWording() {
+        run("monitorWording", says: "Monitor wording: [Carol has logged out from My Server] [Private message from Bob: Hi: there] [Bob said Hello all] [unchanged]")
+    }
+}

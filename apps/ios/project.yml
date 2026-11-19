@@ -33,6 +33,7 @@ targets:
       - TeamTalkNG
       - Shared
       - path: Notifications/MonitorSound.swift
+      - path: Notifications/MonitorWording.swift
       - path: Generated/ttng_ffi.swift
     info:
       path: TeamTalkNG/Info.plist

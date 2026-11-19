@@ -231,6 +231,7 @@ final class SpeechStore {
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if converted { save() }
+        shareWithNotifications()
     }
 
     private func save() {
@@ -243,6 +244,16 @@ final class SpeechStore {
         defaults.set(volume, forKey: "speechVolume")
         defaults.set(disabled.map(\.rawValue), forKey: "speechOff")
         defaults.set(templates, forKey: "speechTemplates")
+        shareWithNotifications()
+    }
+
+    /// The wording the Monitor's notifications use too (the notification
+    /// extension reads it from the App Group).
+    func shareWithNotifications() {
+        guard let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String, let group = UserDefaults(suiteName: g) else { return }
+        let map: [String: SpeechEvent] = ["logged_in": .loggedIn, "logged_out": .loggedOut, "private_message": .privateMessage,
+                                          "channel_message": .channelMessage, "broadcast": .broadcastMessage]
+        group.set(map.mapValues { template($0) }, forKey: MonitorWording.groupKey)
     }
 
     func isOn(_ e: SpeechEvent) -> Bool { !disabled.contains(e) }
