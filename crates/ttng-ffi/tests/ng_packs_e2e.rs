@@ -102,12 +102,19 @@ fn a_pack_is_published_changed_and_withdrawn() {
         ("Softer beeps", "Matt", true)
     );
 
-    // Withdrawn, then deleted.
+    // Withdrawn: out of the catalog, and gone from the service (it keeps
+    // only published packs; the pack stays on the publisher's devices).
     me.change_pack(p.id.clone(), None, None, None, Some(false)).unwrap();
     assert!(
         catalog(&svc.url).iter().all(|c| c["id"] != p.id.as_str()),
         "out of the catalog"
     );
-    me.delete_pack(p.id.clone()).expect("deleted");
+    assert!(me.my_packs().unwrap().is_empty(), "nothing kept");
+
+    // Published again and deleted: the same.
+    let again = me.backup_pack("local-again".into(), "Again".into()).unwrap();
+    me.upload_pack_file(again.id.clone(), "logged_on.wav".into(), wav(9)).unwrap();
+    me.change_pack(again.id.clone(), None, Some("Matt".into()), None, Some(true)).unwrap();
+    me.delete_pack(again.id.clone()).expect("deleted");
     assert!(me.my_packs().unwrap().is_empty());
 }
