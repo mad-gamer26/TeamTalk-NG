@@ -172,6 +172,12 @@ final class SoundStore {
     /// Syncing my packs with iCloud Drive now.
     @ObservationIgnored var cloudBusy = false
     @ObservationIgnored private var cloudSoon: Task<Void, Never>?
+    /// A change while a sync ran: another sync right after it.
+    @ObservationIgnored var cloudAgain = false
+    /// Watches iCloud Drive for my packs arriving or changing from other
+    /// devices (and asks for them to download).
+    @ObservationIgnored var cloudQuery: NSMetadataQuery?
+    @ObservationIgnored var cloudObservers: [NSObjectProtocol] = []
     /// 0–1; the desktop's default is 100 (SOUNDEVENT_VOLUME_DEFAULT).
     var volume: Double = 1 { didSet { save() } }
     private(set) var disabled: Set<SoundEvent> = []
@@ -594,7 +600,9 @@ final class SoundStore {
 
     /// My packs go to iCloud Drive a moment after they change.
     private func packsMayHaveChanged() {
-        guard ICloudSync.isOn, !cloudBusy else { return }
+        guard ICloudSync.isOn else { return }
+        // During a sync: once more after it (a change mustn't be lost).
+        if cloudBusy { cloudAgain = true; return }
         cloudSoon?.cancel()
         cloudSoon = Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
@@ -808,10 +816,15 @@ extension SoundStore {
 
     /// Sends what changed here, then takes what changed elsewhere.
     func syncPacksWithCloud() async {
-        guard ICloudSync.isOn, !cloudBusy else { return }
+        guard ICloudSync.isOn else { return }
+        if cloudBusy { cloudAgain = true; return }
         cloudBusy = true
-        defer { cloudBusy = false }
+        defer {
+            cloudBusy = false
+            if cloudAgain { cloudAgain = false; packsMayHaveChanged() }
+        }
         guard let root = await Task.detached(operation: { Self.cloudRoot() }).value else { return }
+        watchCloud()
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let mine = installed.filter(\.editable)
         var known = synced
@@ -827,7 +840,7 @@ extension SoundStore {
             let unchangedHere = here == nil ? known[c.id] == nil : here == known[c.id]
             guard unchangedHere else { continue }  // changed here too: sent below
             let src = root.appendingPathComponent(c.id, isDirectory: true), dst = Self.directory(c.id)
-            guard await Task.detached(operation: { Self.copySounds(from: src, to: dst) }).value else { continue }  // still downloading
+            guard await Task.detached(operation: { Self.coordinated(reading: src) { Self.copySounds(from: $0, to: dst) } ?? false }).value else { continue }  // still downloading
             installed.removeAll { $0.id == c.id }
             installed.append(InstalledPack(id: c.id, name: c.name, author: c.author, version: "", description: c.description))
             installed.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -851,15 +864,75 @@ extension SoundStore {
             guard known[p.id] != fp else { continue }
             let info = CloudPackInfo(id: p.id, name: p.name, author: p.author, description: p.description ?? "", fingerprint: fp, updated: Date().timeIntervalSince1970)
             let src = Self.directory(p.id), dst = root.appendingPathComponent(p.id, isDirectory: true)
-            if await Task.detached(operation: { Self.writeCloud(info, from: src, to: dst) }).value { known[p.id] = fp }
+            if await Task.detached(operation: { Self.coordinated(writing: dst) { Self.writeCloud(info, from: src, to: $0) } ?? false }).value { known[p.id] = fp }
         }
         for id in cloudIds where known[id] != nil && !installed.contains(where: { $0.id == id }) {
             let dir = root.appendingPathComponent(id, isDirectory: true)
-            await Task.detached { try? FileManager.default.removeItem(at: dir) }.value
+            await Task.detached { _ = Self.coordinated(writing: dir) { try? FileManager.default.removeItem(at: $0) } }.value
             known[id] = nil
         }
         synced = known
         save()
+    }
+
+    /// Starts watching iCloud Drive's packs folder (once): whatever other
+    /// devices put there is asked to download, and a sync follows when it
+    /// arrives or changes. Without it, a new device often saw nothing: iCloud
+    /// hadn't even listed the packs when the app first looked.
+    func watchCloud() {
+        guard cloudQuery == nil, ICloudSync.isOn else { return }
+        let q = NSMetadataQuery()
+        q.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+        q.predicate = NSPredicate(format: "%K CONTAINS %@", NSMetadataItemPathKey, "/Sound packs/")
+        let center = NotificationCenter.default
+        cloudObservers = [Notification.Name.NSMetadataQueryDidFinishGathering, .NSMetadataQueryDidUpdate].map { name in
+            center.addObserver(forName: name, object: q, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.cloudItemsChanged() }
+            }
+        }
+        cloudQuery = q
+        q.start()
+    }
+
+    /// iCloud Drive's packs changed: what isn't here yet is asked for, and a
+    /// sync follows.
+    private func cloudItemsChanged() {
+        guard let q = cloudQuery else { return }
+        q.disableUpdates()
+        for i in 0..<q.resultCount {
+            guard let item = q.result(at: i) as? NSMetadataItem, let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
+            let status = item.value(forAttribute: NSMetadataUbiquitousItemDownloadingStatusKey) as? String
+            if status != NSMetadataUbiquitousItemDownloadingStatusCurrent {
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            }
+        }
+        q.enableUpdates()
+        packsMayHaveChanged()
+    }
+
+    /// Stops watching (iCloud sync turned off, or everything erased).
+    func stopWatchingCloud() {
+        guard let q = cloudQuery else { return }
+        q.stop()
+        cloudObservers.forEach(NotificationCenter.default.removeObserver)
+        cloudObservers = []
+        cloudQuery = nil
+    }
+
+    /// File coordination around iCloud Drive (Apple's rule: iCloud may be
+    /// reading or writing the same files).
+    nonisolated private static func coordinated<T>(reading url: URL, _ f: (URL) -> T) -> T? {
+        var out: T?
+        var err: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &err) { out = f($0) }
+        return out
+    }
+
+    nonisolated private static func coordinated<T>(writing url: URL, _ f: (URL) -> T) -> T? {
+        var out: T?
+        var err: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: [], error: &err) { out = f($0) }
+        return out
     }
 
     nonisolated private static func readCloud(_ root: URL) -> [CloudPackInfo] {

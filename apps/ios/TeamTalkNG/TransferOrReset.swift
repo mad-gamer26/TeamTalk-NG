@@ -72,6 +72,7 @@ enum EraseAll {
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         ICloudSync.shared.stopForErase()
+        model.sounds.stopWatchingCloud()
         wipeStored()
         NotificationCenter.default.post(name: .ttngErased, object: nil)
     }
