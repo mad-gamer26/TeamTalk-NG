@@ -242,8 +242,13 @@ enum UITestReset {
         if let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String, let gd = UserDefaults(suiteName: g) {
             for k in gd.dictionaryRepresentation().keys { gd.removeObject(forKey: k) }
         }
+        // This device's keychain items. iCloud Keychain's too only when no
+        // iCloud account is signed in (then they're only here anyway): on a
+        // signed-in Simulator, deleting them would delete them on every
+        // device of that account.
         SecItemDelete([kSecClass as String: kSecClassGenericPassword,
-                       kSecAttrSynchronizable as String: kSecAttrSynchronizableAny] as CFDictionary)
+                       kSecAttrSynchronizable as String: FileManager.default.ubiquityIdentityToken == nil
+                           ? kSecAttrSynchronizableAny as Any : kCFBooleanFalse as Any] as CFDictionary)
         // Paired with the test's own Monitor (scripts/test-ios-ui.sh):
         // {"monitor_id", "name", "key", "phone_key"}, keys in base64.
         if let json = ProcessInfo.processInfo.environment["UITEST_OWN_MONITOR"], !json.isEmpty,
