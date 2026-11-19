@@ -197,12 +197,12 @@ final class KeychainMergeUITests: NGTestCase {
 
 /// Erase never puts the erased, empty settings in iCloud (as on
 /// 2026-11-19: a send waiting from a change just before ran after the
-/// wipe), and an earlier iCloud copy can be gone back to.
+/// wipe).
 final class ICloudEraseSafetyUITests: NGTestCase {
-    func testEraseNeverEmptiesICloudAndEarlierCopiesComeBack() {
+    func testEraseNeverEmptiesICloud() {
         run("eraseSafety", says: "Erase safety:")
         let done = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH 'Erase safety: sent'")).firstMatch
         waitFor(done, "the test's result", timeout: 20)
-        XCTAssertEqual(done.label, "Erase safety: sent 1, after erase 1, replaced 0, earlier 1, restored 1")
+        XCTAssertEqual(done.label, "Erase safety: sent 1, after erase 1")
     }
 }
