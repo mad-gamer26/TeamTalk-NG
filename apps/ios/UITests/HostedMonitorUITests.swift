@@ -119,3 +119,15 @@ final class HostedMonitorUITests: NGTestCase {
         waitFor(app.navigationBars["Monitor"], "Settings → Monitor again")
     }
 }
+
+/// A move to TeamTalk NG's Monitor that fails changes nothing: your own
+/// Monitor's notification key stays (its notifications still open), and
+/// the hosted registration made for the move goes again.
+final class FailedMoveUITests: NGTestCase {
+    func testAFailedMoveKeepsMyMonitorsKey() {
+        run("failedMove", says: "Failed move:")
+        let done = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH 'Failed move: refused'")).firstMatch
+        waitFor(done, "the test's result", timeout: 60)
+        XCTAssertEqual(done.label, "Failed move: refused true, key kept true, hosted registration left false")
+    }
+}

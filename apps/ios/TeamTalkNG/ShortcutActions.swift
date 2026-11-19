@@ -204,6 +204,12 @@ extension ShortcutActions {
                 let off = read().joined(separator: ",")
                 clear()
                 said = "Keychain merge: on [\(on)] off [\(off)]"
+            case "failedMove":
+                Task { @MainActor in
+                    guard let m = AppModel.shared else { return }
+                    m.uiTestActionResult = await m.monitor.failedMoveTest()
+                }
+                said = "Failed move: started"
             case "packReinstall":
                 Task { @MainActor in
                     guard let m = AppModel.shared else { return }

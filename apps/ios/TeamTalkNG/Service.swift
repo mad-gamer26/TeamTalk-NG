@@ -26,6 +26,13 @@ enum Service {
         group?.set(kind, forKey: "pushKeyKind")
     }
 
+    #if DEBUG
+    /// UI tests: the key the notification extension uses now, and whose.
+    static var currentPushKeyForTests: (key: String, kind: String) {
+        (group?.string(forKey: "pushKey") ?? "", group?.string(forKey: "pushKeyKind") ?? "")
+    }
+    #endif
+
     static func hasPushKey(for kind: String) -> Bool {
         group?.string(forKey: "pushKeyKind") == kind && !(group?.string(forKey: "pushKey") ?? "").isEmpty
     }

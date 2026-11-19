@@ -55,12 +55,15 @@ final class MonitorStore {
     /// A client for the hosted Monitor (registering this install first when
     /// `registering` and it has no registration yet), whether or not it's
     /// the one in use: moving servers to it needs it before switching.
-    private func hostedClient(registering: Bool) async -> MonitorClient? {
+    /// `inUse`: it's the Monitor this iPhone uses (its notification key goes
+    /// to the notification extension, and the Apple token to it). Not while
+    /// moving to it: until the move works, the other Monitor's key stays.
+    private func hostedClient(registering: Bool, inUse: Bool = true) async -> MonitorClient? {
         let token = Passwords.secret(Self.hostedService, "token")
         if !token.isEmpty {
             // A registration made on another device: its notification key too.
             let key = Passwords.secret(Self.hostedService, "push key")
-            if !key.isEmpty, !Service.hasPushKey(for: "hosted") { Service.savePushKey(key, for: "hosted") }
+            if inUse, !key.isEmpty, !Service.hasPushKey(for: "hosted") { Service.savePushKey(key, for: "hosted") }
             return MonitorClient(baseUrl: Service.base, token: token)
         }
         guard registering else { return nil }
@@ -70,8 +73,10 @@ final class MonitorStore {
         case .success(let r):
             Passwords.setSecret(r.token, Self.hostedService, "token")
             Passwords.setSecret(r.pushKey, Self.hostedService, "push key")
-            Service.savePushKey(r.pushKey, for: "hosted")
-            if let t = pushToken { await sendPushToken(t, via: c) }
+            if inUse {
+                Service.savePushKey(r.pushKey, for: "hosted")
+                if let t = pushToken { await sendPushToken(t, via: c) }
+            }
             return c
         case .failure(let e):
             problem = NGAccountStore.words(e)
@@ -108,21 +113,52 @@ final class MonitorStore {
         guard let o = own else { useHosted(); return nil }
         let from: MonitorClient
         do { from = try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey) } catch { return NGAccountStore.words(error) }
-        guard let to = await hostedClient(registering: true) else { return problem ?? "TeamTalk NG's Monitor can't be reached." }
+        // Registered (if not already), but not in use yet: your own Monitor's
+        // notification key stays until the move has worked.
+        let hadRegistration = !Passwords.secret(Self.hostedService, "token").isEmpty
+        guard let to = await hostedClient(registering: true, inUse: false) else { return problem ?? "TeamTalk NG's Monitor can't be reached." }
         if let why = await moveServers(from: from, to: to, toName: "TeamTalk NG's Monitor") {
+            // Nothing changed: a registration made just now goes again.
+            if !hadRegistration {
+                _ = await Task.detached(operation: { Result { try to.forgetRegistration() } }).value
+                Passwords.setSecret("", Self.hostedService, "token")
+                Passwords.setSecret("", Self.hostedService, "push key")
+            }
             await refresh()
             return why
         }
         Passwords.setSecret("", Self.ownService, "monitor")
         own = nil
         pushKeySaved = false
-        Service.forgetPushKey()
+        // The hosted Monitor's key in place of your own's at once (no moment
+        // without one), and the Apple token to it.
+        Service.savePushKey(Passwords.secret(Self.hostedService, "push key"), for: "hosted")
+        if let t = pushToken { await sendPushToken(t, via: to) }
         hosted = true
         UserDefaults.standard.set(true, forKey: "monitorHosted")
         problem = nil
         monitorChanged()
         return nil
     }
+
+    #if DEBUG
+    /// UI tests: a move whose servers can't be added (nothing changes).
+    var failMovesForTests = false
+
+    /// UI test: a move to the hosted Monitor that fails leaves your own
+    /// Monitor's notification key in place and no hosted registration.
+    func failedMoveTest() async -> String {
+        guard own != nil || Self.loadOwn() != nil else { return "Failed move: not paired" }
+        _ = await client()  // your own Monitor's key in place
+        let before = Service.currentPushKeyForTests
+        failMovesForTests = true
+        defer { failMovesForTests = false }
+        let why = await moveToHosted()
+        let after = Service.currentPushKeyForTests
+        let registered = !Passwords.secret(Self.hostedService, "token").isEmpty
+        return "Failed move: refused \(why != nil), key kept \(before.key == after.key && after.kind == "own"), hosted registration left \(registered)"
+    }
+    #endif
 
     /// Moves every server `from` watches to `to`: added there first (with
     /// its passwords and conversations, from `export`; an older Monitor
@@ -131,6 +167,9 @@ final class MonitorStore {
     /// added, those added are taken out again and nothing changes. The
     /// phone's notification settings are copied too. Why not, or nil.
     private func moveServers(from: MonitorClient, to: MonitorClient, toName: String) async -> String? {
+        #if DEBUG
+        if failMovesForTests { return "Nothing moved to \(toName), because these couldn't: a test server: refused for the test" }
+        #endif
         // For an older Monitor without export: the passwords saved here,
         // by host, port and username.
         var kept: [String: (password: String, channelPassword: String)] = [:]
@@ -186,7 +225,7 @@ final class MonitorStore {
     /// there. Only once it says so does this iPhone forget the registration;
     /// otherwise it keeps it (so it can try again), and says why.
     func stopHosted() async -> String? {
-        if !Passwords.secret(Self.hostedService, "token").isEmpty, let c = await hostedClient(registering: false) {
+        if !Passwords.secret(Self.hostedService, "token").isEmpty, let c = await hostedClient(registering: false, inUse: false) {
             if case .failure(let e) = await Task.detached(operation: { Result { try c.forgetRegistration() } }).value {
                 if case .SignedOut = e as? NgError {
                     // Already gone there.
@@ -253,6 +292,12 @@ final class MonitorStore {
             if let why = await moveServers(from: from, to: to, toName: "your Monitor") {
                 return why + " You're still using TeamTalk NG's Monitor; pair again with a new code to try again."
             }
+            // Your Monitor in use from here: its key in place of the hosted
+            // one's at once (no moment without one), then the hosted
+            // registration ends.
+            own = m
+            pushKeySaved = false
+            await ensurePushKey(to)
             if let why = await stopHosted() {
                 // Moved, but the hosted copy isn't deleted yet: say so; the
                 // registration stays here to delete it later.
