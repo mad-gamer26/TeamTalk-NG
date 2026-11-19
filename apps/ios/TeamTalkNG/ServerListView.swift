@@ -370,7 +370,6 @@ struct ServerEditView: View {
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var resetting = false
 
     var body: some View {
         @Bindable var model = model
@@ -386,7 +385,6 @@ struct SettingsView: View {
                     NavigationLink("Recording") { RecordingSettingsView() }
                     NavigationLink("Live Activities") { LiveActivitySettingsView() }
                     NavigationLink("iCloud sync") { ICloudSyncView() }
-                    NavigationLink("Backup and Restore") { BackupView() }
                     NavigationLink("Monitor") { MonitorSettingsView() }.accessibilityIdentifier("settings-monitor")
                     NavigationLink {
                         NGAccountView()
@@ -403,17 +401,12 @@ struct SettingsView: View {
                     }
                 }
                 Section {
-                    Button("Reset all settings", role: .destructive) { resetting = true }
-                } footer: {
-                    Text("Servers, your NG Account and downloaded sound packs stay.")
+                    NavigationLink("Transfer or Reset") { TransferOrResetView() }
                 }
                 Section {
                     NavigationLink("Help") { HelpView() }
                     NavigationLink("About") { AboutView() }
                 }
-            }
-            .confirmationDialog("Reset all settings?", isPresented: $resetting, titleVisibility: .visible) {
-                Button("Reset", role: .destructive) { model.resetPreferences(); announce("Settings reset") }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

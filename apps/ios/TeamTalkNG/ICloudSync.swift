@@ -77,6 +77,16 @@ final class ICloudSync {
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// Erase All Data & Settings: off here, without copying iCloud
+    /// Keychain's items back to this iPhone (as `disable` does) and without
+    /// taking anything from iCloud afterwards.
+    func stopForErase() {
+        defaults.set(false, forKey: Self.enabledKey)
+        NotificationCenter.default.removeObserver(self)
+        observing = false
+        pendingFromCloud = false
+    }
+
     var cloudHasSettings: Bool { store.synchronize(); return store.data(forKey: snapshotKey) != nil }
 
     private var observing = false

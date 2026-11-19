@@ -55,6 +55,14 @@ struct TeamTalkNGApp: App {
             }
             .onChange(of: phase) { _, p in if p == .active { startIfReadable() } }
             // A backup restored: everything reads the restored settings.
+            // Everything erased: a fresh start, as a new install.
+            .onReceive(NotificationCenter.default.publisher(for: .ttngErased)) { _ in
+                model = nil
+                DispatchQueue.main.async {
+                    model = AppModel()
+                    announce("TeamTalk NG erased")
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .ttngRestored)) { _ in
                 model = nil
                 DispatchQueue.main.async {

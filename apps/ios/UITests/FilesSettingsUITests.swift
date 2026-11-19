@@ -139,11 +139,45 @@ final class FilesSettingsUITests: NGTestCase {
         replace(nick, with: "Someone")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.swipeUp()
-        app.buttons["Reset all settings"].tap()
-        app.buttons.matching(NSPredicate(format: "label == 'Reset'")).allElementsBoundByIndex.last!.tap()
+        app.buttons["Transfer or Reset"].tap()
+        app.buttons["Reset All Settings"].tap()
+        app.buttons.matching(NSPredicate(format: "label == 'Reset All Settings'")).allElementsBoundByIndex.last { $0.isHittable }!.tap()
         // Settings again from the top (it's longer than one screen; General
         // is otherwise under the navigation bar, and a swipe down closes it).
+        app.navigationBars["Transfer or Reset"].buttons.element(boundBy: 0).tap()
         button("Done").tap()
+        app.buttons["Settings"].tap()
+        app.buttons["General"].tap()
+        Host.until("the nickname gone") { (app.textFields["Nickname"].value as? String) ?? "" == "Nickname" || (app.textFields["Nickname"].value as? String) == "" }
+    }
+
+    /// Settings → Transfer or Reset → Erase All Data & Settings: asked
+    /// twice, then the app starts again as a fresh install (the welcome,
+    /// no servers, settings as at first).
+    func testEraseAllDataAndSettings() {
+        app.buttons["Settings"].tap()
+        app.buttons["General"].tap()
+        let nick = app.textFields["Nickname"]
+        waitFor(nick, "the nickname")
+        replace(nick, with: "Someone")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.swipeUp()
+        app.buttons["Transfer or Reset"].tap()
+        // The three, as the iPhone's own Settings.
+        for b in ["Backup and Restore", "Reset All Settings", "Erase All Data & Settings"] {
+            XCTAssertTrue(app.buttons[b].exists, "\(b) offered")
+        }
+        app.buttons["Erase All Data & Settings"].tap()
+        let cont = app.buttons.matching(NSPredicate(format: "label == 'Continue'")).allElementsBoundByIndex.last { $0.isHittable }
+        XCTAssertNotNil(cont, "asked first")
+        cont?.tap()
+        let erase = app.buttons.matching(NSPredicate(format: "label == 'Erase All Data & Settings'")).allElementsBoundByIndex.last { $0.isHittable }
+        XCTAssertNotNil(erase, "asked again")
+        erase?.tap()
+        // A fresh start: the welcome sheet, no saved servers.
+        waitFor(app.navigationBars["Welcome to TeamTalk NG"], "the app as a new install", timeout: 20)
+        button("Done").tap()
+        waitFor(any("No servers yet. Add one with the Add server button."), "no servers left")
         app.buttons["Settings"].tap()
         app.buttons["General"].tap()
         Host.until("the nickname gone") { (app.textFields["Nickname"].value as? String) ?? "" == "Nickname" || (app.textFields["Nickname"].value as? String) == "" }

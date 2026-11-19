@@ -122,8 +122,11 @@ enum Passwords {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
          kSecAttrAccount as String: account,
-         // Whether in iCloud Keychain or only on this device.
-         kSecAttrSynchronizable as String: kSecAttrSynchronizableAny]
+         // With iCloud sync on: whether in iCloud Keychain or only on this
+         // device. Off: only this device's (iCloud Keychain's copies are
+         // left alone, for other devices: deleting one there deletes it
+         // everywhere, and erasing this iPhone mustn't).
+         kSecAttrSynchronizable as String: (syncedServices.contains(service) && !ICloudSync.isOn) ? kCFBooleanFalse! : kSecAttrSynchronizableAny]
     }
 
     /// Whether a service's items go to iCloud Keychain now.

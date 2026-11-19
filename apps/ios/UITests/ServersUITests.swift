@@ -255,9 +255,10 @@ final class BackupUITests: NGTestCase {
         app.navigationBars["Backed pack"].buttons.element(boundBy: 0).tap()
         app.navigationBars["Sound packs"].buttons.element(boundBy: 0).tap()
         app.navigationBars["Sounds"].buttons.element(boundBy: 0).tap()
-        let screen = app.buttons["Backup and Restore"]
-        if !screen.waitForExistence(timeout: 3) { app.swipeUp() }
-        screen.tap()
+        let transfer = app.buttons["Transfer or Reset"]
+        if !transfer.waitForExistence(timeout: 3) { app.swipeUp() }
+        transfer.tap()
+        app.buttons["Backup and Restore"].tap()
         for part in ["Servers", "Server passwords", "Settings", "Sound packs"] {
             XCTAssertTrue(app.switches[part].exists, "the \(part) switch")
         }
@@ -270,9 +271,10 @@ final class BackupUITests: NGTestCase {
         if close.waitForExistence(timeout: 3) { close.tap() } else { shared.swipeDown() }
         if !shared.waitForNonExistence(timeout: 3) { shared.swipeDown() }
         XCTAssertTrue(shared.waitForNonExistence(timeout: 5), "the share sheet closed")
-        let back = app.navigationBars["Backup and Restore"].buttons["Settings"]
-        waitFor(back, "the way back to Settings")
+        let back = app.navigationBars["Backup and Restore"].buttons["Transfer or Reset"]
+        waitFor(back, "the way back to Transfer or Reset")
         back.tap()
+        app.navigationBars["Transfer or Reset"].buttons["Settings"].tap()
         let done = button("Done")
         waitFor(done, "Settings' Done")
         done.tap()
