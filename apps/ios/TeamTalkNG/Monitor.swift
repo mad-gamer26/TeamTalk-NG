@@ -465,18 +465,133 @@ final class MonitorStore {
     // MARK: Servers
 
     /// Monitors one of the saved servers. Returns why not, or nil.
-    func add(_ s: SavedServer) async -> String? {
+    /// How a new monitored server starts: the fields the add screen fills in.
+    struct NewServerSettings {
+        var nickname: String
+        var statusMessage: String
+        var gender: Gender
+        var channel: String
+        var channelPassword: String
+    }
+
+    /// What adding `s` starts with (the owner's order): the nickname saved
+    /// with the server, else the Monitor default, else General's; status
+    /// message and gender the Monitor default, else General's (a default
+    /// gender of None is General's); the server's own channel.
+    func newServerSettings(for s: SavedServer) -> NewServerSettings {
+        let d = Self.defaults
+        let nickname = [s.nickname, d.nickname, app.nickname].first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
+        return NewServerSettings(nickname: nickname,
+                                 statusMessage: d.statusMessage.isEmpty ? app.statusMessage : d.statusMessage,
+                                 gender: d.gender ?? app.gender,
+                                 channel: s.joinChannel, channelPassword: s.channelPassword)
+    }
+
+    /// Starts monitoring a saved server with these settings. Why not, or nil.
+    func add(_ s: SavedServer, _ n: NewServerSettings) async -> String? {
         let input = MonitorServerInput(
             name: s.title, host: s.host, tcpPort: s.tcpPort, encrypted: s.encrypted,
-            nickname: s.nickname.isEmpty ? app.nickname : s.nickname, username: s.username,
-            password: Passwords.get(s.id), statusMsg: "", statusMode: Gender.monitorBits(app.gender), channel: "",
-            channelPassword: "", enabled: true)
-        guard own != nil || Self.loadOwn() != nil || hosted else { return "Choose a Monitor first: Settings → Monitor." }
+            nickname: n.nickname, username: s.username,
+            password: Passwords.get(s.id), statusMsg: n.statusMessage, statusMode: Gender.monitorBits(n.gender), channel: n.channel,
+            channelPassword: n.channelPassword, enabled: true)
+        guard own != nil || Self.loadOwn() != nil || hosted else { return "Choose a Monitor first, under Which Monitor." }
         guard let r = await call(registering: true, { try $0.addServer(server: input) }) else { return problem ?? "Your Monitor can't be reached." }
         switch r {
         case .success: await refresh(); return nil
         case .failure(let e): return NGAccountStore.words(e)
         }
+    }
+
+    // MARK: Default settings for new servers
+
+    /// The Monitor's defaults (on this iPhone, synced with your settings):
+    /// empty fields, and gender nil (None), use General's.
+    struct Defaults {
+        var nickname = ""
+        var statusMessage = ""
+        var gender: Gender?
+    }
+
+    static var defaults: Defaults {
+        get {
+            let u = UserDefaults.standard
+            let g: Gender? = switch u.string(forKey: "monitorDefaultGender") {
+            case "male": .male
+            case "female": .female
+            case "neutral": .neutral
+            default: nil
+            }
+            return Defaults(nickname: u.string(forKey: "monitorDefaultNickname") ?? "",
+                            statusMessage: u.string(forKey: "monitorDefaultStatus") ?? "", gender: g)
+        }
+        set {
+            let u = UserDefaults.standard
+            u.set(newValue.nickname, forKey: "monitorDefaultNickname")
+            u.set(newValue.statusMessage, forKey: "monitorDefaultStatus")
+            let g: String = switch newValue.gender {
+            case .male?: "male"
+            case .female?: "female"
+            case .neutral?: "neutral"
+            default: ""
+            }
+            u.set(g, forKey: "monitorDefaultGender")
+        }
+    }
+
+    // MARK: Notification settings (kept by the Monitor)
+
+    /// The Monitor's notification settings for this iPhone (TeamTalk NG's
+    /// Monitor: this iPhone's own; your own Monitor: shared by the phones
+    /// paired with it).
+    struct NotificationPrefs: Codable, Equatable {
+        var logins = "all"
+        var logouts = "all"
+        var watched: [String] = []
+        var privateMessages = true
+        var channelMessages = "mentions"
+        var mentionWords: [String] = []
+        var broadcasts = true
+        var connection = true
+        var mutedServers: [Int64] = []
+        var mutedUntil: Int64?
+        var ignored: [String] = []
+
+        enum CodingKeys: String, CodingKey {
+            case logins, logouts, watched, broadcasts, connection, ignored
+            case privateMessages = "private_messages", channelMessages = "channel_messages", mentionWords = "mention_words"
+            case mutedServers = "muted_servers", mutedUntil = "muted_until"
+        }
+
+        init() {}
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            logins = (try? c.decode(String.self, forKey: .logins)) ?? "all"
+            logouts = (try? c.decode(String.self, forKey: .logouts)) ?? "all"
+            watched = (try? c.decode([String].self, forKey: .watched)) ?? []
+            privateMessages = (try? c.decode(Bool.self, forKey: .privateMessages)) ?? true
+            channelMessages = (try? c.decode(String.self, forKey: .channelMessages)) ?? "mentions"
+            mentionWords = (try? c.decode([String].self, forKey: .mentionWords)) ?? []
+            broadcasts = (try? c.decode(Bool.self, forKey: .broadcasts)) ?? true
+            connection = (try? c.decode(Bool.self, forKey: .connection)) ?? true
+            mutedServers = (try? c.decode([Int64].self, forKey: .mutedServers)) ?? []
+            mutedUntil = try? c.decode(Int64.self, forKey: .mutedUntil)
+            ignored = (try? c.decode([String].self, forKey: .ignored)) ?? []
+        }
+    }
+
+    /// Reads them from the Monitor; nil when it can't be reached.
+    func notificationPrefs() async -> NotificationPrefs? {
+        guard case .success(let json)? = await call({ try $0.notificationPrefs() }) else { return nil }
+        return try? JSONDecoder().decode(NotificationPrefs.self, from: Data(json.utf8))
+    }
+
+    /// Saves them on the Monitor. Why not, or nil.
+    func setNotificationPrefs(_ p: NotificationPrefs) async -> String? {
+        guard let d = try? JSONEncoder().encode(p) else { return "They couldn't be saved." }
+        let json = String(decoding: d, as: UTF8.self)
+        guard let r = await call(registering: true, { try $0.setNotificationPrefs(prefs: json) }) else { return problem ?? "Your Monitor can't be reached." }
+        if case .failure(let e) = r { return NGAccountStore.words(e) }
+        return nil
     }
 
     func remove(_ s: MonitorServer) async {

@@ -14,11 +14,9 @@ final class HostedMonitorUITests: NGTestCase {
         more("Disconnect")
         let admins = { ((Host.state()["users"] as? [[String: Any]]) ?? []).filter { $0["username"] as? String == "admin" }.count }
 
-        app.buttons["Settings"].tap()
-        let link = app.buttons["settings-monitor"]
-        if !link.waitForExistence(timeout: 3) { app.swipeUp() }
-        link.tap()
-        // Both offered, your own first and recommended.
+        openMonitor()
+        // Both offered (under Which Monitor, at the bottom), your own first and recommended.
+        bottom(app.buttons["monitor-use-own"])
         waitFor(app.buttons["monitor-use-own"], "setting up your own offered")
         XCTAssertTrue(app.buttons["monitor-use-own"].label.contains("recommended"), app.buttons["monitor-use-own"].label)
         app.buttons["monitor-use-hosted"].tap()
@@ -31,17 +29,7 @@ final class HostedMonitorUITests: NGTestCase {
         run("clearMonitor", says: "Monitor cleared")
         Thread.sleep(forTimeInterval: 3)
         let before = admins()
-        button("Monitor a server").tap()
-        waitFor(app.navigationBars["Monitor a server"], "the servers to choose from")
-        let rows = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'"))
-        let end = Date().addingTimeInterval(15)
-        var row = rows.firstMatch
-        while Date() < end {
-            if let hit = (0..<rows.count).map({ rows.element(boundBy: $0) }).first(where: { $0.isHittable }) { row = hit; break }
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-        row.tap()
-        waitFor(app.navigationBars["Monitor"], "back in Settings → Monitor")
+        addToMonitor()
         Host.until("the hosted Monitor logged in", timeout: 30) { admins() == before + 1 }
         // Bob writes to it privately: kept by the hosted Monitor, and moved
         // with the server.
@@ -54,6 +42,7 @@ final class HostedMonitorUITests: NGTestCase {
 
         // Moving to your own Monitor: the server goes with it.
         guard let codeLink else { throw XCTSkip("no ng-monitor on the Mac (see scripts/test-ios-ui.sh)") }
+        bottom(app.buttons["monitor-use-own"])
         app.buttons["monitor-use-own"].tap()
         waitFor(app.navigationBars["Set up your Monitor"], "the pairing screen")
         let note = any("Pairing moves the servers TeamTalk NG's Monitor watches to your own")
@@ -66,7 +55,8 @@ final class HostedMonitorUITests: NGTestCase {
         }
         replace(app.textFields["own-monitor-code"], with: code)
         app.buttons["own-monitor-pair"].tap()
-        waitFor(app.navigationBars["Monitor"], "back in Settings → Monitor", timeout: 30)
+        waitFor(app.navigationBars["Monitor"], "back on the Monitor screen", timeout: 30)
+        bottom(app.buttons["Forget this Monitor"])
         waitFor(app.buttons["Forget this Monitor"], "your own Monitor in use")
         XCTAssertFalse(app.buttons["monitor-use-hosted"].exists)
         // The same server, watched by your own Monitor now (the hosted one
@@ -82,9 +72,10 @@ final class HostedMonitorUITests: NGTestCase {
 
         // And back: the server moves to the hosted Monitor again, your own
         // stops watching it (still one monitor there).
+        bottom(app.buttons["monitor-move-to-hosted"])
         app.buttons["monitor-move-to-hosted"].tap()
         app.buttons.matching(NSPredicate(format: "label == %@", "Move to TeamTalk NG's Monitor")).allElementsBoundByIndex.last { $0.isHittable }?.tap()
-        waitFor(app.buttons["monitor-use-own"], "the hosted Monitor in use again", timeout: 30)
+        Host.until("the hosted Monitor in use again", timeout: 30) { self.app.buttons["monitor-use-own"].exists }
         waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch, "the server moved to the hosted Monitor", timeout: 30)
         Thread.sleep(forTimeInterval: 5)
         Host.until("one monitor there: the hosted one", timeout: 30) { admins() == before + 1 }
@@ -92,31 +83,26 @@ final class HostedMonitorUITests: NGTestCase {
         seesKept("Before moving back")
     }
 
-    /// From Settings → Monitor: the watched server's screen, Bob's private
+    /// Scrolled down to `e` (Which Monitor is at the bottom).
+    private func bottom(_ e: XCUIElement) {
+        for _ in 0..<5 where !(e.exists && e.isHittable) { app.swipeUp() }
+    }
+
+    /// From the Monitor screen: the watched server's screen, Bob's private
     /// conversation shows `text` (kept by the Monitor in use); then back.
     private func seesKept(_ text: String) {
-        app.navigationBars["Monitor"].buttons.element(boundBy: 0).tap()
-        let done = button("Done")
-        if !done.waitForExistence(timeout: 3) { app.swipeDown() }
-        done.tap()
-        app.buttons["Monitor"].tap()
-        let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
-        waitFor(watched, "the server on the Monitor's list", timeout: 30)
-        watched.tap()
+        for _ in 0..<5 where !app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch.isHittable { app.swipeDown() }
+        visibleRow("the server on the Monitor screen", timeout: 30).tap()
         waitFor(any("Bob"), "Bob, through the Monitor", timeout: 30)
         action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
         waitFor(any(text), "\(text): kept, and moved with the server", timeout: 20)
-        // Back to Settings → Monitor.
-        for _ in 0..<4 where !app.buttons["Settings"].isHittable {
+        // Back to the Monitor screen.
+        for _ in 0..<4 where !app.navigationBars["Monitor"].exists || app.buttons["Bob"].exists {
             if button("Done").exists { button("Done").tap(); continue }
             app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
             Thread.sleep(forTimeInterval: 0.5)
         }
-        app.buttons["Settings"].tap()
-        let link = app.buttons["settings-monitor"]
-        if !link.waitForExistence(timeout: 3) { app.swipeUp() }
-        link.tap()
-        waitFor(app.navigationBars["Monitor"], "Settings → Monitor again")
+        waitFor(app.navigationBars["Monitor"], "the Monitor screen again")
     }
 }
 

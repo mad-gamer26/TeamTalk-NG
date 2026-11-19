@@ -4,7 +4,7 @@ import XCTest
 final class ServersUITests: NGTestCase {
     @MainActor
     func testTypedServerIsValidatedEditedAndDeleted() {
-        app.buttons["Add server"].tap()
+        app.buttons["Server List Actions"].tap()
         button("Type its details").tap()
         let save = button("Save")
         waitFor(save, "the editor")
@@ -230,7 +230,7 @@ final class BackupUITests: NGTestCase {
     @MainActor
     func testABackupFileRestoresServersAndSoundPacks() {
         // A server, and a sound pack of my own.
-        app.buttons["Add server"].tap()
+        app.buttons["Server List Actions"].tap()
         button("Type its details").tap()
         let name = app.textFields["Name"]
         waitFor(name, "the editor")
@@ -320,7 +320,7 @@ final class BackupUITests: NGTestCase {
 final class ServerListOrderUITests: NGTestCase {
     @MainActor
     func add(_ name: String) {
-        app.buttons["Add server"].tap()
+        app.buttons["Server List Actions"].tap()
         button("Type its details").tap()
         let n = app.textFields["Name"]
         waitFor(n, "the editor")

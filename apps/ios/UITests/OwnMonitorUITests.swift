@@ -28,10 +28,9 @@ final class OwnMonitorUITests: NGTestCase {
         more("Disconnect")
         let admins = { ((Host.state()["users"] as? [[String: Any]]) ?? []).filter { $0["username"] as? String == "admin" }.count }
 
-        app.buttons["Settings"].tap()
-        let link = app.buttons["settings-monitor"]
-        if !link.waitForExistence(timeout: 3) { app.swipeUp() }
-        link.tap()
+        openMonitor()
+        let setUp = app.buttons["monitor-use-own"]
+        for _ in 0..<4 where !setUp.isHittable { app.swipeUp() }
         XCTAssertFalse(app.buttons["Monitor a server"].exists, "no servers to add before there's a Monitor")
         app.buttons["monitor-use-own"].tap()
         waitFor(app.navigationBars["Set up your Monitor"], "the pairing screen")
@@ -47,7 +46,7 @@ final class OwnMonitorUITests: NGTestCase {
         // The right one.
         replace(field, with: freshCode())
         app.buttons["own-monitor-pair"].tap()
-        waitFor(app.navigationBars["Monitor"], "back in Settings → Monitor", timeout: 30)
+        waitFor(app.navigationBars["Monitor"], "back on the Monitor screen", timeout: 30)
         waitFor(any(name), "its own Monitor in use")
         XCTAssertTrue(app.buttons["Forget this Monitor"].exists)
 
@@ -57,21 +56,13 @@ final class OwnMonitorUITests: NGTestCase {
         // Counted once what earlier tests left has logged out.
         Thread.sleep(forTimeInterval: 3)
         let before = admins()
-        button("Monitor a server").tap()
-        waitFor(app.navigationBars["Monitor a server"], "the servers to choose from")
-        let rows = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'"))
-        let end = Date().addingTimeInterval(15)
-        var row = rows.firstMatch
-        while Date() < end {
-            if let hit = (0..<rows.count).map({ rows.element(boundBy: $0) }).first(where: { $0.isHittable }) { row = hit; break }
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-        row.tap()
-        waitFor(app.navigationBars["Monitor"], "back in Settings → Monitor")
+        addToMonitor()
         Host.until("my own Monitor logged in", timeout: 30) { admins() == before + 1 }
 
         // Forgotten: no Monitor, setting one up offered again.
-        button("Forget this Monitor").tap()
+        let forget = button("Forget this Monitor")
+        for _ in 0..<4 where !forget.isHittable { app.swipeUp() }
+        forget.tap()
         button("Forget it").tap()
         waitFor(app.buttons["monitor-use-own"], "setting up a Monitor offered again")
         XCTAssertFalse(app.buttons["Monitor a server"].exists, "no servers without a Monitor")

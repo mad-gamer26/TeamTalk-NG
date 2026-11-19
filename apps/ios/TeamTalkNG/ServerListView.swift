@@ -16,6 +16,7 @@ struct ServerListView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: SavedServer?
     @State private var showSettings = false
+    @State private var showMonitor = false
     @State private var shownServerList = false
     @State private var showPublic = false
     @State private var firstRun = false
@@ -45,27 +46,8 @@ struct ServerListView: View {
         @Bindable var model = model
         NavigationStack(path: $model.navigation) {
             List {
-                Section {
-                    NavigationLink {
-                        MonitorListView()
-                    } label: {
-                        // A label with an empty value read as nothing to
-                        // VoiceOver: the name always, the count when any.
-                        let unread = model.monitor.unread
-                        HStack {
-                            Label("Monitor", systemImage: "eye")
-                            Spacer()
-                            if unread > 0 {
-                                Text("\(unread) unread").foregroundStyle(.secondary)
-                            }
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Monitor")
-                        .accessibilityValue(unread > 0 ? "\(unread) unread private messages" : "")
-                    }
-                }
                 if model.servers.isEmpty {
-                    Text("No servers yet. Add one with the Add server button.")
+                    Text("No servers yet. Add one from Server List Actions.")
                         .foregroundStyle(.secondary)
                 } else if shownServers.isEmpty {
                     Text("No servers match \"\(search)\".")
@@ -94,7 +76,7 @@ struct ServerListView: View {
                     Button("Settings", systemImage: "gearshape") { showSettings = true }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu("Add server", systemImage: "plus") {
+                    Menu("Server List Actions", systemImage: "plus") {
                         Button("Type its details") { editing = SavedServer() }
                         Button("Public servers and join codes") { showPublic = true }
                         Button("Import a .tt file") { importing = true }
@@ -103,9 +85,13 @@ struct ServerListView: View {
                             Button("Save the Server List as a File") { presentShareSheet([ttFileURL(for: model.servers)]) }
                         }
                         Button("Open a tt:// link") { linking = true }
+                        // Everything about the Monitor, in one place.
+                        Button("Monitor") { showMonitor = true }
                     }
+                    .accessibilityLabel("Server List Actions")
                     // Its items as VoiceOver actions too, reversed.
                     .accessibilityActions {
+                        Button("Monitor") { showMonitor = true }
                         Button("Open a tt:// link") { linking = true }
                         if !model.servers.isEmpty {
                             Button("Save the Server List as a File") { presentShareSheet([ttFileURL(for: model.servers)]) }
@@ -116,6 +102,7 @@ struct ServerListView: View {
                     }
                 }
             }
+            .navigationDestination(isPresented: $showMonitor) { MonitorListView() }
             .sheet(item: $editing) { server in
                 ServerEditView(server: server)
             }
@@ -385,7 +372,6 @@ struct SettingsView: View {
                     NavigationLink("Recording") { RecordingSettingsView() }
                     NavigationLink("Live Activities") { LiveActivitySettingsView() }
                     NavigationLink("iCloud sync") { ICloudSyncView() }
-                    NavigationLink("Monitor") { MonitorSettingsView() }.accessibilityIdentifier("settings-monitor")
                     NavigationLink {
                         NGAccountView()
                     } label: {

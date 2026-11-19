@@ -9,7 +9,7 @@ final class PasswordsUITests: NGTestCase {
     }
 
     func testAPasswordFieldShowsItsPasswordWithItsSwitch() {
-        button("Add server").tap()
+        button("Server List Actions").tap()
         button("Type its details").tap()
         let hidden = app.secureTextFields["Password"]
         waitFor(hidden, "the password, hidden")
