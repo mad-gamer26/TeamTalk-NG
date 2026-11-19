@@ -150,6 +150,15 @@ impl NgAccount {
         r.map(|_| ())
     }
 
+    /// Deletes the account for good (its password confirms it): its
+    /// sessions end, and packs it published stay in the catalog owned by
+    /// nobody (delete them first to take them out).
+    pub fn delete_account(&mut self, password: &str) -> Result<()> {
+        self.post("/v1/account/delete", &json!({ "password": password }))?;
+        self.token = None;
+        Ok(())
+    }
+
     // MARK: Sound packs (backed up privately; published to the catalog)
 
     /// The account's packs.

@@ -139,4 +139,36 @@ final class NGAccountScreensUITests: NGTestCase {
         XCTAssertNil(api("POST", "v1/account/signin", ["email": email, "password": "the second password", "install_id": "check3", "device_name": "Check"])["token"],
                      "the old one doesn't")
     }
+
+    /// Deleting the account in the app (Apple requires it): its password
+    /// asked for (a wrong one refused, said), its packs taken out too, and
+    /// then the account and its sessions are gone.
+    func testDeletingTheAccountAndItsPacks() {
+        let email = unique("leaving")
+        let token = accountMadeElsewhere(email, "the leaving password")
+        let pack = api("POST", "v1/packs", ["local_id": "leaving-pack", "name": "Leaving pack"], token: token)["id"] as? String
+        XCTAssertNotNil(pack, "a pack of the account's")
+        openAccount()
+        signIn(email, "the leaving password")
+        let delete = button("Delete NG Account")
+        for _ in 0..<3 where !delete.isHittable { app.swipeUp() }
+        delete.tap()
+        waitFor(app.navigationBars["Delete NG Account"], "asked to confirm")
+        XCTAssertTrue(app.switches["Take my packs out of the catalog"].exists, "taking the packs out offered")
+        // Shown (the Simulator loses keys typed into a hidden password).
+        let show = app.switches["Show password"]
+        let knob = show.switches.firstMatch
+        (knob.exists ? knob : show).tap()
+        type(app.textFields["Password"], "not the password")
+        app.navigationBars["Delete NG Account"].buttons["Delete"].tap()
+        waitFor(any("That password isn't right"), "a wrong password refused, said", timeout: 15)
+        XCTAssertNotNil(api("POST", "v1/account/signin", ["email": email, "password": "the leaving password", "install_id": "check", "device_name": "Check"])["token"],
+                        "still there after the wrong password")
+        replace(app.textFields["Password"], with: "the leaving password")
+        app.navigationBars["Delete NG Account"].buttons["Delete"].tap()
+        waitFor(app.textFields["Email"], "signed out: the sign-in form again", timeout: 20)
+        let signIn = api("POST", "v1/account/signin", ["email": email, "password": "the leaving password", "install_id": "check2", "device_name": "Check"])
+        XCTAssertNil(signIn["token"], "the account is gone: \(signIn)")
+        XCTAssertNil(api("GET", "v1/packs", token: token)["packs"], "its other sessions ended too")
+    }
 }

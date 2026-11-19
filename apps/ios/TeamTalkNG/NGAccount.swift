@@ -48,7 +48,7 @@ final class NGAccountStore {
         return await Task.detached { Result { try f(c) } }.value
     }
 
-    static func words(_ e: Error) -> String {
+    nonisolated static func words(_ e: Error) -> String {
         switch e as? NgError {
         case .Network(let m), .SignedOut(let m), .Unexpected(let m): m
         case .Refused(_, let m): m
@@ -116,6 +116,25 @@ final class NGAccountStore {
     func signOut() async {
         _ = await call { try $0.signOut() }
         forget()
+    }
+
+    /// Deletes the NG Account for good (its password confirms it). With
+    /// `packsToo`, the packs it published leave the catalog first;
+    /// otherwise they stay, owned by nobody. Why not, or nil.
+    func deleteAccount(password: String, packsToo: Bool) async -> String? {
+        if packsToo {
+            switch await call({ try $0.myPacks() }) {
+            case .failure(let e): return Self.words(e)
+            case .success(let packs):
+                for p in packs {
+                    if case .failure(let e) = await call({ try $0.deletePack(id: p.id) }) { return Self.words(e) }
+                }
+            }
+        }
+        switch await call({ try $0.deleteAccount(password: password) }) {
+        case .success: forget(); return nil
+        case .failure(let e): return Self.words(e)
+        }
     }
 
     private func forget() {

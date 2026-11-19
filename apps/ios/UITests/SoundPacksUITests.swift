@@ -244,6 +244,65 @@ final class SoundPacksUITests: NGTestCase {
         waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Catalog pack'")).firstMatch, "listed among my packs")
     }
 
+    /// Someone else's pack in the catalog: reported (no account needed,
+    /// a reason chosen), its publisher blocked (their packs hidden, said),
+    /// then unblocked under Blocked publishers. The contact is there too.
+    func testReportingAPackAndBlockingItsPublisher() throws {
+        let env = ProcessInfo.processInfo.environment
+        let email = try XCTUnwrap(env["NG_EMAIL"]), password = try XCTUnwrap(env["NG_PASSWORD"])
+        let token = try XCTUnwrap(api("POST", "v1/account/signin", json: ["email": email, "password": password, "install_id": "publisher", "device_name": "Publisher"])["token"] as? String)
+        let author = "Author \(UUID().uuidString.prefix(4))"
+        let name = "Reported pack \(UUID().uuidString.prefix(4))"
+        let pack = try XCTUnwrap(api("POST", "v1/packs", json: ["local_id": "report-test-\(UUID().uuidString.prefix(6))", "name": name], token: token)["id"] as? String)
+        var wav = Data("RIFF".utf8) + Data([0x24, 0, 0, 0]) + Data("WAVEfmt ".utf8)
+        wav.append(Data(count: 2000))
+        api("PUT", "v1/packs/\(pack)/files/logged_on.wav", raw: wav, token: token)
+        api("PATCH", "v1/packs/\(pack)", json: ["name": name, "author": author, "public": true], token: token)
+
+        app.buttons["Settings"].tap()
+        let sounds = app.buttons["Sounds"]
+        if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
+        sounds.tap()
+        button("Get sound packs").tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        for _ in 0..<10 where !row.waitForExistence(timeout: 2) {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            button("Get sound packs").tap()
+        }
+        waitFor(row, "the pack in Get sound packs")
+        // Who to write to about a pack.
+        let contact = app.buttons["Contact TeamTalk NG"]
+        for _ in 0..<3 where !contact.exists { app.swipeUp() }
+        XCTAssertTrue(contact.exists, "the contact offered")
+        XCTAssertTrue(any("mattdovi@icloud.com").exists, "the address said")
+
+        // Reported, with a reason: thanked.
+        run("announced", says: "Announced")
+        action("Report this pack", on: row)
+        let reason = app.buttons["It's offensive or abusive"]
+        waitFor(reason, "the reasons to choose from")
+        reason.tap()
+        Thread.sleep(forTimeInterval: 2)
+        run("announced", says: "Announced: \(name) reported. Thank you.")
+
+        // Its publisher blocked: hidden, said; then unblocked.
+        action("Block \(author)", on: row)
+        let block = app.buttons.matching(NSPredicate(format: "label == 'Block'")).allElementsBoundByIndex.last { $0.isHittable }
+        try XCTUnwrap(block, "asked to confirm").tap()
+        Host.until("the pack hidden", timeout: 10) { !row.exists }
+        XCTAssertTrue(any("Packs by publishers you blocked are hidden.").exists, "said that some are hidden")
+        let blocked = app.buttons["Blocked publishers"]
+        for _ in 0..<3 where !blocked.isHittable { app.swipeUp() }
+        blocked.tap()
+        let who = app.buttons[author]
+        waitFor(who, "the publisher listed as blocked")
+        who.tap()
+        Host.until("unblocked", timeout: 10) { !who.exists }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        waitFor(row, "the pack shown again")
+        api("DELETE", "v1/packs/\(pack)", token: token)
+    }
+
     /// A pack from a link to its .zip: downloaded and imported.
     func testImportingAPackFromALink() {
         let link = Host.env["PACK_URL"] ?? ""

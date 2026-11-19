@@ -73,7 +73,7 @@ impl World {
             dir.join("ngmon.toml"),
             format!(
                 "listen = \"127.0.0.1:{port}\"\nclient_name = \"Own Monitor test\"\ndata_dir = \"data\"\npacks_dir = \"packs\"\n\
-                 secret_key_file = \"secret.key\"\n[push]\nmode = \"none\"\n[mail]\nmode = \"none\"\n"
+                 secret_key_file = \"secret.key\"\nallow_private_hosts = true\n[push]\nmode = \"none\"\n[mail]\nmode = \"none\"\n"
             ),
         )
         .unwrap();
@@ -348,4 +348,77 @@ fn unpaired_impostors_and_a_stopped_monitor() {
     assert!(e.contains("unpaired") || e.contains("closed"), "{e}");
     let e = message(mon.servers().unwrap_err());
     assert!(e.contains("didn't accept this iPhone"), "{e}");
+}
+
+/// Moving a server between your own Monitor and the hosted one (the same
+/// test service plays the hosted Monitor): its settings, passwords and
+/// private conversations go with it, and the phone's notification settings
+/// can be copied across.
+#[test]
+fn a_server_moves_between_monitors_with_its_history() {
+    let Some(w) = World::start() else { return };
+    let server = tt::Server::start();
+    let key = new_phone_key();
+    let (code, _waiting) = w.code();
+    let own = Monitor::own(&w.relay, pair_own_monitor(&w.relay, &code, "Test iPhone", &key).unwrap(), &key);
+    let id = own
+        .add_server(&MonitorServerInput {
+            name: "Moving".into(),
+            host: "127.0.0.1".into(),
+            tcp_port: server.port,
+            nickname: "Command Center".into(),
+            username: "alice".into(),
+            password: "alice-pw".into(),
+            status_msg: "watching".into(),
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    until("logged in at home", || {
+        own.servers().unwrap().into_iter().find(|s| s.id == id && s.status == "logged_in")
+    });
+    let me = own.view(id).unwrap().my_user_id;
+    let bob = tt::TestClient::logged_in(&server, "bob");
+    bob.client
+        .send_message(ttng_core::MessageTarget::User(me as i32), "Are you there?")
+        .unwrap();
+    until("Bob's message at home", || {
+        own.conversations(Some(id)).unwrap().into_iter().find(|c| c.username == "bob")
+    });
+
+    // To the hosted Monitor: export from home, import there.
+    let mut hosted = Monitor::new(&w.relay, None);
+    hosted.register("Test iPhone").unwrap();
+    let prefs = own.prefs().unwrap();
+    hosted.set_prefs(&prefs).unwrap();
+    let moved = own.export_server(id).unwrap();
+    assert!(moved.contains("alice-pw"), "the password goes with it");
+    let hid = hosted.import_server(&moved).unwrap();
+    own.remove_server(id).unwrap();
+    let cfg = hosted.server_config(hid).unwrap();
+    assert_eq!((cfg.nickname.as_str(), cfg.status_msg.as_str()), ("Command Center", "watching"));
+    until("logged in at the hosted Monitor", || {
+        hosted.servers().unwrap().into_iter().find(|s| s.id == hid && s.status == "logged_in")
+    });
+    let c = hosted
+        .conversations(Some(hid))
+        .unwrap()
+        .into_iter()
+        .find(|c| c.username == "bob")
+        .expect("Bob's conversation moved");
+    assert_eq!(c.last_text, "Are you there?");
+    let texts: Vec<String> = hosted.messages(hid, c.id, None).unwrap().into_iter().map(|m| m.text).collect();
+    assert_eq!(texts, ["Are you there?"]);
+
+    // And back home again.
+    let back = own.import_server(&hosted.export_server(hid).unwrap()).unwrap();
+    hosted.remove_server(hid).unwrap();
+    until("logged in at home again", || {
+        own.servers().unwrap().into_iter().find(|s| s.id == back && s.status == "logged_in")
+    });
+    assert!(
+        own.conversations(Some(back)).unwrap().iter().any(|c| c.username == "bob" && c.last_text == "Are you there?"),
+        "the history came back"
+    );
+    drop(bob);
 }

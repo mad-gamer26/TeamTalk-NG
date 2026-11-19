@@ -49,6 +49,13 @@ final class MonitorStore {
             }
         }
         guard hosted else { return nil }
+        return await hostedClient(registering: registering)
+    }
+
+    /// A client for the hosted Monitor (registering this install first when
+    /// `registering` and it has no registration yet), whether or not it's
+    /// the one in use: moving servers to it needs it before switching.
+    private func hostedClient(registering: Bool) async -> MonitorClient? {
         let token = Passwords.secret(Self.hostedService, "token")
         if !token.isEmpty {
             // A registration made on another device: its notification key too.
@@ -90,35 +97,103 @@ final class MonitorStore {
         monitorChanged()
     }
 
-    /// From your own Monitor to the hosted one: the servers it watches for
-    /// this phone move across (the passwords saved here), it stops
-    /// watching them (it keeps running on your computer; nothing logs in
-    /// twice), and this phone forgets the pairing. Returns servers that
-    /// couldn't move, in words, or nil.
+    /// From your own Monitor to the hosted one. Every server your Monitor
+    /// watches moves (its settings, passwords and private conversations,
+    /// and your notification settings); all are added to the hosted Monitor
+    /// before any leaves yours, and if one can't be added nothing changes.
+    /// Then this phone forgets the pairing (your Monitor keeps running on
+    /// your computer, watching nothing for it). Why not, or nil.
     func moveToHosted() async -> String? {
-        guard own != nil else { useHosted(); return nil }
-        await refresh()
-        let moving = app.servers.filter { monitor(of: $0) != nil }
-        for saved in moving {
-            if let m = monitor(of: saved) { await remove(m) }
+        if own == nil { own = Self.loadOwn() }
+        guard let o = own else { useHosted(); return nil }
+        let from: MonitorClient
+        do { from = try MonitorClient.own(relay: Service.base, monitor: o, phoneKey: Self.phoneKey) } catch { return NGAccountStore.words(error) }
+        guard let to = await hostedClient(registering: true) else { return problem ?? "TeamTalk NG's Monitor can't be reached." }
+        if let why = await moveServers(from: from, to: to, toName: "TeamTalk NG's Monitor") {
+            await refresh()
+            return why
         }
         Passwords.setSecret("", Self.ownService, "monitor")
         own = nil
         pushKeySaved = false
         Service.forgetPushKey()
-        useHosted()
-        var failed: [String] = []
-        for saved in moving {
-            if let why = await add(saved) { failed.append("\(saved.title): \(why)") }
+        hosted = true
+        UserDefaults.standard.set(true, forKey: "monitorHosted")
+        problem = nil
+        monitorChanged()
+        return nil
+    }
+
+    /// Moves every server `from` watches to `to`: added there first (with
+    /// its passwords and conversations, from `export`; an older Monitor
+    /// without it gives its settings, and the password saved on this
+    /// iPhone), then removed from `from` once all are in. If any can't be
+    /// added, those added are taken out again and nothing changes. The
+    /// phone's notification settings are copied too. Why not, or nil.
+    private func moveServers(from: MonitorClient, to: MonitorClient, toName: String) async -> String? {
+        // For an older Monitor without export: the passwords saved here,
+        // by host, port and username.
+        var kept: [String: (password: String, channelPassword: String)] = [:]
+        for sv in app.servers { kept[Self.key(sv.host, sv.tcpPort, sv.username)] = (Passwords.get(sv.id), sv.channelPassword) }
+        let saved = kept
+        let r: Result<[String], Error> = await Task.detached {
+            Result {
+                let list = try from.servers()
+                if let prefs = try? from.notificationPrefs() { try? to.setNotificationPrefs(prefs: prefs) }
+                var added: [(old: Int64, new: Int64)] = []
+                var failed: [String] = []
+                for s in list {
+                    do {
+                        let id: Int64
+                        do {
+                            id = try to.importServer(moved: try from.exportServer(serverId: s.id))
+                        } catch NgError.Refused(404, _) {
+                            // An older Monitor: no export. Its settings, and
+                            // the password saved here.
+                            let c = try from.serverConfig(serverId: s.id)
+                            guard let mine = saved[MonitorStore.key(s.host, s.tcpPort, s.username)] else {
+                                throw NgError.Unexpected(message: "this iPhone has no password for it (update your Monitor to move it with its own)")
+                            }
+                            id = try to.addServer(server: MonitorServerInput(
+                                name: s.name, host: s.host, tcpPort: s.tcpPort, encrypted: s.encrypted,
+                                nickname: c.nickname, username: s.username, password: mine.password,
+                                statusMsg: c.statusMsg, statusMode: c.statusMode, channel: c.channel,
+                                channelPassword: mine.channelPassword, enabled: c.enabled))
+                        }
+                        added.append((s.id, id))
+                    } catch {
+                        failed.append("\(s.name): \(NGAccountStore.words(error))")
+                    }
+                }
+                if !failed.isEmpty {
+                    for a in added { try? to.removeServer(serverId: a.new) }
+                    return failed
+                }
+                for a in added { try? from.removeServer(serverId: a.old) }
+                return []
+            }
+        }.value
+        switch r {
+        case .failure(let e): return NGAccountStore.words(e)
+        case .success(let failed) where !failed.isEmpty:
+            return "Nothing moved to \(toName), because these couldn't: " + failed.joined(separator: "; ")
+        case .success: return nil
         }
-        return failed.isEmpty ? nil : "Not moved: " + failed.joined(separator: "; ")
     }
 
     /// Stops using the hosted Monitor: its registration ends, so it logs out
-    /// of these servers and deletes them and their passwords there.
-    func stopHosted() async {
-        if let c = await client() {
-            _ = await Task.detached(operation: { Result { try c.forgetRegistration() } }).value
+    /// of these servers and deletes them, their passwords and conversations
+    /// there. Only once it says so does this iPhone forget the registration;
+    /// otherwise it keeps it (so it can try again), and says why.
+    func stopHosted() async -> String? {
+        if !Passwords.secret(Self.hostedService, "token").isEmpty, let c = await hostedClient(registering: false) {
+            if case .failure(let e) = await Task.detached(operation: { Result { try c.forgetRegistration() } }).value {
+                if case .SignedOut = e as? NgError {
+                    // Already gone there.
+                } else {
+                    return "TeamTalk NG's Monitor couldn't delete what it keeps: \(NGAccountStore.words(e)). Nothing changed; try again."
+                }
+            }
         }
         Passwords.setSecret("", Self.hostedService, "token")
         Passwords.setSecret("", Self.hostedService, "push key")
@@ -126,6 +201,7 @@ final class MonitorStore {
         UserDefaults.standard.set(false, forKey: "monitorHosted")
         if own == nil { Service.forgetPushKey() }
         monitorChanged()
+        return nil
     }
 
     /// Runs a call; failures in words (nil: it worked).
@@ -160,28 +236,37 @@ final class MonitorStore {
         return k
     }
 
-    /// Pairs with the Monitor showing `code`. Returns why not, or nil.
+    /// Pairs with the Monitor showing `code`. From the hosted Monitor, every
+    /// server it watches moves to your own first (settings, passwords,
+    /// conversations, notification settings; all or nothing), then the
+    /// hosted registration ends. Returns why not, or nil.
     func pairOwn(code: String) async -> String? {
         let relay = Service.base, name = UIDevice.current.name, key = Self.phoneKey
+        let m: OwnMonitor
         switch await Task.detached(operation: { Result { try ownMonitorPair(relay: relay, code: code, phoneName: name, phoneKey: key) } }).value {
-        case .failure(let e):
-            return NGAccountStore.words(e)
-        case .success(let m):
-            // One or the other: the hosted Monitor lets go (and deletes what
-            // it kept) once your own is paired.
-            let moving = hosted ? app.servers.filter { monitor(of: $0) != nil } : []
-            if hosted { await stopHosted() }
-            let stored = StoredOwn(id: m.monitorId, name: m.name, key: m.monitorKey.base64EncodedString())
-            if let d = try? JSONEncoder().encode(stored) { Passwords.setSecret(String(decoding: d, as: UTF8.self), Self.ownService, "monitor") }
-            own = m
-            problem = nil
-            pushKeySaved = false
-            monitorChanged()
-            // What the hosted Monitor watched, now watched by your own (the
-            // passwords saved on this iPhone).
-            for saved in moving { _ = await add(saved) }
-            return nil
+        case .failure(let e): return NGAccountStore.words(e)
+        case .success(let paired): m = paired
         }
+        if hosted, let from = await hostedClient(registering: false) {
+            let to: MonitorClient
+            do { to = try MonitorClient.own(relay: relay, monitor: m, phoneKey: key) } catch { return NGAccountStore.words(error) }
+            if let why = await moveServers(from: from, to: to, toName: "your Monitor") {
+                return why + " You're still using TeamTalk NG's Monitor; pair again with a new code to try again."
+            }
+            if let why = await stopHosted() {
+                // Moved, but the hosted copy isn't deleted yet: say so; the
+                // registration stays here to delete it later.
+                problem = why
+            }
+        }
+        let stored = StoredOwn(id: m.monitorId, name: m.name, key: m.monitorKey.base64EncodedString())
+        if let d = try? JSONEncoder().encode(stored) { Passwords.setSecret(String(decoding: d, as: UTF8.self), Self.ownService, "monitor") }
+        own = m
+        hosted = false
+        UserDefaults.standard.set(false, forKey: "monitorHosted")
+        pushKeySaved = false
+        monitorChanged()
+        return nil
     }
 
     /// Forgets the paired Monitor here (and on your other devices: the
@@ -379,6 +464,11 @@ final class MonitorStore {
         await refresh()
         if case .failure(let e) = r { return NGAccountStore.words(e) }
         return nil
+    }
+
+    /// A server's identity across Monitors: host (any case), port, username.
+    nonisolated static func key(_ host: String, _ port: UInt16, _ username: String) -> String {
+        "\(host.lowercased()):\(port):\(username)"
     }
 
     static func same(_ s: SavedServer, _ m: MonitorServer) -> Bool {

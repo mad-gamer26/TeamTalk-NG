@@ -23,6 +23,7 @@ private struct SignedInView: View {
     let email: String
     @State private var confirmSignOut = false
     @State private var changing = false
+    @State private var deleting = false
 
     var body: some View {
         let account = model.account
@@ -36,13 +37,66 @@ private struct SignedInView: View {
                 Button("Change password") { changing = true }
                 Button("Sign out", role: .destructive) { confirmSignOut = true }
             }
+            Section {
+                Button("Delete NG Account", role: .destructive) { deleting = true }
+            } footer: {
+                Text("Deletes your NG Account and everything it keeps on TeamTalk NG's service. Your packs stay on your devices.")
+            }
         }
+        .sheet(isPresented: $deleting) { DeleteAccountView(email: email) }
         .confirmationDialog("Sign out of NG Account?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await account.signOut() } }
         } message: {
             Text("Packs you published stay in the catalog. Sign in again to update or withdraw them.")
         }
         .sheet(isPresented: $changing) { ChangePasswordView() }
+    }
+}
+
+/// Deleting the NG Account: its password confirms it.
+private struct DeleteAccountView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let email: String
+    @State private var password = ""
+    @State private var packsToo = true
+    @State private var problem: String?
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    PasswordField("Password", text: $password, showLabel: "Show password", contentType: .password)
+                } footer: {
+                    Text("Enter the password of \(email) to delete it. This can't be undone.")
+                }
+                Section {
+                    LiveToggle("Take my packs out of the catalog", isOn: $packsToo)
+                } footer: {
+                    Text(packsToo
+                         ? "Packs you published are deleted from the catalog too."
+                         : "Packs you published stay in the catalog for everyone, and nobody can update or withdraw them.")
+                }
+                if let problem { Text(problem) }
+            }
+            .navigationTitle("Delete NG Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Delete", role: .destructive) {
+                        busy = true
+                        Task {
+                            problem = await model.account.deleteAccount(password: password, packsToo: packsToo)
+                            busy = false
+                            if problem == nil { announce("NG Account deleted"); dismiss() } else { announce(problem!) }
+                        }
+                    }
+                    .disabled(busy || password.isEmpty)
+                }
+            }
+        }
     }
 }
 

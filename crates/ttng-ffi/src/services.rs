@@ -212,6 +212,11 @@ impl NgAccountClient {
         self.with(|a| a.sign_out())
     }
 
+    /// Deletes the NG Account for good; its password confirms it.
+    pub fn delete_account(&self, password: String) -> Result<()> {
+        self.with(|a| a.delete_account(&password))
+    }
+
     /// The account's sound packs (backed up, maybe published).
     pub fn my_packs(&self) -> Result<Vec<OwnPack>> {
         self.with(|a| a.my_packs())

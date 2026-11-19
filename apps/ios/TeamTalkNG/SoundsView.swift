@@ -52,6 +52,11 @@ struct CatalogView: View {
     @State private var packs: [CatalogPack]?
     @State private var problem: String?
     @State private var busy: String?
+    @State private var reporting: CatalogPack?
+    @State private var blocking: CatalogPack?
+
+    static let contact = "mattdovi@icloud.com"
+    static let reasons = ["It's offensive or abusive", "It isn't what it says it is", "It uses sounds it has no right to", "Something else"]
 
     var body: some View {
         List {
@@ -59,10 +64,42 @@ struct CatalogView: View {
                 Text("Couldn't load the sound packs: \(problem)")
                 Button("Try again") { Task { await load() } }
             } else if let packs {
-                ForEach(packs) { p in row(p) }
+                let shown = packs.filter { !model.sounds.isBlocked($0) }
+                Section {
+                    ForEach(shown) { p in row(p) }
+                } footer: {
+                    if shown.count < packs.count {
+                        Text("Packs by publishers you blocked are hidden.")
+                    }
+                }
+                Section {
+                    if !model.sounds.blockedPublishers.isEmpty {
+                        NavigationLink("Blocked publishers") { BlockedPublishersView() }
+                    }
+                    Link("Contact TeamTalk NG", destination: URL(string: "mailto:\(Self.contact)?subject=TeamTalk%20NG%20sound%20packs")!)
+                } footer: {
+                    Text("Anyone can publish a pack. To report one that's offensive or not what it says, use Report on it (in its actions); to stop seeing someone's packs, block them. Or email \(Self.contact).")
+                }
             } else {
                 ProgressView("Loading the sound packs")
             }
+        }
+        .confirmationDialog(reporting.map { "Report \($0.name)?" } ?? "", isPresented: Binding(get: { reporting != nil }, set: { if !$0 { reporting = nil } }), titleVisibility: .visible, presenting: reporting) { p in
+            ForEach(Self.reasons, id: \.self) { reason in
+                Button(reason) { Task { await report(p, reason) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("TeamTalk NG looks at every report within a day, and removes packs that break the rules.")
+        }
+        .confirmationDialog(blocking.map { "Block \($0.author)?" } ?? "", isPresented: Binding(get: { blocking != nil }, set: { if !$0 { blocking = nil } }), titleVisibility: .visible, presenting: blocking) { p in
+            Button("Block", role: .destructive) {
+                model.sounds.block(p)
+                announce("\(p.author) blocked. Their packs are hidden.")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Their packs are hidden from the catalog on this iPhone. You can unblock them under Blocked publishers.")
         }
         .navigationTitle("Get sound packs")
         .navigationBarTitleDisplayMode(.inline)
@@ -89,6 +126,23 @@ struct CatalogView: View {
         .disabled(busy != nil)
         .accessibilityElement(children: .combine)
         .accessibilityHint(busy == p.id ? "Downloading." : "Double-tap to \(action.lowercased()) and use it.")
+        .contextMenu {
+            Button("Report this pack") { reporting = p }
+            if p.official != true { Button("Block \(p.author)", role: .destructive) { blocking = p } }
+        }
+        // VoiceOver's actions: written in reverse of the menu (the user's order).
+        .accessibilityActions {
+            if p.official != true { Button("Block \(p.author)") { blocking = p } }
+            Button("Report this pack") { reporting = p }
+        }
+    }
+
+    private func report(_ p: CatalogPack, _ reason: String) async {
+        if let problem = await model.sounds.report(p, reason: reason) {
+            announce("Couldn't report \(p.name): \(problem)")
+        } else {
+            announce("\(p.name) reported. Thank you.")
+        }
     }
 
     private func load() async {
@@ -107,5 +161,33 @@ struct CatalogView: View {
             announce("Couldn't download \(p.name): \(error.localizedDescription)")
         }
         busy = nil
+    }
+}
+
+/// Publishers I blocked in the catalog, to unblock.
+struct BlockedPublishersView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let blocked = model.sounds.blockedPublishers.sorted { $0.value.localizedStandardCompare($1.value) == .orderedAscending }
+        List {
+            Section {
+                if blocked.isEmpty { Text("Nobody is blocked.") }
+                ForEach(blocked, id: \.key) { key, author in
+                    Button {
+                        model.sounds.unblock(key)
+                        announce("\(author) unblocked")
+                    } label: {
+                        Text(author)
+                    }
+                    .foregroundStyle(.primary)
+                    .accessibilityHint("Double-tap to unblock.")
+                }
+            } footer: {
+                Text("Their packs are hidden from the catalog. Tap one to unblock them.")
+            }
+        }
+        .navigationTitle("Blocked publishers")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

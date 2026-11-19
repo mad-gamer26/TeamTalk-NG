@@ -359,7 +359,10 @@ struct MonitorSettingsView: View {
         }
         .confirmationDialog("Stop using TeamTalk NG's Monitor?", isPresented: $leavingHosted, titleVisibility: .visible) {
             Button("Stop using it", role: .destructive) {
-                Task { await monitor.stopHosted(); announce("No longer using TeamTalk NG's Monitor") }
+                Task {
+                    let problem = await monitor.stopHosted()
+                    announce(problem ?? "No longer using TeamTalk NG's Monitor")
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {

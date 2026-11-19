@@ -43,6 +43,14 @@ final class HostedMonitorUITests: NGTestCase {
         row.tap()
         waitFor(app.navigationBars["Monitor"], "back in Settings → Monitor")
         Host.until("the hosted Monitor logged in", timeout: 30) { admins() == before + 1 }
+        // Bob writes to it privately: kept by the hosted Monitor, and moved
+        // with the server.
+        let monitorNick = try XCTUnwrap(((Host.state()["users"] as? [[String: Any]]) ?? [])
+            .filter { $0["username"] as? String == "admin" }.compactMap { $0["nickname"] as? String }.first { $0 != "Admin" },
+            "the Monitor's nickname on the server")
+        let sent = Host.call("/pm", ["bot": "bob", "to": monitorNick, "text": "Before moving home"])
+        XCTAssertNil(sent["error"], "\(sent)")
+        Thread.sleep(forTimeInterval: 3)
 
         // Moving to your own Monitor: the server goes with it.
         guard let codeLink else { throw XCTSkip("no ng-monitor on the Mac (see scripts/test-ios-ui.sh)") }
@@ -66,6 +74,11 @@ final class HostedMonitorUITests: NGTestCase {
         waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch, "the server moved to your own Monitor", timeout: 30)
         Thread.sleep(forTimeInterval: 5)
         Host.until("one monitor there: your own", timeout: 30) { admins() == before + 1 }
+        // Bob's message came with it, and the server's own settings.
+        seesKept("Before moving home")
+        let sent2 = Host.call("/pm", ["bot": "bob", "to": monitorNick, "text": "Before moving back"])
+        XCTAssertNil(sent2["error"], "\(sent2)")
+        Thread.sleep(forTimeInterval: 3)
 
         // And back: the server moves to the hosted Monitor again, your own
         // stops watching it (still one monitor there).
@@ -75,5 +88,34 @@ final class HostedMonitorUITests: NGTestCase {
         waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch, "the server moved to the hosted Monitor", timeout: 30)
         Thread.sleep(forTimeInterval: 5)
         Host.until("one monitor there: the hosted one", timeout: 30) { admins() == before + 1 }
+        seesKept("Before moving home")
+        seesKept("Before moving back")
+    }
+
+    /// From Settings → Monitor: the watched server's screen, Bob's private
+    /// conversation shows `text` (kept by the Monitor in use); then back.
+    private func seesKept(_ text: String) {
+        app.navigationBars["Monitor"].buttons.element(boundBy: 0).tap()
+        let done = button("Done")
+        if !done.waitForExistence(timeout: 3) { app.swipeDown() }
+        done.tap()
+        app.buttons["Monitor"].tap()
+        let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(watched, "the server on the Monitor's list", timeout: 30)
+        watched.tap()
+        waitFor(any("Bob"), "Bob, through the Monitor", timeout: 30)
+        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        waitFor(any(text), "\(text): kept, and moved with the server", timeout: 20)
+        // Back to Settings → Monitor.
+        for _ in 0..<4 where !app.buttons["Settings"].isHittable {
+            if button("Done").exists { button("Done").tap(); continue }
+            app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        app.buttons["Settings"].tap()
+        let link = app.buttons["settings-monitor"]
+        if !link.waitForExistence(timeout: 3) { app.swipeUp() }
+        link.tap()
+        waitFor(app.navigationBars["Monitor"], "Settings → Monitor again")
     }
 }

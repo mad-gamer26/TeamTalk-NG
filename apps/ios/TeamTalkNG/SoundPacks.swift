@@ -100,9 +100,16 @@ struct CatalogPack: Decodable, Identifiable, Hashable {
     let sha256: String?
     let size: Int?
     let official: Bool?
+    /// Who published it, as the catalog's opaque name (nil from an older
+    /// catalog; "" for packs whose account was deleted).
+    let publisher: String?
+
+    /// What blocking its publisher blocks: the catalog's name for them,
+    /// else (an older catalog, a deleted account) the author's name.
+    var blockKey: String { (publisher?.isEmpty == false) ? publisher! : "author:" + author }
 
     init(from decoder: Decoder) throws {
-        enum K: String, CodingKey { case id, name, author, description, version, downloadUrl, sha256, size, official }
+        enum K: String, CodingKey { case id, name, author, description, version, downloadUrl, sha256, size, official, publisher }
         let c = try decoder.container(keyedBy: K.self)
         id = try c.decode(String.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
@@ -114,6 +121,7 @@ struct CatalogPack: Decodable, Identifiable, Hashable {
         sha256 = try c.decodeIfPresent(String.self, forKey: .sha256)
         size = try c.decodeIfPresent(Int.self, forKey: .size)
         official = try c.decodeIfPresent(Bool.self, forKey: .official)
+        publisher = try c.decodeIfPresent(String.self, forKey: .publisher)
     }
 }
 
@@ -360,6 +368,35 @@ final class SoundStore {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         return try d.decode(Answer.self, from: data).packs
+    }
+
+    // MARK: Reporting and blocking
+
+    /// Publishers whose packs I don't want to see: the catalog's name for
+    /// each, with the author name to show.
+    var blockedPublishers: [String: String] = UserDefaults.standard.dictionary(forKey: "blockedPublishers") as? [String: String] ?? [:] {
+        didSet { defaults.set(blockedPublishers, forKey: "blockedPublishers") }
+    }
+
+    func block(_ pack: CatalogPack) { blockedPublishers[pack.blockKey] = pack.author }
+    func unblock(_ key: String) { blockedPublishers[key] = nil }
+    func isBlocked(_ pack: CatalogPack) -> Bool { pack.official != true && blockedPublishers[pack.blockKey] != nil }
+
+    /// Reports a pack to TeamTalk NG (no NG Account needed). Why not, or nil.
+    func report(_ pack: CatalogPack, reason: String) async -> String? {
+        var req = URLRequest(url: Service.baseURL.appendingPathComponent("v1/catalog/\(pack.id)/report"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["reason": reason])
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(status) { return nil }
+            let said = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            return said ?? "The report couldn't be sent (\(status))."
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     func installedVersion(of pack: CatalogPack) -> String? {

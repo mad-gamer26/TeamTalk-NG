@@ -397,6 +397,27 @@ impl MonitorClient {
         self.with(|m| m.remove_server(server_id))
     }
 
+    /// A server as it moves to another Monitor: opaque JSON with its
+    /// settings (passwords too) and private conversations. An older
+    /// Monitor answers Refused 404.
+    pub fn export_server(&self, server_id: i64) -> Result<String> {
+        self.with(|m| m.export_server(server_id))
+    }
+
+    /// Adds a server moved from another Monitor (`export_server`'s JSON).
+    pub fn import_server(&self, moved: String) -> Result<i64> {
+        self.with(|m| m.import_server(&moved))
+    }
+
+    /// This phone's notification settings on this Monitor, as opaque JSON.
+    pub fn notification_prefs(&self) -> Result<String> {
+        self.with(|m| m.prefs())
+    }
+
+    pub fn set_notification_prefs(&self, prefs: String) -> Result<()> {
+        self.with(|m| m.set_prefs(&prefs))
+    }
+
     pub fn pause(&self, server_id: i64, minutes: i64) -> Result<()> {
         self.with(|m| m.pause(server_id, minutes))
     }

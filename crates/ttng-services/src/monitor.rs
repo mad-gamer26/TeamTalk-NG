@@ -420,6 +420,31 @@ impl Monitor {
         self.call("DELETE", &format!("/v1/servers/{id}"), None).map(|_| ())
     }
 
+    /// A server as it moves to another Monitor (opaque JSON: its settings
+    /// with passwords, and its private conversations). An older Monitor
+    /// without it answers 404.
+    pub fn export_server(&self, id: i64) -> Result<String> {
+        Ok(self.call("GET", &format!("/v1/servers/{id}/export"), None)?.to_string())
+    }
+
+    /// Adds a server moved from another Monitor (`export_server`'s JSON);
+    /// its ID.
+    pub fn import_server(&self, moved: &str) -> Result<i64> {
+        let body: Value = serde_json::from_str(moved).map_err(|e| crate::error::ServiceError::Unexpected(format!("not a moved server: {e}")))?;
+        let v = self.call("POST", "/v1/servers/import", Some(body))?;
+        Ok(v.get("id").and_then(Value::as_i64).unwrap_or(0))
+    }
+
+    /// This phone's notification settings on this Monitor (opaque JSON).
+    pub fn prefs(&self) -> Result<String> {
+        Ok(self.call("GET", "/v1/me/prefs", None)?.to_string())
+    }
+
+    pub fn set_prefs(&self, prefs: &str) -> Result<()> {
+        let body: Value = serde_json::from_str(prefs).map_err(|e| crate::error::ServiceError::Unexpected(format!("not notification settings: {e}")))?;
+        self.call("PUT", "/v1/me/prefs", Some(body)).map(|_| ())
+    }
+
     /// Pauses watching while the app is connected itself (at most `minutes`).
     pub fn pause(&self, id: i64, minutes: i64) -> Result<()> {
         self.call(
