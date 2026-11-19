@@ -63,6 +63,8 @@ final class ServerConnection {
 
     /// Tells someone I'm writing (at most every few seconds), or stopped.
     func setTyping(to user: User, _ on: Bool) {
+        // Through the Monitor: no typing said (it's not this app's own login).
+        guard monitorId == nil else { return }
         let last = lastTypingSent[user.id]
         if let last, last.0 == on, !on || Date.now.timeIntervalSince(last.1) < 3 { return }
         lastTypingSent[user.id] = (on, .now)

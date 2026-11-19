@@ -112,6 +112,19 @@ fn state(c: &TestClient) -> Value {
         })
         .collect();
     let kicked = c.seen.lock().unwrap().iter().any(|e| matches!(e, Event::Kicked { .. }));
+    // Who told this person they're typing (by nickname).
+    let typing: Vec<Value> = c
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            Event::Typing { user_id, typing: true } => {
+                s.users.iter().find(|u| u.id == *user_id).map(|u| json!(u.nickname))
+            }
+            _ => None,
+        })
+        .collect();
     json!({
         "connected": s.state == Some(ConnectionState::LoggedIn),
         "me": path_of(&s, s.my_channel_id),
@@ -119,6 +132,7 @@ fn state(c: &TestClient) -> Value {
         "channels": s.channels.iter().map(|c| path_of(&s, c.id)).collect::<Vec<_>>(),
         "messages": messages,
         "kicked": kicked,
+        "typing": typing,
         "files": s.files.iter().map(|f| f.name.clone()).collect::<Vec<_>>(),
     })
 }

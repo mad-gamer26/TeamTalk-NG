@@ -163,6 +163,58 @@ final class MonitorUITests: NGTestCase {
         XCTAssertFalse(said.contains("First note") || said.contains("Second note"), "said again on the list: \(said)")
     }
 
+    /// Writing to someone through the Monitor doesn't tell them "typing"
+    /// (a live connection does: checked first, as Alice).
+    func testTypingThroughTheMonitorIsNotSent() {
+        // Live: Bob is told Alice is typing.
+        connect("alice")
+        Host.until("Bob seeing Alice") { Host.user("alice") != nil }
+        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        let live = app.textFields["Message Bob"]
+        waitFor(live, "the conversation with Bob")
+        live.tap(); live.typeText("Hello th")
+        Host.until("Bob told Alice is typing", timeout: 15) {
+            ((Host.state()["typing"] as? [String]) ?? []).contains { !$0.isEmpty }
+        }
+        button("Done").tap()
+        more("Disconnect")
+        Host.call("/reset")
+
+        // Through the Monitor (as admin, "Quiet typer"): nothing.
+        connect("admin")
+        more("Disconnect")
+        monitorFromSettings()
+        visibleServerRow("it in Settings → Monitor").tap()
+        let nick = app.textFields["Nickname"]
+        waitFor(nick, "its nickname")
+        replace(nick, with: "Quiet typer")
+        button("Save").tap()
+        Host.until("the Monitor logged in as Quiet typer", timeout: 30) { Host.user("Quiet typer") != nil }
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        closeSettings(from: "Monitor")
+        app.buttons["Monitor"].tap()
+        let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(watched, "it on the Monitor's list", timeout: 20)
+        watched.tap()
+        waitFor(any("Bob"), "the server, through the Monitor", timeout: 30)
+        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        let field = app.textFields["Message Bob"]
+        waitFor(field, "the conversation with Bob")
+        run("announced", says: "Announced")
+        field.tap(); field.typeText("Hello there")
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 11))
+        field.typeText("Hi")
+        Thread.sleep(forTimeInterval: 5)
+        // Nothing said about typing (it was: "Couldn't say you're typing:
+        // the Monitor can't do that", every time it started or stopped).
+        run("announced", says: "Announced")
+        let said = app.staticTexts.matching(identifier: "uitest-action-result").firstMatch.label
+        XCTAssertFalse(said.lowercased().contains("typing"), "said: \(said)")
+        let told = (Host.state()["typing"] as? [String]) ?? []
+        XCTAssertFalse(told.contains("Quiet typer"), "Bob wasn't told the Monitor is typing: \(told)")
+        XCTAssertFalse(any("Couldn't say you're typing").exists, "no typing error either")
+    }
+
     /// The Monitor titles its notifications with the server's name in the
     /// list: renamed there, renamed on the Monitor too.
     func testRenamingAServerRenamesItOnTheMonitor() {
