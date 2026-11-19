@@ -158,8 +158,13 @@ enum Passwords {
     static func set(_ password: String, for id: UUID) { setSecret(password, serverService, id.uuidString) }
 
     /// iCloud sync turned on or off: the synced services' items move into
-    /// or out of iCloud Keychain.
-    static func resync() {
+    /// or out of iCloud Keychain (`toCloud`: where they go; by default
+    /// where iCloud sync says). Where an item is in both places, the copy
+    /// from where they were is kept — this iPhone's when turning sync on
+    /// (it's what the app used meanwhile; iCloud's may be older),
+    /// iCloud's when turning it off.
+    static func resync(toCloud: Bool? = nil) {
+        let toCloud = toCloud ?? ICloudSync.isOn
         for service in syncedServices {
             let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrService as String: service,
@@ -169,9 +174,26 @@ enum Passwords {
                                     kSecReturnData as String: true]
             var out: CFTypeRef?
             guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let items = out as? [[String: Any]] else { continue }
+            var chosen: [String: (value: Data, fromLeftSide: Bool)] = [:]
             for item in items {
                 guard let account = item[kSecAttrAccount as String] as? String, let data = item[kSecValueData as String] as? Data else { continue }
-                setSecret(String(decoding: data, as: UTF8.self), service, account)
+                let inCloud = (item[kSecAttrSynchronizable as String] as? NSNumber)?.boolValue ?? false
+                // The side being left: this iPhone when going to iCloud.
+                let fromLeftSide = inCloud != toCloud
+                if let had = chosen[account], had.fromLeftSide, !fromLeftSide { continue }
+                chosen[account] = (data, fromLeftSide)
+            }
+            for (account, c) in chosen {
+                SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                               kSecAttrService as String: service,
+                               kSecAttrAccount as String: account,
+                               kSecAttrSynchronizable as String: toCloud ? kSecAttrSynchronizableAny as Any : kCFBooleanFalse as Any] as CFDictionary)
+                SecItemAdd([kSecClass as String: kSecClassGenericPassword,
+                            kSecAttrService as String: service,
+                            kSecAttrAccount as String: account,
+                            kSecAttrSynchronizable as String: toCloud ? kCFBooleanTrue! : kCFBooleanFalse!,
+                            kSecValueData as String: c.value,
+                            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock] as CFDictionary, nil)
             }
         }
     }

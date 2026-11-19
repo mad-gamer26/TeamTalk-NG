@@ -1,3 +1,4 @@
+import Security
 import UserNotifications
 import Foundation
 
@@ -175,6 +176,34 @@ extension ShortcutActions {
                 // What the app has said (for VoiceOver) since the last ask.
                 said = "Announced: " + announcedForTests.joined(separator: " ;; ")
                 announcedForTests = []
+            case "keychainMerge":
+                // A password changed here while iCloud sync was off (an older
+                // copy left in iCloud Keychain): turning sync on keeps this
+                // iPhone's; turning it off keeps iCloud's.
+                let svc = Passwords.serverService, acct = "uitest-merge"
+                func put(_ v: String, cloud: Bool) {
+                    SecItemAdd([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: svc, kSecAttrAccount as String: acct,
+                                kSecAttrSynchronizable as String: cloud ? kCFBooleanTrue! : kCFBooleanFalse!, kSecValueData as String: Data(v.utf8)] as CFDictionary, nil)
+                }
+                func read() -> [String] {
+                    var out: CFTypeRef?
+                    SecItemCopyMatching([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: svc, kSecAttrAccount as String: acct,
+                                         kSecAttrSynchronizable as String: kSecAttrSynchronizableAny, kSecMatchLimit as String: kSecMatchLimitAll,
+                                         kSecReturnAttributes as String: true, kSecReturnData as String: true] as CFDictionary, &out)
+                    return ((out as? [[String: Any]]) ?? []).map { i in
+                        let cloud = (i[kSecAttrSynchronizable as String] as? NSNumber)?.boolValue ?? false
+                        return "\(cloud ? "cloud" : "phone")=\(String(decoding: i[kSecValueData as String] as? Data ?? Data(), as: UTF8.self))"
+                    }.sorted()
+                }
+                func clear() { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: svc, kSecAttrAccount as String: acct, kSecAttrSynchronizable as String: kSecAttrSynchronizableAny] as CFDictionary) }
+                clear(); put("old in iCloud", cloud: true); put("new here", cloud: false)
+                Passwords.resync(toCloud: true)
+                let on = read().joined(separator: ",")
+                clear(); put("current in iCloud", cloud: true); put("stale here", cloud: false)
+                Passwords.resync(toCloud: false)
+                let off = read().joined(separator: ",")
+                clear()
+                said = "Keychain merge: on [\(on)] off [\(off)]"
             case "clearMonitor":
                 // The run's own Monitor is shared by every test: what an
                 // earlier test had it watch goes.

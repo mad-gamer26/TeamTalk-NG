@@ -183,3 +183,14 @@ final class FilesSettingsUITests: NGTestCase {
         Host.until("the nickname gone") { (app.textFields["Nickname"].value as? String) ?? "" == "Nickname" || (app.textFields["Nickname"].value as? String) == "" }
     }
 }
+
+/// iCloud Keychain and this iPhone's keychain, when iCloud sync is turned
+/// on or off: where a password is in both, the copy the app was using
+/// wins. Turning sync on: this iPhone's newer one goes to iCloud (one
+/// copy, there). Turning it off: iCloud's current one is copied here, and
+/// iCloud's stays for the other devices.
+final class KeychainMergeUITests: NGTestCase {
+    func testTheCopyInUseWinsWhenSyncChanges() {
+        run("keychainMerge", says: "Keychain merge: on [cloud=new here] off [cloud=current in iCloud,phone=current in iCloud]")
+    }
+}
