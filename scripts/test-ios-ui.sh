@@ -27,7 +27,7 @@ trap cleanup EXIT
 sdk="$root/sdk/macos"
 (cd "$root" && CARGO_TARGET_DIR=target/uitest RUSTFLAGS="-C link-arg=-Wl,-rpath,$sdk/Library/TeamTalk_DLL" \
     TTNG_SDK_DIR="$sdk" cargo build -q -p ttng-core --example uitest_host)
-TTNG_SDK_DIR="$sdk" "$root/target/uitest/debug/examples/uitest_host" >"$work/host.out" 2>"$work/host.err" &
+TTNG_SIM="$sim" TTNG_SDK_DIR="$sdk" "$root/target/uitest/debug/examples/uitest_host" >"$work/host.out" 2>"$work/host.err" &
 pids="$pids $!"
 for _ in $(seq 1 100); do grep -q control_port "$work/host.out" 2>/dev/null && break; sleep 0.2; done
 tt_port=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['tt_port'])" "$work/host.out")
