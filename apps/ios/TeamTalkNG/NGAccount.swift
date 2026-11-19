@@ -135,16 +135,16 @@ final class NGAccountStore {
 
     // MARK: Publishing my packs to the catalog
 
-    /// The account's copy of one of my packs (published or not); nil when
-    /// there's none or I'm not signed in.
+    /// The catalog's copy of one of my packs (the service keeps only
+    /// published ones); nil when there's none or I'm not signed in.
     func publishedCopy(of localId: String) async -> OwnPack? {
         guard email != nil else { return nil }
         return try? await call { try $0.myPacks() }.get().first { $0.localId == localId }
     }
 
-    /// Puts my pack in the catalog (or updates it there): backed up to the
-    /// account, its sounds sent (only those changed), its name, author and
-    /// description set, made public. A problem in words, or nil.
+    /// Puts my pack in the catalog (or updates it there): its sounds sent
+    /// (only those changed), its name, author and description set, made
+    /// public. A problem in words, or nil.
     func publish(localId: String, files: [(name: String, url: URL)], name: String, author: String, description: String) async -> String? {
         guard email != nil else { return "Sign in to NG Account first (Settings → NG Account)." }
         let r: Result<OwnPack, Error> = await call { c in
@@ -165,7 +165,8 @@ final class NGAccountStore {
         }
     }
 
-    /// Takes my pack out of the catalog (kept in the account).
+    /// Takes my pack out of the catalog: the service deletes its copy (the
+    /// pack stays on my devices).
     func withdraw(localId: String) async -> String? {
         guard let p = await publishedCopy(of: localId) else { return "It isn't in the catalog." }
         let r = await call { try $0.changePack(id: p.id, name: nil, author: nil, description: nil, public: false) }
@@ -173,8 +174,7 @@ final class NGAccountStore {
         return nil
     }
 
-    /// Deleting my pack here also deletes the account's copy (and takes it
-    /// out of the catalog).
+    /// Deleting my pack here also takes it out of the catalog.
     func forgetPack(localId: String) async {
         guard let p = await publishedCopy(of: localId) else { return }
         _ = await call { try $0.deletePack(id: p.id) }
