@@ -24,6 +24,8 @@ private struct SignedInView: View {
     @State private var confirmSignOut = false
     @State private var changing = false
     @State private var deleting = false
+    @State private var mine: Result<[OwnPack], NGAccountStore.Problem>?
+    @State private var withdrawing: OwnPack?
 
     var body: some View {
         let account = model.account
@@ -38,12 +40,50 @@ private struct SignedInView: View {
                 Button("Sign out", role: .destructive) { confirmSignOut = true }
             }
             Section {
+                switch mine {
+                case nil: ProgressView("Loading your packs")
+                case .failure(let why)?: Text("Couldn't load your packs: \(why.words)")
+                case .success(let packs)? where packs.isEmpty: Text("You haven't published any packs.")
+                case .success(let packs)?:
+                    ForEach(packs, id: \.id) { p in
+                        Button {
+                            withdrawing = p
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(p.name)
+                                Text("By \(p.author)\(p.installs > 0 ? ", installed \(p.installs) times" : "")").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityHint("Double-tap to withdraw it from the catalog.")
+                    }
+                }
+            } header: {
+                Text("Your packs in the catalog")
+            } footer: {
+                Text("Packs your NG Account published, on any device. To change one's sounds, open it under Sounds → Sound packs (download it from the catalog if it isn't on this iPhone) and choose Edit my pack.")
+            }
+            Section {
                 Button("Delete NG Account", role: .destructive) { deleting = true }
             } footer: {
                 Text("Deletes your NG Account and everything it keeps on TeamTalk NG's service. Your packs stay on your devices.")
             }
         }
         .sheet(isPresented: $deleting) { DeleteAccountView(email: email) }
+        .task { mine = await account.myPublishedPacks() }
+        .confirmationDialog(withdrawing.map { "Withdraw \($0.name)?" } ?? "", isPresented: Binding(get: { withdrawing != nil }, set: { if !$0 { withdrawing = nil } }), titleVisibility: .visible, presenting: withdrawing) { p in
+            Button("Withdraw from the catalog", role: .destructive) {
+                Task {
+                    let problem = await account.withdraw(accountPack: p.id)
+                    mine = await account.myPublishedPacks()
+                    announce(problem ?? "\(p.name) is out of the catalog")
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("It leaves the catalog for everyone. Copies people downloaded stay on their devices.")
+        }
         .confirmationDialog("Sign out of NG Account?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await account.signOut() } }
         } message: {

@@ -154,11 +154,34 @@ final class NGAccountStore {
 
     // MARK: Publishing my packs to the catalog
 
-    /// The catalog's copy of one of my packs (the service keeps only
-    /// published ones); nil when there's none or I'm not signed in.
-    func publishedCopy(of localId: String) async -> OwnPack? {
+    /// My account's pack behind one on this iPhone: the one I made or
+    /// imported (its ID the account's `localId`), or a copy downloaded from
+    /// the catalog (its ID the catalog's) — so my packs stay mine to manage
+    /// on any device signed in, however they got there. Nil when none or
+    /// not signed in.
+    func publishedCopy(of packId: String) async -> OwnPack? {
         guard email != nil else { return nil }
-        return try? await call { try $0.myPacks() }.get().first { $0.localId == localId }
+        return try? await call { try $0.myPacks() }.get().first { $0.localId == packId || $0.id == packId }
+    }
+
+    /// Every pack my account published (to manage from NG Account, with or
+    /// without them on this iPhone).
+    func myPublishedPacks() async -> Result<[OwnPack], Problem> {
+        guard email != nil else { return .success([]) }
+        switch await call({ try $0.myPacks() }) {
+        case .success(let all): return .success(all.filter(\.public).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending })
+        case .failure(let e): return .failure(Problem(words: failed(e)))
+        }
+    }
+
+    /// A problem, in words.
+    struct Problem: Error { let words: String }
+
+    /// Takes one of my account's packs (its ID there) out of the catalog.
+    func withdraw(accountPack id: String) async -> String? {
+        let r = await call { try $0.changePack(id: id, name: nil, author: nil, description: nil, public: false) }
+        if case .failure(let e) = r { return failed(e) }
+        return nil
     }
 
     /// Puts my pack in the catalog (or updates it there): its sounds sent
@@ -188,14 +211,13 @@ final class NGAccountStore {
     /// pack stays on my devices).
     func withdraw(localId: String) async -> String? {
         guard let p = await publishedCopy(of: localId) else { return "It isn't in the catalog." }
-        let r = await call { try $0.changePack(id: p.id, name: nil, author: nil, description: nil, public: false) }
-        if case .failure(let e) = r { return failed(e) }
-        return nil
+        return await withdraw(accountPack: p.id)
     }
 
-    /// Deleting my pack here also takes it out of the catalog.
+    /// Deleting the pack I made or imported here also takes it out of the
+    /// catalog (a downloaded copy of it doesn't: that's only this iPhone's).
     func forgetPack(localId: String) async {
-        guard let p = await publishedCopy(of: localId) else { return }
+        guard let p = try? await call({ try $0.myPacks() }).get().first(where: { $0.localId == localId }) else { return }
         _ = await call { try $0.deletePack(id: p.id) }
     }
 }

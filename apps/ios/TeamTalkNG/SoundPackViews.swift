@@ -122,7 +122,7 @@ struct SoundPackView: View {
             }
             .navigationTitle(p.name)
             .onAppear { name = p.name; author = p.author; about = p.description ?? "" }
-            .task(id: p.id) { if p.editable { published = await model.account.publishedCopy(of: p.id) } }
+            .task(id: p.id) { if p.kind != .builtIn { published = await model.account.publishedCopy(of: p.id) } }
             // Its own flag: SwiftUI closes the picker (setting this false)
             // before it hands over the file, so the sound it's for must
             // outlive that (it was cleared there, and nothing was saved).
@@ -221,25 +221,39 @@ struct SoundPackView: View {
     @ViewBuilder private func actionsSection(_ p: InstalledPack) -> some View {
         let sounds = model.sounds
         Section {
-            Button(p.editable ? "Duplicate" : "Make an editable copy") {
-                let c = sounds.duplicate(p, name: p.editable ? "\(p.name) copy" : "\(p.name) (my copy)")
-                announce("\(c.name) made")
-                copyOpened = c.id
+            if !p.editable, let mine = published {
+                // My own pack, downloaded from the catalog: edited as my pack
+                // again (tied to the published one, so updating it updates
+                // that one), not a stranger's copy.
+                Button("Edit my pack") {
+                    if sounds.pack(mine.localId) == nil {
+                        let c = sounds.duplicate(p, name: p.name, id: mine.localId)
+                        sounds.update(c.id, name: mine.name, author: mine.author, description: mine.description)
+                    }
+                    announce("\(p.name), yours to edit")
+                    copyOpened = mine.localId
+                }
+            } else {
+                Button(p.editable ? "Duplicate" : "Make an editable copy") {
+                    let c = sounds.duplicate(p, name: p.editable ? "\(p.name) copy" : "\(p.name) (my copy)")
+                    announce("\(c.name) made")
+                    copyOpened = c.id
+                }
             }
             Button("Export and share") {
                 if let zip = sounds.exportZip(p) { presentShareSheet([zip]) } else { announce("The pack couldn't be exported") }
             }
             if p.editable {
                 Button(published?.public == true ? "Update it in the catalog" : "Publish to the catalog") { publishing = true }
-                if published?.public == true {
-                    Button("Withdraw from the catalog") {
-                        busy = true
-                        Task {
-                            let problem = await model.account.withdraw(localId: p.id)
-                            published = await model.account.publishedCopy(of: p.id)
-                            busy = false
-                            announce(problem ?? "\(p.name) is out of the catalog")
-                        }
+            }
+            if published?.public == true {
+                Button("Withdraw from the catalog") {
+                    busy = true
+                    Task {
+                        let problem = await model.account.withdraw(localId: p.id)
+                        published = await model.account.publishedCopy(of: p.id)
+                        busy = false
+                        announce(problem ?? "\(p.name) is out of the catalog")
                     }
                 }
             }
@@ -251,6 +265,8 @@ struct SoundPackView: View {
                 Text(published?.public == true
                      ? "In the catalog\(published.map { $0.installs > 0 ? ", installed \($0.installs) times" : "" } ?? "")."
                      : "Publishing puts it in the TeamTalk NG catalog for everyone, under the name and author you give (you need to be signed in to NG Account).")
+            } else if let mine = published, mine.public {
+                Text("Yours in the catalog (your NG Account)\(mine.installs > 0 ? ", installed \(mine.installs) times" : ""). To change its sounds, edit your pack, then update it in the catalog.")
             } else {
                 Text("Export and share makes a .zip with the desktop's file names, which a desktop client or TeamTalk NG imports.")
             }

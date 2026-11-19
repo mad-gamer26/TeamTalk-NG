@@ -187,6 +187,77 @@ final class SoundPacksUITests: NGTestCase {
         Host.until("out of the catalog", timeout: 15) { !inCatalog() }
     }
 
+    /// My own published pack, downloaded from the catalog (as after deleting
+    /// it here, or on another device signed in): still mine to manage —
+    /// withdraw it, or edit it as my pack again (updating the same one);
+    /// and NG Account lists it to withdraw without it on the phone.
+    func testMyPackDownloadedFromTheCatalogIsStillMine() throws {
+        let env = ProcessInfo.processInfo.environment
+        let email = try XCTUnwrap(env["NG_EMAIL"]), password = try XCTUnwrap(env["NG_PASSWORD"])
+        let token = try XCTUnwrap(api("POST", "v1/account/signin", json: ["email": email, "password": password, "install_id": "other-phone", "device_name": "Other phone"])["token"] as? String)
+        let name = "Mine again \(UUID().uuidString.prefix(4))"
+        let localId = "imported-\(UUID().uuidString.prefix(8).lowercased())"
+        let pack = try XCTUnwrap(api("POST", "v1/packs", json: ["local_id": localId, "name": name], token: token)["id"] as? String)
+        var wav = Data("RIFF".utf8) + Data([0x24, 0, 0, 0]) + Data("WAVEfmt ".utf8)
+        wav.append(Data(count: 2000))
+        api("PUT", "v1/packs/\(pack)/files/logged_on.wav", raw: wav, token: token)
+        api("PATCH", "v1/packs/\(pack)", json: ["name": name, "author": "Me", "public": true], token: token)
+
+        // This iPhone, signed in to the same account.
+        app.buttons["Settings"].tap()
+        let account = app.buttons["NG Account"]
+        if !account.waitForExistence(timeout: 3) { app.swipeUp() }
+        account.tap()
+        let emailField = app.textFields["Email"]
+        waitFor(emailField, "the sign-in form")
+        emailField.tap(); emailField.typeText(email)
+        let pw = app.secureTextFields["Password"]
+        pw.tap(); pw.typeText(password)
+        let segment = app.segmentedControls.buttons["Sign in"]
+        (app.buttons.matching(NSPredicate(format: "label == 'Sign in'")).allElementsBoundByIndex.first { $0.frame != segment.frame })?.tap()
+        waitFor(app.staticTexts["Signed in as"], "signed in", timeout: 20)
+        // NG Account lists it, though it isn't on this iPhone.
+        let listed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        for _ in 0..<3 where !listed.waitForExistence(timeout: 3) { app.swipeUp() }
+        waitFor(listed, "my pack under Your packs in the catalog")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // Downloaded from the catalog.
+        let sounds = app.buttons["Sounds"]
+        if !sounds.waitForExistence(timeout: 3) { app.swipeDown() }
+        sounds.tap()
+        button("Get sound packs").tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        for _ in 0..<10 where !row.waitForExistence(timeout: 2) {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            button("Get sound packs").tap()
+        }
+        waitFor(row, "my pack in Get sound packs")
+        row.tap()
+        Host.until("downloaded", timeout: 30) { row.label.contains("downloaded") }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        button("Sound packs").tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch.tap()
+        // Still mine: withdraw it, or edit it as mine.
+        let withdraw = button("Withdraw from the catalog")
+        reveal(withdraw)
+        waitFor(withdraw, "withdrawing offered on the downloaded copy", timeout: 15)
+        let edit = button("Edit my pack")
+        reveal(edit)
+        edit.tap()
+        let update = button("Update it in the catalog")
+        reveal(update)
+        waitFor(update, "edited as my pack: updating the same one", timeout: 15)
+        XCTAssertFalse(button("Publish to the catalog").exists, "not a new pack")
+        // Withdrawn from here: gone for everyone.
+        let withdrawMine = button("Withdraw from the catalog")
+        reveal(withdrawMine)
+        withdrawMine.tap()
+        waitFor(button("Publish to the catalog"), "withdrawn", timeout: 30)
+        let left = api("GET", "v1/packs", token: token)["packs"] as? [[String: Any]] ?? []
+        XCTAssertFalse(left.contains { $0["id"] as? String == pack }, "gone from the service")
+    }
+
     /// A JSON call to the private service.
     @discardableResult
     private func api(_ method: String, _ path: String, json: [String: Any]? = nil, raw: Data? = nil, token: String? = nil) -> [String: Any] {

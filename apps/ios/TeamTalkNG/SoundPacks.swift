@@ -523,8 +523,8 @@ final class SoundStore {
     /// A new pack of my own: empty, so every sound is the built-in one
     /// until a file is chosen for it.
     @discardableResult
-    func createPack(name: String, author: String) -> InstalledPack {
-        let p = InstalledPack(id: "own-" + UUID().uuidString.prefix(8).lowercased(),
+    func createPack(name: String, author: String, id: String? = nil) -> InstalledPack {
+        let p = InstalledPack(id: id ?? "own-" + UUID().uuidString.prefix(8).lowercased(),
                               name: name.trimmingCharacters(in: .whitespaces).nonEmpty ?? "My sound pack",
                               author: author.trimmingCharacters(in: .whitespaces), version: "", description: "")
         try? FileManager.default.createDirectory(at: Self.directory(p.id), withIntermediateDirectories: true)
@@ -535,8 +535,8 @@ final class SoundStore {
     /// A copy of any pack, mine to edit (the built-in one's copy starts
     /// empty: its sounds are the built-in ones anyway).
     @discardableResult
-    func duplicate(_ source: InstalledPack, name: String) -> InstalledPack {
-        let p = createPack(name: name, author: source.author)
+    func duplicate(_ source: InstalledPack, name: String, id: String? = nil) -> InstalledPack {
+        let p = createPack(name: name, author: source.author, id: id)
         let fm = FileManager.default
         if source.kind != .builtIn {
             for f in (try? fm.contentsOfDirectory(at: Self.directory(source.id), includingPropertiesForKeys: nil)) ?? []
