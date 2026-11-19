@@ -210,12 +210,20 @@ func words(_ error: Error) -> String {
 
 /// Says something to VoiceOver now (when it's running).
 @MainActor func announce(_ text: String) {
+    #if DEBUG
+    // What the app said, for the UI tests (uitest-action "announced").
+    announcedForTests.append(text)
+    if announcedForTests.count > 200 { announcedForTests.removeFirst(100) }
+    #endif
     guard UIAccessibility.isVoiceOverRunning else { return }
     AccessibilityNotification.Announcement(text).post()
 }
 
 #if DEBUG
 import Security
+
+/// Everything announce() said (UI tests only).
+@MainActor var announcedForTests: [String] = []
 
 /// Everything the app keeps, gone (UI tests only, never in a release).
 enum UITestReset {

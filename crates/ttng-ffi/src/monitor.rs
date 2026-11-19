@@ -308,6 +308,15 @@ impl MonitorClient {
         })
     }
 
+    /// A live connection to the Monitor's events, from `since` (missed
+    /// ones first) or from now.
+    pub fn open_events(&self, since: Option<i64>) -> Result<Arc<MonitorEventStream>> {
+        let stream = self.with(|m| m.open_events(since))?;
+        Ok(Arc::new(MonitorEventStream {
+            inner: Mutex::new(Some(stream)),
+        }))
+    }
+
     /// Ends this install's hosted registration: its servers (and their
     /// passwords) are deleted from the hosted Monitor.
     pub fn forget_registration(&self) -> Result<()> {
@@ -495,6 +504,74 @@ impl MonitorClient {
 
     pub fn delete_conversation(&self, server_id: i64, conversation_id: i64) -> Result<()> {
         self.with(|m| m.delete_conversation(server_id, conversation_id))
+    }
+}
+
+fn event_of(e: svc::MonitorEvent) -> MonitorEvent {
+    MonitorEvent {
+        seq: e.seq,
+        server_id: e.server_id,
+        time: e.time,
+        kind: e.kind,
+        text: e.text,
+        message_kind: e.message_kind,
+        user_id: e.user_id,
+        user_name: e.user_name,
+        channel_id: e.channel_id,
+        body: e.body,
+        outgoing: e.outgoing,
+        to_user_id: e.to_user_id,
+    }
+}
+
+/// One thing from a Monitor's live connection.
+#[derive(Clone, Debug, PartialEq, uniffi::Enum)]
+pub enum MonitorStreamItem {
+    /// An event (before `Ready`: one missed since the point asked for).
+    Event { event: MonitorEvent },
+    /// Caught up: what follows happens now.
+    Ready { seq: i64 },
+    /// The point asked for is unknown: start again from here.
+    Reset { seq: i64 },
+    /// Nothing in the last moment (still connected).
+    Nothing,
+}
+
+/// A live connection to the Monitor's events (`next` blocks a moment at
+/// most: run it off the main thread).
+#[derive(uniffi::Object)]
+pub struct MonitorEventStream {
+    inner: Mutex<Option<svc::EventStream>>,
+}
+
+impl std::fmt::Debug for MonitorEventStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MonitorEventStream").finish_non_exhaustive()
+    }
+}
+
+#[uniffi::export]
+impl MonitorEventStream {
+    /// The next item; an error means the connection is gone.
+    pub fn next(&self) -> Result<MonitorStreamItem> {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(s) = g.as_mut() else {
+            return Err(NgError::Network {
+                message: "The Monitor's live connection is closed.".into(),
+            });
+        };
+        Ok(match s.receive()? {
+            svc::StreamItem::Event(e) => MonitorStreamItem::Event { event: event_of(e) },
+            svc::StreamItem::Ready(seq) => MonitorStreamItem::Ready { seq },
+            svc::StreamItem::Reset(seq) => MonitorStreamItem::Reset { seq },
+            svc::StreamItem::Nothing => MonitorStreamItem::Nothing,
+        })
+    }
+
+    pub fn close(&self) {
+        if let Some(mut s) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            s.close();
+        }
     }
 }
 

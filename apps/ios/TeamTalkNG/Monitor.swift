@@ -19,7 +19,6 @@ final class MonitorStore {
     /// Events seen so far (newest last), and the last one's number.
     private(set) var events: [MonitorEvent] = []
     private var lastSeq: Int64?
-    private var polling: Task<Void, Never>?
 
     init(app: AppModel) {
         self.app = app
@@ -256,39 +255,81 @@ final class MonitorStore {
         if renamed, case .success(let s)? = await call({ try $0.servers() }) { servers = s }
     }
 
-    /// Follows events while a Monitor screen is open (every few seconds),
-    /// saying the new ones.
+    /// A live connection to the Monitor's events (nil: no Monitor, or it
+    /// can't be reached now).
+    func openEvents(since: Int64?) async -> MonitorEventStream? {
+        guard let c = await client() else { return nil }
+        switch await Task.detached(operation: { Result { try c.openEvents(since: since) } }).value {
+        case .success(let s): return s
+        case .failure(let e): problem = NGAccountStore.words(e); return nil
+        }
+    }
+
+    /// Follows the Monitor's events live while a Monitor screen is open (one
+    /// connection, as the old app; no polling), saying the new ones. What
+    /// happened while the screen was away is caught up quietly (it was said
+    /// in a server's screen, or by a notification).
     func startFollowing() {
-        guard polling == nil else { return }
-        polling = Task { [weak self] in
+        guard following == nil else { return }
+        following = Task { [weak self] in
+            var wait: Double = 1
             while !Task.isCancelled {
-                await self?.poll()
-                try? await Task.sleep(for: .seconds(4))
+                guard let self else { return }
+                guard let stream = await self.openEvents(since: self.lastSeq) else {
+                    try? await Task.sleep(for: .seconds(wait)); wait = min(wait * 2, 30); continue
+                }
+                self.stream = stream
+                wait = 1
+                var ready = false
+                while !Task.isCancelled {
+                    guard case .success(let item) = await Task.detached(operation: { Result { try stream.next() } }).value else { break }
+                    switch item {
+                    case .event(let e):
+                        self.lastSeq = e.seq
+                        self.take(e, say: ready)
+                    case .ready(let seq):
+                        self.lastSeq = max(self.lastSeq ?? seq, seq)
+                        ready = true
+                        await self.refresh()
+                    case .reset(let seq):
+                        self.lastSeq = seq
+                    case .nothing:
+                        break
+                    }
+                }
+                stream.close()
+                self.stream = nil
             }
         }
     }
 
     func stopFollowing() {
-        polling?.cancel()
-        polling = nil
+        following?.cancel()
+        following = nil
+        stream?.close()
+        stream = nil
     }
 
-    private func poll() async {
-        let since = lastSeq
-        guard let r = await call({ try $0.events(since: since, serverId: nil) }), case .success(let e) = r else { return }
-        let first = since == nil
-        lastSeq = e.lastSeq
-        guard !e.events.isEmpty else { return }
-        events.append(contentsOf: e.events)
+    private var following: Task<Void, Never>?
+    private var stream: MonitorEventStream?
+    private var refreshSoon: Task<Void, Never>?
+
+    /// One event, kept (said when it's live).
+    private func take(_ ev: MonitorEvent, say: Bool) {
+        events.append(ev)
         if events.count > 500 { events.removeFirst(events.count - 500) }
-        if !first {
-            for ev in e.events.suffix(5) {
-                let server = servers.first { $0.id == ev.serverId }?.name ?? ""
-                announce(server.isEmpty ? ev.text : "\(server): \(ev.text)")
-                if ev.kind == "message" { app.sounds.play(ev.messageKind == "user" ? .privateMessage : .channelMessage) }
-            }
+        if say {
+            let server = servers.first { $0.id == ev.serverId }?.name ?? ""
+            announce(server.isEmpty ? ev.text : "\(server): \(ev.text)")
+            if ev.kind == "message" { app.sounds.play(ev.messageKind == "user" ? .privateMessage : .channelMessage) }
         }
-        await refresh()
+        // The servers' summaries (status, unread) a moment after events.
+        refreshSoon?.cancel()
+        refreshSoon = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
+        }
     }
 
     // MARK: Servers

@@ -20,7 +20,7 @@ use tungstenite::{Message, WebSocket};
 use crate::ServiceError;
 
 type Result<T> = std::result::Result<T, ServiceError>;
-type Ws = WebSocket<MaybeTlsStream<TcpStream>>;
+pub(crate) type Ws = WebSocket<MaybeTlsStream<TcpStream>>;
 
 /// How long to wait for the relay or the Monitor.
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -114,9 +114,9 @@ pub struct Tunnel {
     next_id: u64,
 }
 
-struct Conn {
-    ws: Ws,
-    channel: Channel,
+pub(crate) struct Conn {
+    pub(crate) ws: Ws,
+    pub(crate) channel: Channel,
     last_used: std::time::Instant,
 }
 
@@ -224,6 +224,25 @@ impl Tunnel {
         result
     }
 
+    /// A connection of its own, subscribed to the Monitor's events.
+    pub fn open_events(&self, since: Option<i64>) -> Result<crate::stream::EventStream> {
+        let mut conn = self.connect()?;
+        let req = Request {
+            id: 1,
+            method: None,
+            path: None,
+            body: None,
+            hello: false,
+            subscribe: Some(ng_relay::rpc::Subscribe { since }),
+            unsubscribe: false,
+        };
+        let bytes = serde_json::to_vec(&req).map_err(|e| ServiceError::Unexpected(e.to_string()))?;
+        for piece in conn.channel.seal(&bytes) {
+            send(&mut conn.ws, piece)?;
+        }
+        Ok(crate::stream::EventStream::tunnel(conn))
+    }
+
     fn connect(&self) -> Result<Conn> {
         let mut ws = open(&self.relay, &format!("/v2/relay/app/{}", self.monitor.monitor_id)).map_err(|e| match e {
             Open::Status(503) => {
@@ -261,7 +280,7 @@ fn refused(status: u16, message: &str) -> ServiceError {
 
 /// Why a WebSocket didn't open.
 #[derive(Debug)]
-enum Open {
+pub(crate) enum Open {
     Status(u16),
     Failed(String),
 }
@@ -277,6 +296,11 @@ impl From<Open> for ServiceError {
 
 /// A WebSocket to `relay` + `path` (https → wss).
 fn open(relay: &str, path: &str) -> std::result::Result<Ws, Open> {
+    open_with(relay, path, None)
+}
+
+/// A WebSocket to `relay` + `path`, with a bearer token if given.
+pub(crate) fn open_with(relay: &str, path: &str, bearer: Option<&str>) -> std::result::Result<Ws, Open> {
     let base = relay.trim_end_matches('/');
     let (tls, rest) = if let Some(r) = base.strip_prefix("https://") {
         (true, r)
@@ -309,7 +333,18 @@ fn open(relay: &str, path: &str) -> std::result::Result<Ws, Open> {
     } else {
         Some(tungstenite::Connector::Plain)
     };
-    match tungstenite::client_tls_with_config(url.as_str(), tcp, None, connector) {
+    use tungstenite::client::IntoClientRequest;
+    let mut req = url
+        .as_str()
+        .into_client_request()
+        .map_err(|e| Open::Failed(e.to_string()))?;
+    if let Some(t) = bearer {
+        let v = format!("Bearer {t}")
+            .parse()
+            .map_err(|_| Open::Failed("a bad token".into()))?;
+        req.headers_mut().insert("Authorization", v);
+    }
+    match tungstenite::client_tls_with_config(req, tcp, None, connector) {
         Ok((ws, _)) => Ok(ws),
         Err(tungstenite::HandshakeError::Failure(tungstenite::Error::Http(r))) => {
             Err(Open::Status(r.status().as_u16()))

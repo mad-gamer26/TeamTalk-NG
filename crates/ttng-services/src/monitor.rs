@@ -333,6 +333,16 @@ impl Monitor {
         Ok(r)
     }
 
+    /// A live connection to the Monitor's events (what happened since
+    /// `since` first, then as it happens): the hosted Monitor's WebSocket, or
+    /// a stream inside your own Monitor's encrypted tunnel.
+    pub fn open_events(&self, since: Option<i64>) -> Result<crate::stream::EventStream> {
+        match &self.tunnel {
+            Some(t) => t.lock().unwrap_or_else(|e| e.into_inner()).open_events(since),
+            None => crate::stream::EventStream::hosted(&self.base, self.token.as_deref(), since),
+        }
+    }
+
     /// Ends this install's registration on the hosted Monitor: it logs out
     /// of every server it watched for it and deletes them (passwords too).
     pub fn forget_registration(&mut self) -> Result<()> {
@@ -609,7 +619,7 @@ impl Monitor {
 }
 
 /// One stored event, with its words.
-fn event(e: &Value) -> MonitorEvent {
+pub(crate) fn event(e: &Value) -> MonitorEvent {
     let ev = e.get("event").cloned().unwrap_or(Value::Null);
     let kind = ev.get("type").and_then(Value::as_str).unwrap_or_default().to_owned();
     let name_of = |u: &Value| -> String {

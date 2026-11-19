@@ -171,6 +171,10 @@ extension ShortcutActions {
                     }
                 }
                 return
+            case "announced":
+                // What the app has said (for VoiceOver) since the last ask.
+                said = "Announced: " + announcedForTests.joined(separator: " ;; ")
+                announcedForTests = []
             case "clearMonitor":
                 // The run's own Monitor is shared by every test: what an
                 // earlier test had it watch goes.

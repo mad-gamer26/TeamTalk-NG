@@ -19,10 +19,11 @@ Read `docs/design.md` first: it records the decisions.
   against the SDK built from source.
   Your own Monitor end to end: `cargo test -p ttng-services --test own_monitor`
   (see docs/design.md; `crates/ng-relay` is a copy: scripts/check-ng-relay-copy.sh).
-  NG Account end to end: `cargo test -p ttng-ffi --test ng_account_e2e`
-  (two devices through the app's calls, on a private ngmon; NGMON_BIN for
-  a freshly built one), and on the Mac `scripts/test-ng-account-ui.sh`
-  (the app itself in the Simulator, a UI test against a private ngmon).
+  The Monitor and NG Account against the real service:
+  `NGMON_BIN=~/ng-service/target/release/ng-service cargo test -p ttng-services`
+  (NG Account is only for publishing sound packs; server sync ended
+  2026-11-18), and on the Mac `scripts/test-ios-ui.sh` (the app in the
+  Simulator against the private service and a real ng-monitor).
 - The official SDK is a trial (the owner chose to stay on it for now; see
   docs/design.md). Its trial check can segfault a test program at exit
   after every test passed: rerun; it isn't a test failure.

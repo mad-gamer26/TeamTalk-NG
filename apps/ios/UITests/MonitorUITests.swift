@@ -120,6 +120,49 @@ final class MonitorUITests: NGTestCase {
         }
     }
 
+    /// Private messages that came while a monitored server's screen was
+    /// open are said there, once: going back to the Monitor's list doesn't
+    /// say them again.
+    func testLeavingAServerScreenDoesntRepeatItsMessages() {
+        connect("admin")
+        more("Disconnect")
+        monitorFromSettings()
+        visibleServerRow("it in Settings → Monitor").tap()
+        let nick = app.textFields["Nickname"]
+        waitFor(nick, "its nickname")
+        replace(nick, with: "Repeater")
+        button("Save").tap()
+        Host.until("the Monitor logged in as Repeater", timeout: 30) { Host.user("Repeater") != nil }
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        closeSettings(from: "Monitor")
+        app.buttons["Monitor"].tap()
+        let watched = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch
+        waitFor(watched, "it on the Monitor's list", timeout: 20)
+        watched.tap()
+        waitFor(any("Bob"), "the server, through the Monitor", timeout: 30)
+        run("announced", says: "Announced")
+        Host.call("/pm", ["bot": "bob", "to": "Repeater", "text": "First note"])
+        Thread.sleep(forTimeInterval: 3)
+        Host.call("/pm", ["bot": "bob", "to": "Repeater", "text": "Second note"])
+        Thread.sleep(forTimeInterval: 4)
+        // Both arrived on the server's screen (the conversation opened, as
+        // the desktop's popup): closed.
+        waitFor(any("Second note"), "the messages on the server's screen")
+        if button("Done").exists { button("Done").tap() }
+        run("announced", says: "Announced")
+        // Back to the Monitor's list (the Back button, not the server
+        // screen's own "Monitor" button), and a while there.
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
+        edge.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+        waitFor(app.navigationBars["Monitor"], "the Monitor's list")
+        Thread.sleep(forTimeInterval: 10)
+        run("announced", says: "Announced")
+        let said = app.staticTexts.matching(identifier: "uitest-action-result").firstMatch.label
+        // Nothing said again on the list (what came before was cleared by
+        // the ask on the server's screen).
+        XCTAssertFalse(said.contains("First note") || said.contains("Second note"), "said again on the list: \(said)")
+    }
+
     /// The Monitor titles its notifications with the server's name in the
     /// list: renamed there, renamed on the Monitor too.
     func testRenamingAServerRenamesItOnTheMonitor() {

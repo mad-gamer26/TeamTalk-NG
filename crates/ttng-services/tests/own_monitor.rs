@@ -220,6 +220,31 @@ fn pairing_then_monitoring_through_the_relay() {
     mon.set_push(Some(&"ab".repeat(32)), true, "ref-1", "install-1")
         .expect("push token set");
 
+    // Its events, live through the tunnel: ready, then each as it happens.
+    let mut live = mon.open_events(None).expect("opened");
+    let end = Instant::now() + Duration::from_secs(20);
+    loop {
+        if matches!(live.receive().expect("open"), StreamItem::Ready(_)) {
+            break;
+        }
+        assert!(Instant::now() < end, "never ready");
+    }
+    let bob = tt::TestClient::logged_in(&server, "bob");
+    loop {
+        if let StreamItem::Event(e) = live.receive().expect("open")
+            && e.kind == "logged_in"
+            && e.server_id == id
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < end + Duration::from_secs(10),
+            "Bob's login never came live"
+        );
+    }
+    drop(bob);
+    drop(live);
+
     // Another phone of the same person pairs with its own code.
     let (code2, _waiting2) = w.code();
     let key2 = new_phone_key();

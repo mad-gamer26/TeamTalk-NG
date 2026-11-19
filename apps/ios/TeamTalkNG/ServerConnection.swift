@@ -126,6 +126,8 @@ final class ServerConnection {
     func shows(_ s: TransmitStream) -> Bool { hasAudio || !Self.audioStreams.contains(s) }
     fileprivate var monitorSnapshot: Snapshot?
     fileprivate var monitorTask: Task<Void, Never>?
+    /// Monitor mode's live connection to the Monitor's events.
+    fileprivate var monitorStream: MonitorEventStream?
 
     /// The Monitor's connection to `id`, as a server screen.
     convenience init(monitorServer m: MonitorServer, app: AppModel) {
@@ -1637,19 +1639,34 @@ extension ServerConnection {
                         if let root = v.channels.first(where: { $0.parentId == 0 }) { self.expanded.insert(Int32(root.id)) }
                     }
                 }
-                let since = seq
-                if case .success(let batch)? = await store.call({ try $0.events(since: since, serverId: id) }) {
-                    if batch.gap { seq = nil; continue }
-                    if !batch.events.isEmpty {
+                // Then live, one connection (as the old app): each event of
+                // this server as it happens, the view fetched again with it.
+                guard let stream = await store.openEvents(since: seq) else {
+                    try? await Task.sleep(for: .seconds(3)); continue
+                }
+                self.monitorStream = stream
+                while !Task.isCancelled, self.monitorTask != nil {
+                    guard case .success(let item) = await Task.detached(operation: { Result { try stream.next() } }).value else { break }
+                    switch item {
+                    case .event(let e):
+                        seq = e.seq
+                        guard e.serverId == id else { continue }
                         let before = self.monitorSnapshot
                         if case .success(let v)? = await store.call({ try $0.view(serverId: id) }) {
                             self.applyMonitorView(v, announce: true)
                         }
-                        for e in batch.events where self.monitorTask != nil { self.monitorEvent(e, before: before) }
+                        if self.monitorTask != nil { self.monitorEvent(e, before: before) }
+                    case .ready(let at):
+                        seq = max(seq ?? at, at)
+                    case .reset:
+                        seq = nil
+                    case .nothing:
+                        break
                     }
-                    seq = batch.lastSeq
+                    if seq == nil { break }
                 }
-                try? await Task.sleep(for: .seconds(1))
+                stream.close()
+                self.monitorStream = nil
             }
         }
     }
@@ -1660,6 +1677,8 @@ extension ServerConnection {
     fileprivate func stopMonitor(quietly: Bool = false) {
         monitorTask?.cancel()
         monitorTask = nil
+        monitorStream?.close()
+        monitorStream = nil
         if quietly {
             state = .disconnected
             live = false

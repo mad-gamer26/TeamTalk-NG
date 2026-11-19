@@ -268,3 +268,77 @@ fn leaving_the_hosted_monitor_deletes_what_it_kept() {
     let old = Monitor::new(&ng.url, Some(&reg.token));
     assert!(old.servers().is_err(), "the registration is gone");
 }
+
+/// The next stream items until `want` accepts one (20 s at most).
+fn stream_until(s: &mut EventStream, what: &str, want: impl Fn(&StreamItem) -> bool) -> Vec<StreamItem> {
+    let end = Instant::now() + Duration::from_secs(20);
+    let mut seen = Vec::new();
+    loop {
+        let item = s.receive().expect("the stream stays open");
+        let done = want(&item);
+        if item != StreamItem::Nothing {
+            seen.push(item);
+        }
+        if done {
+            return seen;
+        }
+        assert!(Instant::now() < end, "no {what} within 20 s; got {seen:?}");
+    }
+}
+
+/// The hosted Monitor's live connection (no polling): ready, then each
+/// event as it happens; opened again from a point, what was missed first.
+#[test]
+fn the_hosted_monitors_events_come_live() {
+    let Some(ng) = Ngmon::start() else { return };
+    let server = tt::Server::start();
+    let mut mon = Monitor::new(&ng.url, None);
+    mon.register("Test iPhone").expect("registered");
+    let id = mon
+        .add_server(&MonitorServerInput {
+            name: "Test".into(),
+            host: "127.0.0.1".into(),
+            tcp_port: server.port,
+            nickname: "Live".into(),
+            username: "alice".into(),
+            password: "alice-pw".into(),
+            enabled: true,
+            ..Default::default()
+        })
+        .expect("added");
+    until("the monitor logging in", || {
+        mon.servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id && s.status == "logged_in")
+    });
+    let mut live = mon.open_events(None).expect("opened");
+    let ready = stream_until(&mut live, "ready", |i| matches!(i, StreamItem::Ready(_)));
+    let StreamItem::Ready(at) = *ready.last().unwrap() else {
+        unreachable!()
+    };
+    // Bob logs in: it arrives at once.
+    let bob = tt::TestClient::logged_in(&server, "bob");
+    let got = stream_until(
+        &mut live,
+        "Bob's login",
+        |i| matches!(i, StreamItem::Event(e) if e.kind == "logged_in" && e.server_id == id),
+    );
+    let StreamItem::Event(e) = got.last().unwrap() else {
+        unreachable!()
+    };
+    assert!(e.seq > at);
+    drop(live);
+    // Missed while closed (Bob leaves), then caught up on opening again.
+    drop(bob);
+    std::thread::sleep(Duration::from_secs(2));
+    let mut again = mon.open_events(Some(e.seq)).expect("opened again");
+    let caught = stream_until(&mut again, "ready", |i| matches!(i, StreamItem::Ready(_)));
+    assert!(
+        caught
+            .iter()
+            .any(|i| matches!(i, StreamItem::Event(x) if x.kind == "logged_out")),
+        "Bob's logout first: {caught:?}"
+    );
+    mon.remove_server(id).unwrap();
+}

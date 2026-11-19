@@ -1,6 +1,6 @@
 //! NG Account: accounts, sessions, and syncing saved servers.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::error::{Result, ServiceError};
@@ -32,49 +32,6 @@ pub struct AccountInfo {
     pub account: Account,
     pub session_id: i64,
     pub sync_rev: i64,
-}
-
-/// One synced thing (a server or a setting) at a revision.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct SyncRecord {
-    pub kind: String,
-    pub key: String,
-    pub rev: i64,
-    #[serde(default)]
-    pub deleted: bool,
-    #[serde(default)]
-    pub data: Option<Value>,
-    #[serde(default)]
-    pub updated: i64,
-}
-
-/// What changed since a revision.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct SyncPull {
-    /// The account's revision now (pull from it next time).
-    pub rev: i64,
-    /// The account's data started over: `records` is all of it.
-    pub reset: bool,
-    pub records: Vec<SyncRecord>,
-}
-
-/// A change to send: made from `base_rev` (0 for something new).
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct SyncChange {
-    pub kind: String,
-    pub key: String,
-    pub base_rev: i64,
-    pub deleted: bool,
-    pub data: Option<Value>,
-}
-
-/// What the service made of the changes.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct SyncApplied {
-    pub rev: i64,
-    pub applied: Vec<SyncRecord>,
-    /// Changed elsewhere meanwhile, as they are now: merge and send again.
-    pub conflicts: Vec<SyncRecord>,
 }
 
 /// A client for NG Account on one service, as one install of the app.
@@ -191,16 +148,6 @@ impl NgAccount {
         let r = self.post("/v1/account/signout", &json!({}));
         self.token = None;
         r.map(|_| ())
-    }
-
-    /// What changed since revision `since` (0 for everything).
-    pub fn pull(&self, since: i64) -> Result<SyncPull> {
-        decode(self.get(&format!("/v1/sync?since={since}"))?)
-    }
-
-    /// Sends changes (at most 500 at a time).
-    pub fn push(&self, changes: &[SyncChange]) -> Result<SyncApplied> {
-        decode(self.post("/v1/sync", &json!({ "changes": changes }))?)
     }
 
     // MARK: Sound packs (backed up privately; published to the catalog)
