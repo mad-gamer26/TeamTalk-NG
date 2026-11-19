@@ -204,6 +204,11 @@ extension ShortcutActions {
                 let off = read().joined(separator: ",")
                 clear()
                 said = "Keychain merge: on [\(on)] off [\(off)]"
+            case "eraseSafety":
+                Task { @MainActor in
+                    AppModel.shared?.uiTestActionResult = await ICloudSync.shared.eraseSafetyTest()
+                }
+                said = "Erase safety: started"
             case "clearMonitor":
                 // The run's own Monitor is shared by every test: what an
                 // earlier test had it watch goes.
