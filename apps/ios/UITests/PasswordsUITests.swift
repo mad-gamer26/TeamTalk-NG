@@ -10,17 +10,26 @@ final class PasswordsUITests: NGTestCase {
 
     func testAPasswordFieldShowsItsPasswordWithItsSwitch() {
         button("Server List Actions").tap()
-        button("Type its details").tap()
+        button("Add Server").tap()
         let hidden = app.secureTextFields["Password"]
         waitFor(hidden, "the password, hidden")
         hidden.tap(); hidden.typeText("hunter2")
         let show = app.switches["Show password"]
         if !show.isHittable { app.swipeUp() }
+        // One switch for it (there were two, one under the other).
+        XCTAssertEqual(app.switches.matching(NSPredicate(format: "label == 'Show password'")).count, 1, "one Show password switch")
         (show.switches.firstMatch.exists ? show.switches.firstMatch : show).tap()
         let shown = app.textFields["Password"]
         waitFor(shown, "the password shown")
         XCTAssertEqual(shown.value as? String, "hunter2")
         XCTAssertFalse(app.secureTextFields["Password"].exists, "not hidden any more")
+        // The channel password: its own single switch too.
+        let channel = app.textFields["Channel to join (optional), like /Lobby/"]
+        for _ in 0..<3 where !channel.isHittable { app.swipeUp() }
+        channel.tap(); channel.typeText("/Secret/")
+        let chanShow = app.switches.matching(NSPredicate(format: "label == 'Show channel password'"))
+        for _ in 0..<3 where !(chanShow.firstMatch.exists && chanShow.firstMatch.isHittable) { app.swipeUp() }
+        XCTAssertEqual(chanShow.count, 1, "one Show channel password switch")
     }
 
     func testChannelLinksCarryTheirPasswords() {

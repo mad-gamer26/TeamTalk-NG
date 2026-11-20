@@ -42,7 +42,7 @@ struct DisplaySettingsView: View {
             Section("Dialogs") {
                 Toggle("Open private messages as they arrive", isOn: $model.messagePopup)
                 Toggle("Tell me in a dialog when I'm kicked", isOn: $model.excludedDialog)
-                Toggle("Show the server list when the app starts", isOn: $model.serverListOnStart)
+                Toggle("Show public servers when the app starts", isOn: $model.serverListOnStart)
             }
             Section {
                 NavigationLink("Notifications") { BackgroundNotificationsView() }

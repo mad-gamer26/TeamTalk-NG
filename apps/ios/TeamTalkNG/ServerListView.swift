@@ -77,7 +77,7 @@ struct ServerListView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu("Server List Actions", systemImage: "plus") {
-                        Button("Type its details") { editing = SavedServer() }
+                        Button("Add Server") { editing = SavedServer() }
                         Button("Public servers and join codes") { showPublic = true }
                         Button("Import a .tt file") { importing = true }
                         // The desktop's "Export Server list to .tt File".
@@ -98,7 +98,7 @@ struct ServerListView: View {
                         }
                         Button("Import a .tt file") { importing = true }
                         Button("Public servers and join codes") { showPublic = true }
-                        Button("Type its details") { editing = SavedServer() }
+                        Button("Add Server") { editing = SavedServer() }
                     }
                 }
             }
@@ -221,8 +221,6 @@ struct ServerEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State var server: SavedServer
     @State private var importingCert: CertKind?
-    @State private var showPassword = false
-    @State private var showChannelPassword = false
 
     enum CertKind { case ca, cert, key }
 
@@ -283,14 +281,8 @@ struct ServerEditView: View {
                         TextField("Username", text: $server.username).accessibilityLabel("Username")
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                        if showPassword {
-                            TextField("Password", text: $password).accessibilityLabel("Password")
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        } else {
-                            PasswordField("Password", text: $password)
-                        }
-                        // The desktop's "Show password".
-                        Toggle("Show password", isOn: $showPassword)
+                        // With its own "Show password" switch (the desktop's).
+                        PasswordField("Password", text: $password)
                     }
                     TextField("Nickname (optional)", text: $server.nickname).accessibilityLabel("Nickname (optional)")
                     TextField("Status message (optional)", text: $server.statusMessage).accessibilityLabel("Status message (optional)")
@@ -302,13 +294,7 @@ struct ServerEditView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     if !server.joinChannel.isEmpty {
-                        if showChannelPassword {
-                            TextField("Its password (optional)", text: $server.channelPassword).accessibilityLabel("Its password (optional)")
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        } else {
-                            PasswordField("Its password (optional)", text: $server.channelPassword, showLabel: "Show channel password")
-                        }
-                        Toggle("Show channel password", isOn: $showChannelPassword)
+                        PasswordField("Its password (optional)", text: $server.channelPassword, showLabel: "Show channel password")
                     }
                 }
             }
