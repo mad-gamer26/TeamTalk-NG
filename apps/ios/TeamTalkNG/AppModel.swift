@@ -316,6 +316,7 @@ final class AppModel {
         // Saved once everything's loaded (saving writes every setting).
         loading = false
         if convertedSettings { save() }
+        shareServers()
         History.removeSaved()
         // As the desktop when it starts (mainwindow.cpp, loading settings):
         // "Voice activation enabled" or "disabled" (vox_enable / vox_disable).
@@ -523,14 +524,27 @@ final class AppModel {
                       "out": Int(audio.outputVolume), "media": Int(audio.mediaVolume)], forKey: "audio")
     }
 
+    /// The servers' names for Siri, the Shortcuts app and the Control
+    /// Center control (they read them from the App Group), and Siri told
+    /// its phrases' servers changed. At every start too: servers that came
+    /// another way (iCloud, a restored backup) weren't shared until the
+    /// next change.
+    private var sharedServers: [[String: String]]?
+    func shareServers() {
+        let list = servers.map { ["id": $0.id.uuidString, "name": $0.title] }
+        guard list != sharedServers else { return }
+        sharedServers = list
+        Service.group?.set(list, forKey: "shortcutServers")
+        TeamTalkShortcuts.updateAppShortcutParameters()
+    }
+
     private func save() {
         // Not while loading: with @Observable, setting a property in init
         // runs its didSet, and saving then would write the settings not
         // loaded yet back to their defaults.
         guard !loading else { return }
         defaults.set(try? JSONEncoder().encode(servers), forKey: "servers")
-        // Their names for Siri and the Control Center control.
-        Service.group?.set(servers.map { ["id": $0.id.uuidString, "name": $0.title] }, forKey: "shortcutServers")
+        shareServers()
         defaults.set(talkMode.rawValue, forKey: "talkMode")
         defaults.set(voiceLevel, forKey: "voiceLevel")
         defaults.set(nickname, forKey: "nickname")

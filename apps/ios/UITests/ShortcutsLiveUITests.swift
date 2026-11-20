@@ -120,3 +120,18 @@ final class ShortcutsLiveUITests: NGTestCase {
         XCTAssertTrue(app.buttons["Add Disconnect"].exists)
     }
 }
+
+/// Siri, Shortcuts and Control Center list the saved servers, also after
+/// they came another way than an edit here (iCloud at launch, a restore):
+/// the shared list is written at every start.
+final class ShortcutServersUITests: NGTestCase {
+    func testTheSharedServerListIsRefreshedAtLaunch() {
+        connect("admin")
+        more("Disconnect")
+        run("shortcutServers", says: "Shortcut servers: 1 of 1")
+        // Emptied behind the app's back (as after the erase), then the app
+        // starting from what it has saved.
+        run("shortcutServers", ["clear": "1"], says: "Shortcut servers: 0 of 1")
+        run("shortcutServers", ["restart": "1"], says: "Shortcut servers: 1 of 1")
+    }
+}

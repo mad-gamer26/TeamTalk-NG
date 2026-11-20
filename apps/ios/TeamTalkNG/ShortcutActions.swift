@@ -204,6 +204,17 @@ extension ShortcutActions {
                 let off = read().joined(separator: ",")
                 clear()
                 said = "Keychain merge: on [\(on)] off [\(off)]"
+            case "shortcutServers":
+                // What Siri, Shortcuts and Control Center see, against the
+                // app's own list; "clear" empties it (as after an erase).
+                if q["clear"] == "1" { Service.group?.removeObject(forKey: "shortcutServers") }
+                if q["restart"] == "1" {
+                    // A model made from what's saved, as at a start (the
+                    // one on screen stays).
+                    _ = AppModel()
+                }
+                let shared = Service.group?.array(forKey: "shortcutServers")?.count ?? 0
+                said = "Shortcut servers: \(shared) of \(AppModel.shared?.servers.count ?? -1)"
             case "failedMove":
                 Task { @MainActor in
                     guard let m = AppModel.shared else { return }
