@@ -127,6 +127,10 @@ pub struct MonitorUser {
     pub username: String,
     pub status_msg: String,
     pub client_name: String,
+    /// The client's version, such as "5.8".
+    pub version: String,
+    /// Shown to administrators only ("" otherwise).
+    pub ip_address: String,
     pub admin: bool,
     /// 0 when not in a channel.
     pub channel_id: i64,
@@ -366,6 +370,8 @@ impl MonitorClient {
                     username: u.username,
                     status_msg: u.status_msg,
                     client_name: u.client_name,
+                    version: u.version,
+                    ip_address: u.ip_address,
                     admin: u.user_type == 2,
                     channel_id: u.channel_id.unwrap_or(0),
                     status_mode: u.status_mode,

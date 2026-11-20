@@ -1856,7 +1856,7 @@ extension ServerConnection {
         let gender: Gender = bits & 0x1000 != 0 ? .neutral : bits & 0x100 != 0 ? .female : .male
         return User(id: Int32(m.id), displayName: m.displayName, nickname: m.nickname, username: m.username,
                     channelId: Int32(m.channelId), status: mode, statusMessage: m.statusMsg, admin: m.admin,
-                    clientName: m.clientName, ipAddress: "", talking: false, version: "", gender: gender,
+                    clientName: m.clientName, ipAddress: m.ipAddress, talking: false, version: m.version, gender: gender,
                     sendingVideo: bits & 0x200 != 0, sharingDesktop: bits & 0x400 != 0,
                     streamingMedia: bits & 0x800 != 0, streamPaused: bits & 0x2000 != 0, playingMedia: false,
                     mySubscriptions: Subscriptions(on: []), theirSubscriptions: Subscriptions(on: []),

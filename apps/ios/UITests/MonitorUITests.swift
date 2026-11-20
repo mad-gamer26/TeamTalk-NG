@@ -26,6 +26,14 @@ final class MonitorUITests: NGTestCase {
         // As if connected: the channels and people.
         waitFor(any("Lobby"), "the channels, through the Monitor", timeout: 30)
         waitFor(any("Bob"), "Bob, through the Monitor")
+        // A person's information: their client with its version (it showed
+        // only the client's name through the Monitor).
+        action("View User Information", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        let client = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Client'")).firstMatch
+        waitFor(client, "Bob's information")
+        let value = client.value as? String ?? ""
+        XCTAssertTrue(value.contains("version ") && !value.hasSuffix("version "), "the client's version: \(value)")
+        button("Done").tap()
         // No audio at all (a text-only client).
         XCTAssertFalse(app.buttons["Talk"].exists, "no Talk button")
         app.buttons["More"].tap()

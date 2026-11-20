@@ -106,6 +106,12 @@ pub struct MonitorUser {
     pub status_msg: String,
     #[serde(default)]
     pub client_name: String,
+    /// The client's version ("5.8"; the Monitor always sent it).
+    #[serde(default)]
+    pub version: String,
+    /// Only sent when the Monitor is an administrator there.
+    #[serde(default)]
+    pub ip_address: String,
     /// 2 for an administrator.
     #[serde(default)]
     pub user_type: i64,

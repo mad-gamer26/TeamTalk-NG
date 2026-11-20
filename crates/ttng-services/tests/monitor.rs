@@ -112,6 +112,9 @@ fn the_monitor_watches_and_carries_private_messages() {
     assert_eq!(e.text, "Bob logged in");
     assert!(e.user_id > 0, "who logged in: {e:?}");
     assert!(mon.view(id).unwrap().users.iter().any(|u| u.username == "bob"));
+    // Each person's client version comes too (the app showed only the name).
+    let bob_seen = mon.view(id).unwrap().users.into_iter().find(|u| u.username == "bob").unwrap();
+    assert!(!bob_seen.version.is_empty(), "Bob's client version: {bob_seen:?}");
 
     // Bob writes to the monitor privately: a conversation.
     bob.client
