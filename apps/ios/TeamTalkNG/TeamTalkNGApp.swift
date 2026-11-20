@@ -19,8 +19,13 @@ struct TeamTalkNGApp: App {
             UIView.setAnimationsEnabled(false)
         }
         #endif
-        if SettingsAccess.readable { _model = State(initialValue: Self.makeModel()) }
+        if !Self.onMac, SettingsAccess.readable { _model = State(initialValue: Self.makeModel()) }
     }
+
+    /// The iPhone app run on a Mac (Apple silicon Macs can run iPhone apps):
+    /// not meant for it (the Mac version is its own app), so it does nothing
+    /// there but say so.
+    private static let onMac = ProcessInfo.processInfo.isiOSAppOnMac
 
     /// Reads the settings and makes the app's model; only once they can
     /// be read.
@@ -35,7 +40,7 @@ struct TeamTalkNGApp: App {
     /// The first unlock after a restart (or any later moment the settings
     /// became readable): the app starts now.
     private func startIfReadable() {
-        guard model == nil, SettingsAccess.readable else { return }
+        guard model == nil, !Self.onMac, SettingsAccess.readable else { return }
         model = Self.makeModel()
     }
     @Environment(\.scenePhase) private var phase
@@ -43,7 +48,10 @@ struct TeamTalkNGApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let model {
+                if Self.onMac {
+                    Text("TeamTalk NG for iPhone doesn't run on a Mac. The Mac version is its own app, on TeamTalk NG's GitHub releases.")
+                        .padding()
+                } else if let model {
                     main(model)
                 } else {
                     Text("Unlock your iPhone to use TeamTalk NG.")

@@ -8,7 +8,8 @@ struct AboutView: View {
         let build = info?["CFBundleVersion"] as? String ?? ""
         Form {
             Section {
-                LabeledContent("Version", value: "\(version) (\(build))")
+                LabeledContent("Version", value: version)
+                LabeledContent("Build", value: build)
                 LabeledContent("TeamTalk SDK", value: sdkVersion())
             }
             Section("Made with") {
