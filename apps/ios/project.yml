@@ -101,6 +101,8 @@ targets:
         OTHER_LDFLAGS: ["-lc++", "-lz", "-liconv"]
         # Shared/ConnectIntent.swift acts only in the app.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TTNG_APP"
+        # The app's icon (TeamTalkNG/Assets.xcassets).
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     entitlements:
       path: Generated/TeamTalkNG.entitlements
       properties:
