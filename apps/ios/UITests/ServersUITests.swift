@@ -358,7 +358,7 @@ final class ServerListOrderUITests: NGTestCase {
         row("Bravo").press(forDuration: 1.2)
         waitFor(button("Move down"), "the menu")
         XCTAssertFalse(button("Move up").exists, "no Move up at the top")
-        app.tap()
+        closeMenu()
 
         // Dragged: Alpha onto Bravo's place, at the top.
         row("Alpha").press(forDuration: 0.6, thenDragTo: row("Bravo"), withVelocity: .slow, thenHoldForDuration: 0.8)
@@ -380,7 +380,7 @@ final class ServerListOrderUITests: NGTestCase {
         row("Charlie").press(forDuration: 1.2)
         waitFor(button("Edit"), "its menu")
         XCTAssertFalse(button("Move up").exists || button("Move down").exists, "no moving while searching")
-        app.tap()
+        closeMenu()
         field.buttons["Clear text"].tap()
         field.typeText("nothing like it")
         waitFor(any("No servers match"), "nothing found, said")

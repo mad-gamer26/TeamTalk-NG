@@ -177,7 +177,7 @@ final class FilesSettingsUITests: NGTestCase {
         // A fresh start: the welcome sheet, no saved servers.
         waitFor(app.navigationBars["Welcome to TeamTalk NG"], "the app as a new install", timeout: 20)
         button("Done").tap()
-        waitFor(any("No servers yet. Add one with the Add server button."), "no servers left")
+        waitFor(any("No servers yet. Add one from Server List Actions."), "no servers left")
         app.buttons["Settings"].tap()
         app.buttons["General"].tap()
         Host.until("the nickname gone") { (app.textFields["Nickname"].value as? String) ?? "" == "Nickname" || (app.textFields["Nickname"].value as? String) == "" }
