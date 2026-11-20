@@ -253,7 +253,11 @@ fn main() {
                 // The Simulator's pasteboard (the test runner may not read it).
                 "/pasteboard" => std::process::Command::new("xcrun")
                     // The suite's own Simulator (TTNG_SIM), not just any booted one.
-                    .args(["simctl", "pbpaste", &std::env::var("TTNG_SIM").unwrap_or_else(|_| "booted".into())])
+                    .args([
+                        "simctl",
+                        "pbpaste",
+                        &std::env::var("TTNG_SIM").unwrap_or_else(|_| "booted".into()),
+                    ])
                     .output()
                     .map(|o| json!({ "text": String::from_utf8_lossy(&o.stdout) }))
                     .map_err(|e| e.to_string()),

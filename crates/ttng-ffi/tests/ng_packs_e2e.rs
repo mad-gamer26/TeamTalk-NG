@@ -113,8 +113,10 @@ fn a_pack_is_published_changed_and_withdrawn() {
 
     // Published again and deleted: the same.
     let again = me.backup_pack("local-again".into(), "Again".into()).unwrap();
-    me.upload_pack_file(again.id.clone(), "logged_on.wav".into(), wav(9)).unwrap();
-    me.change_pack(again.id.clone(), None, Some("Matt".into()), None, Some(true)).unwrap();
+    me.upload_pack_file(again.id.clone(), "logged_on.wav".into(), wav(9))
+        .unwrap();
+    me.change_pack(again.id.clone(), None, Some("Matt".into()), None, Some(true))
+        .unwrap();
     me.delete_pack(again.id.clone()).expect("deleted");
     assert!(me.my_packs().unwrap().is_empty());
 }

@@ -360,7 +360,11 @@ fn a_server_moves_between_monitors_with_its_history() {
     let server = tt::Server::start();
     let key = new_phone_key();
     let (code, _waiting) = w.code();
-    let own = Monitor::own(&w.relay, pair_own_monitor(&w.relay, &code, "Test iPhone", &key).unwrap(), &key);
+    let own = Monitor::own(
+        &w.relay,
+        pair_own_monitor(&w.relay, &code, "Test iPhone", &key).unwrap(),
+        &key,
+    );
     let id = own
         .add_server(&MonitorServerInput {
             name: "Moving".into(),
@@ -375,7 +379,10 @@ fn a_server_moves_between_monitors_with_its_history() {
         })
         .unwrap();
     until("logged in at home", || {
-        own.servers().unwrap().into_iter().find(|s| s.id == id && s.status == "logged_in")
+        own.servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id && s.status == "logged_in")
     });
     let me = own.view(id).unwrap().my_user_id;
     let bob = tt::TestClient::logged_in(&server, "bob");
@@ -383,7 +390,10 @@ fn a_server_moves_between_monitors_with_its_history() {
         .send_message(ttng_core::MessageTarget::User(me as i32), "Are you there?")
         .unwrap();
     until("Bob's message at home", || {
-        own.conversations(Some(id)).unwrap().into_iter().find(|c| c.username == "bob")
+        own.conversations(Some(id))
+            .unwrap()
+            .into_iter()
+            .find(|c| c.username == "bob")
     });
 
     // To the hosted Monitor: export from home, import there.
@@ -396,9 +406,16 @@ fn a_server_moves_between_monitors_with_its_history() {
     let hid = hosted.import_server(&moved).unwrap();
     own.remove_server(id).unwrap();
     let cfg = hosted.server_config(hid).unwrap();
-    assert_eq!((cfg.nickname.as_str(), cfg.status_msg.as_str()), ("Command Center", "watching"));
+    assert_eq!(
+        (cfg.nickname.as_str(), cfg.status_msg.as_str()),
+        ("Command Center", "watching")
+    );
     until("logged in at the hosted Monitor", || {
-        hosted.servers().unwrap().into_iter().find(|s| s.id == hid && s.status == "logged_in")
+        hosted
+            .servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == hid && s.status == "logged_in")
     });
     let c = hosted
         .conversations(Some(hid))
@@ -407,17 +424,28 @@ fn a_server_moves_between_monitors_with_its_history() {
         .find(|c| c.username == "bob")
         .expect("Bob's conversation moved");
     assert_eq!(c.last_text, "Are you there?");
-    let texts: Vec<String> = hosted.messages(hid, c.id, None).unwrap().into_iter().map(|m| m.text).collect();
+    let texts: Vec<String> = hosted
+        .messages(hid, c.id, None)
+        .unwrap()
+        .into_iter()
+        .map(|m| m.text)
+        .collect();
     assert_eq!(texts, ["Are you there?"]);
 
     // And back home again.
     let back = own.import_server(&hosted.export_server(hid).unwrap()).unwrap();
     hosted.remove_server(hid).unwrap();
     until("logged in at home again", || {
-        own.servers().unwrap().into_iter().find(|s| s.id == back && s.status == "logged_in")
+        own.servers()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == back && s.status == "logged_in")
     });
     assert!(
-        own.conversations(Some(back)).unwrap().iter().any(|c| c.username == "bob" && c.last_text == "Are you there?"),
+        own.conversations(Some(back))
+            .unwrap()
+            .iter()
+            .any(|c| c.username == "bob" && c.last_text == "Are you there?"),
         "the history came back"
     );
     drop(bob);
