@@ -187,17 +187,29 @@ for rt,devs in d.items():
     done
 fi
 
+# Each Simulator ready within a time limit, or its lane is left out (a
+# broken Simulator once hung a whole run in `simctl privacy`).
+limit() { t=$1; shift; perl -e 'alarm shift; exec @ARGV' "$t" "$@"; }
+ready=""
+for lsim in $sims; do
+    limit 180 xcrun simctl bootstatus "$lsim" -b >/dev/null 2>&1 || { echo "Simulator $lsim didn't boot: its lane is left out"; continue; }
+    # The microphone without asking (the Simulator's; the tests talk).
+    rc=0; limit 60 xcrun simctl privacy "$lsim" grant microphone com.matthewdovi.TeamTalk-NG >/dev/null 2>&1 || rc=$?
+    [ $rc -ge 128 ] && { echo "Simulator $lsim hung: its lane is left out"; continue; }
+    # The old development app (TTNG Dev) also opens teamtalkng:// links:
+    # gone, so the tests' links reach this one.
+    limit 60 xcrun simctl uninstall "$lsim" com.matthewdovi.TeamTalk-NG.dev >/dev/null 2>&1 || true
+    ready="$ready $lsim"
+done
+sims=$ready
+lanes=$(echo $sims | wc -w | tr -d ' ')
+[ "$lanes" -ge 1 ] || { echo "UI tests: no Simulator ready"; exit 1; }
+
 n=0
 for lsim in $sims; do
     n=$((n + 1)); lw="$work/lane$n"; mkdir -p "$lw"
     echo "lane $n ($lsim):"
     start_world
-    xcrun simctl boot "$lsim" 2>/dev/null || true
-    # The microphone without asking (the Simulator's; the tests talk).
-    xcrun simctl privacy "$lsim" grant microphone com.matthewdovi.TeamTalk-NG 2>/dev/null || true
-    # The old development app (TTNG Dev) also opens teamtalkng:// links:
-    # gone, so the tests' links reach this one.
-    xcrun simctl uninstall "$lsim" com.matthewdovi.TeamTalk-NG.dev 2>/dev/null || true
 done
 
 cd "$root/apps/ios"
