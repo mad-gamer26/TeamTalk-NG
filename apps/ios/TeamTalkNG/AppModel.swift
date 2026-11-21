@@ -230,7 +230,7 @@ final class AppModel {
         gender = ["male": Gender.male, "female": .female][defaults.string(forKey: "gender") ?? ""] ?? .neutral
         if let a = defaults.dictionary(forKey: "audio") as? [String: Int] {
             audio = AudioSettings(
-                echoCancellation: a["echo"] == 1, gainControl: a["agc", default: 0] == 1, noiseSuppression: a["denoise", default: 1] == 1,
+                echoCancellation: a["echo"] == 1, gainControl: a["agc", default: 0] == 1, noiseSuppression: a["denoise", default: 0] == 1,
                 micGain: Int32(a["mic", default: 50]), outputVolume: Int32(a["out", default: 50]), mediaVolume: Int32(a["media", default: 100]))
             // Once (2026-11-20): automatic gain control off, now the
             // default (testers asked; it's back on with its switch).
@@ -238,6 +238,13 @@ final class AppModel {
                 audio.gainControl = false
                 convertedSettings = true
                 defaults.set(true, forKey: "agcOffByDefault")
+            }
+            // Once (2026-11-21): noise suppression off too, now the default
+            // (the owner's choice); its switch turns it back on.
+            if !defaults.bool(forKey: "noiseSuppressionOffByDefault") {
+                audio.noiseSuppression = false
+                convertedSettings = true
+                defaults.set(true, forKey: "noiseSuppressionOffByDefault")
             }
             // Once: levels saved on this app's earlier scale (100 normal, up
             // to 400, straight) onto the desktop's (0–100 on a curve, 50

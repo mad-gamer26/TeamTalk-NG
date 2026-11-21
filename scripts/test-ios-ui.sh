@@ -213,6 +213,9 @@ for lsim in $sims; do
 done
 
 cd "$root/apps/ios"
+# The core as the app uses it, rebuilt (a change in it was once tested
+# against the old one).
+./build-core.sh >"$work/core.log" 2>&1 || { tail -20 "$work/core.log"; echo "UI tests: the core's build FAILED"; exit 1; }
 xcodegen -q
 # Built once. The service's address is each lane's (UITEST_SERVICE_URL, at
 # every test's start); the build's own is a dead one, never the live service.

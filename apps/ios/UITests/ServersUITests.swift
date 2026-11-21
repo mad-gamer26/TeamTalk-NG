@@ -111,7 +111,7 @@ final class ServersUITests: NGTestCase {
     /// Settings → Display → "Tell me in a dialog when I'm kicked", then back
     /// on the server's screen (set after connecting: a tt:// link starts afresh).
     func turnOnTheKickDialog() {
-        backToServers()
+        app.navigationBars.buttons["Servers"].tap()
         app.buttons["Settings"].tap()
         app.buttons["Display"].tap()
         let sw = app.switches["Tell me in a dialog when I'm kicked"]
@@ -194,7 +194,7 @@ final class ServersUITests: NGTestCase {
         XCTAssertFalse(onTheServerList.exists, "still on the server's screen")
 
         // Show status line off: the line goes.
-        backToServers()
+        app.navigationBars.buttons["Servers"].tap()
         app.buttons["Settings"].tap()
         app.buttons["Display"].tap()
         let sw = app.switches["Show status line"]

@@ -1,7 +1,5 @@
-The build 30 layout is back, with every new feature kept.
-- Disconnect at the top; Channels, Chat and Files tabs at the bottom.
-- Bottom row: Mute/Unmute, Audio Controls, App Settings, Audio File, AudioNet, Record, Manage Server (admins) or View My Information, Broadcast Message, and More at the end.
-- The old names are back: Mute/Unmute, Reset to Default, Send private message, Move user, Kick user, Edit properties, Sound Events, Text To Speech Events.
-- Audio Controls: Speaker Output, Echo Cancellation, Noise Suppression, Allow Bluetooth Microphones, Master Volume, Input Gain.
-- Automatic gain control is now off by default.
+The same layout as build 36, with clearer names and fixes.
+- The talk button now says Unmute and Mute.
+- Old names are back: Reset to Default, Send private message, Kick user, Move user, View properties, Edit properties, Create Channel, Sound Events, Text To Speech Events.
+- Automatic gain control and noise suppression are off by default (Settings → Sound System turns them on).
 Fixes: the app no longer switches to call audio when it opens (only on a server); admins join password channels without typing the password and can move themselves; no freezing while someone types to you; the Monitor "no longer knows this phone" message; a crash when stopping an AudioNet stream into a channel.

@@ -5,7 +5,7 @@ import XCTest
 /// kept after disconnecting).
 final class NotificationsUITests: NGTestCase {
     private func backToList() {
-        backToServers()
+        app.navigationBars.buttons["Servers"].tap()
         waitFor(app.navigationBars["Servers"], "the server list")
     }
 

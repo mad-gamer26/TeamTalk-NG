@@ -6,7 +6,7 @@ import XCTest
 /// operator password, a temporary channel's form.
 final class RightsUITests: NGTestCase {
     func moreItems() -> [String] {
-        moreButton.tap()
+        app.buttons["More"].tap()
         Thread.sleep(forTimeInterval: 1)
         let items = app.buttons.allElementsBoundByIndex.map(\.label)
         closeMenu()
@@ -16,10 +16,10 @@ final class RightsUITests: NGTestCase {
     func testAnOrdinaryUsersServerItems() {
         connect()
         let items = moreItems()
-        for absent in ["Bans", "Server Statistics", "Save Server Configuration", "Broadcast Message", "Move users", "Manage Server"] {
+        for absent in ["Bans", "Server statistics", "Save server configuration", "Broadcast message", "Move users"] {
             XCTAssertFalse(items.contains(absent), "\(absent) isn't offered without the right")
         }
-        for present in ["View My Information", "Server Properties", "Online users", "Create Channel"] {
+        for present in ["User accounts", "Server settings", "Online users", "Create Channel"] {
             XCTAssertTrue(items.contains(present), "\(present) is offered (as the desktop)")
         }
         // My own account, read-only.

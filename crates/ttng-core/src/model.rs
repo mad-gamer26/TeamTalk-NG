@@ -683,7 +683,7 @@ impl Default for AudioSettings {
         AudioSettings {
             echo_cancellation: false,
             gain_control: false,
-            noise_suppression: true,
+            noise_suppression: false,
             mic_gain: 50,
             output_volume: 50,
             media_volume: 100,

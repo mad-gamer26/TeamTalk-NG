@@ -55,7 +55,7 @@ final class FilesSettingsUITests: NGTestCase {
         Host.call("/talk", ["bot": "bob", "on": "0"])
         more("Stop recording")
         // Settings → Recording → Recordings lists it.
-        backToServers()
+        app.navigationBars.buttons["Servers"].tap()
         app.buttons["Settings"].tap()
         let recording = app.buttons["Recording"]
         if !recording.waitForExistence(timeout: 3) { app.swipeUp() }
@@ -117,7 +117,7 @@ final class FilesSettingsUITests: NGTestCase {
     func testVoiceActivationModeFromSettings() {
         // Connected first (opening a tt:// link starts the app again, as fresh).
         connect()
-        backToServers()
+        app.navigationBars.buttons["Servers"].tap()
         app.buttons["Settings"].tap()
         app.buttons["General"].tap()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Talk mode'")).firstMatch.tap()
@@ -125,12 +125,10 @@ final class FilesSettingsUITests: NGTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         button("Done").tap()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch.tap()
-        let talk = app.buttons["talk"]
-        waitFor(talk, "its Mute button")
-        Host.until("voice activation on the server screen") { ["Waiting for sound", "Sending"].contains(talk.value as? String ?? "") }
-        XCTAssertEqual(talk.label, "Mute")
-        inRow(talk).tap()
-        Host.until("muted: Unmute") { talk.label == "Unmute" }
+        waitFor(any("Voice activation"), "voice activation on the server screen")
+        waitFor(button("Mute"), "its mute button")
+        button("Mute").tap()
+        waitFor(any("Microphone muted"), "muted")
     }
 
     func testResetAllSettings() {
@@ -218,5 +216,19 @@ final class PackCloudReinstallUITests: NGTestCase {
         let done = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH 'Pack reinstall: taken'")).firstMatch
         waitFor(done, "the test's result", timeout: 30)
         XCTAssertEqual(done.label, "Pack reinstall: taken true, still in iCloud true, deleted there true")
+    }
+}
+
+/// A fresh install: automatic gain control and noise suppression both off
+/// (the owner's defaults, 2026-11-21).
+final class AudioDefaultsUITests: NGTestCase {
+    func testGainControlAndNoiseSuppressionStartOff() {
+        app.buttons["Settings"].tap()
+        app.buttons["Sound System"].tap()
+        for name in ["Automatic Gain Control", "Noise Suppression"] {
+            let s = app.switches[name]
+            waitFor(s, name)
+            XCTAssertEqual(s.value as? String, "0", "\(name) off at first")
+        }
     }
 }

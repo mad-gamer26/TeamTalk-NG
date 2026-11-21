@@ -35,13 +35,12 @@ final class MonitorUITests: NGTestCase {
         XCTAssertTrue(value.contains("version ") && !value.hasSuffix("version "), "the client's version: \(value)")
         button("Done").tap()
         // No audio at all (a text-only client).
-        XCTAssertFalse(app.buttons["talk"].exists, "no Mute/Unmute button")
-        moreButton.tap()
+        XCTAssertFalse(app.buttons["talk"].exists, "no Talk button")
+        app.buttons["More"].tap()
         XCTAssertFalse(button("Mute Everyone for Me").exists, "no Mute everyone")
         XCTAssertFalse(button("Record conversations").exists, "no recording")
-        closeMenu()
-        // Admin through the Monitor: its accounts (Manage Server → Accounts).
-        more("User accounts")
+        // Admin through the Monitor: its accounts.
+        button("User accounts").tap()
         waitFor(any("carol"), "the server's accounts, through the Monitor", timeout: 20)
         button("Done").tap()
         // Disconnect: as a live one, back to the Monitor screen; opening it again connects.

@@ -51,10 +51,10 @@ final class PeopleTalkUITests: NGTestCase {
         connect()
         more("Refresh Sound Devices")
         let talk = app.buttons["talk"]
-        waitFor(talk, "the Unmute button")
-        inRow(talk).tap()
+        waitFor(talk, "the Talk button")
+        talk.tap()
         Host.until("Bob hearing Alice after the refresh") { (Host.user("alice")?["talking"] as? Bool) == true }
-        inRow(talk).tap()
+        talk.tap()
     }
 
     func testRelayingSaysStopStraightAway() {
@@ -67,7 +67,7 @@ final class PeopleTalkUITests: NGTestCase {
         person("Bob").press(forDuration: 1.2)
         waitFor(button("Relay Their Voice to My Channel"), "Relay again", timeout: 5)
         button("Relay Their Media Files to My Channel").tap()
-        moreButton.tap()
+        app.buttons["More"].tap()
         waitFor(button("Stop relaying"), "Stop relaying in More", timeout: 5)
         button("Stop relaying").tap()
         person("Bob").press(forDuration: 1.2)
@@ -94,19 +94,19 @@ final class PeopleTalkUITests: NGTestCase {
         connect()
         // The desktop's keyboard shortcut (Command-M) first.
         shortcut("m", .command)
-        moreButton.tap()
+        app.buttons["More"].tap()
         waitFor(button("Unmute Everyone for Me"), "muted by Command-M", timeout: 5)
         button("Unmute Everyone for Me").tap()
-        moreButton.tap()
+        app.buttons["More"].tap()
         waitFor(button("Mute Everyone for Me"), "Mute everyone next", timeout: 5)
         button("Mute Everyone for Me").tap()
-        moreButton.tap()
+        app.buttons["More"].tap()
         waitFor(button("Unmute Everyone for Me"), "Unmute everyone next", timeout: 5)
         closeMenu()
         // The keys still work after the menu (Command-M unmutes); and the
         // app's own Control-2 opens the chat.
         shortcut("m", .command)
-        moreButton.tap()
+        app.buttons["More"].tap()
         waitFor(button("Mute Everyone for Me"), "unmuted by Command-M after using the menu", timeout: 5)
         closeMenu()
         shortcut("2", .control)
@@ -181,19 +181,18 @@ final class PeopleTalkUITests: NGTestCase {
     func testTalkButtonTapTogglesAndHoldTalksWhileHeld() {
         connect()
         let talk = app.buttons["talk"]
-        waitFor(talk, "the Unmute button")
-        XCTAssertEqual(talk.label, "Unmute")
-        inRow(talk).tap()
+        waitFor(talk, "the Talk button")
+        talk.tap()
         Host.until("Bob hearing Alice") { (Host.user("alice")?["talking"] as? Bool) == true }
         XCTAssertEqual(talk.label, "Mute", "the old app's name while talking")
-        inRow(talk).tap()
+        talk.tap()
         Host.until("Alice stopped") { (Host.user("alice")?["talking"] as? Bool) == false }
         // Held: talking while held, stopped when let go.
         var heardWhileHeld = false
         DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
             heardWhileHeld = (Host.user("alice")?["talking"] as? Bool) == true
         }
-        inRow(talk).press(forDuration: 3.5)
+        talk.press(forDuration: 3.5)
         XCTAssertTrue(heardWhileHeld, "talking while held")
         Host.until("stopped when let go") { (Host.user("alice")?["talking"] as? Bool) == false }
     }
