@@ -139,12 +139,46 @@ final class ShortcutServersUITests: NGTestCase {
 /// No call audio (or microphone) until a server is connected: the phone
 /// switched to call mode as soon as the app opened before.
 final class AudioSessionUITests: NGTestCase {
-    func testCallAudioOnlyWhileConnected() {
-        run("audioSession", says: "Audio session: playback")
+    /// The owner's rule: no audio session at launch; set up once a server
+    /// is connected, given back when it disconnects.
+    func testSetUpOnlyWhileConnected() {
+        run("audioSession", says: "Audio session: not set up")
         connect("alice")
-        run("audioSession", says: "Audio session: call")
+        run("audioSession", says: "Audio session: set up (call)")
         more("Disconnect")
         Thread.sleep(forTimeInterval: 2)
-        run("audioSession", says: "Audio session: playback")
+        run("audioSession", says: "Audio session: not set up")
+    }
+
+    /// Settings → Sound System sets it up while it's on screen only.
+    func testSetUpOnlyWhileSoundSystemIsOpen() {
+        app.buttons["Settings"].tap()
+        app.buttons["Sound System"].tap()
+        waitFor(app.navigationBars["Sound System"], "Sound System")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        button("Done").tap()
+        run("audioSession", says: "Audio session: not set up")
+    }
+
+    /// Something takes the session (dictation, a call) and gives it back:
+    /// taken back, and talking still reaches the others.
+    func testTakenBackAfterAnInterruption() {
+        connect("alice")
+        run("audioSession", says: "Audio session: set up (call), resumed 0")
+        run("interruptAudio", says: "Interruption simulated")
+        Thread.sleep(forTimeInterval: 3)
+        run("audioSession", says: "Audio session: set up (call), resumed 1")
+        backToServerScreen()
+        let talk = app.buttons["talk"]
+        waitFor(talk, "the Unmute button")
+        talk.tap()
+        Host.until("Bob hearing Alice after the interruption") { (Host.user("alice")?["talking"] as? Bool) == true }
+        talk.tap()
+    }
+
+    private func backToServerScreen() {
+        if !app.buttons["talk"].exists {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch.tap()
+        }
     }
 }

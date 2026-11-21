@@ -140,7 +140,6 @@ struct RecordingPlayer: View {
     }
 
     private func start() {
-        AudioSession.activate()
         do {
             let p = try AVAudioPlayer(contentsOf: url)
             p.prepareToPlay()

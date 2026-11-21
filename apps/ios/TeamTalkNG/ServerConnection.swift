@@ -86,13 +86,31 @@ final class ServerConnection {
 
     private(set) var state: ConnectionState = .disconnected {
         didSet {
-            // Connected (or not) any more: the audio session follows (call
-            // audio only while connected; plain playback otherwise).
-            if (oldValue == .disconnected) != (state == .disconnected), monitorId == nil { AudioSession.activate() }
+            // Disconnected: this connection no longer holds the audio
+            // session (it's given back once none does).
+            if state == .disconnected, oldValue != .disconnected, monitorId == nil {
+                audioOpened = false
+                AudioSession.update()
+            }
         }
     }
-    /// Connected, or on the way: what the call-style audio session is for.
-    var needsCallAudio: Bool { monitorId == nil && (state != .disconnected || busy) }
+    /// Its sound devices opened after a successful login, and not
+    /// disconnected since (reconnecting still holds it).
+    @ObservationIgnored private(set) var audioOpened = false
+    /// What sets up the audio session (with Settings → Sound System).
+    var holdsAudioSession: Bool { monitorId == nil && audioOpened && state != .disconnected }
+
+    /// After a successful login (the first, or a retry's): the audio
+    /// session set up, then this connection's sound devices opened.
+    private func openAudioAfterLogin() async {
+        guard monitorId == nil, !audioOpened, let d = audioDevices else { return }
+        audioOpened = true
+        AudioSession.update()
+        let c = client
+        _ = await Task.detached { try? c.initAudio(devices: d) }.value
+        applyTalkMode()
+        refresh()
+    }
     private(set) var snapshot: Snapshot?
     private(set) var lines: [ChatLine] = [] {
         didSet {
@@ -196,7 +214,6 @@ final class ServerConnection {
         let streamVideo = app?.streamVideo ?? true
         Task {
             let allowed = await AudioSession.requestMicrophone()
-            AudioSession.activate()
             audioDevices = allowed ? .shared : .virtual
             let result: String? = await Task.detached {
                 do {
@@ -204,7 +221,6 @@ final class ServerConnection {
                     // Every connection shares the microphone and speaker.
                     try? client.setAudioSettings(settings: audio)
                     try? client.setStreamVideo(on: streamVideo)
-                    try? client.initAudio(devices: allowed ? .shared : .virtual)
                     return nil
                 } catch {
                     return words(error)
@@ -219,6 +235,7 @@ final class ServerConnection {
                 // the setup below happens when a retry logs in.
                 firstLoginPending = true
             } else {
+                await openAudioAfterLogin()
                 afterFirstLogin()
             }
         }
@@ -744,7 +761,7 @@ final class ServerConnection {
     /// sound that stopped), said when done.
     func refreshSoundDevices() async {
         guard monitorId == nil, audioDevices != nil else { return }
-        AudioSession.activate()
+        AudioSession.update()
         if await reopenAudio() { announce("Sound devices refreshed") }
     }
 
@@ -1260,7 +1277,11 @@ final class ServerConnection {
             case .loggedIn:
                 if firstLoginPending {
                     firstLoginPending = false
-                    afterFirstLogin()
+                    Task { await openAudioAfterLogin(); afterFirstLogin() }
+                } else if !audioOpened {
+                    // Logged in again after a disconnect: the session and
+                    // the sound devices as on the first login.
+                    Task { await openAudioAfterLogin() }
                 }
                 if dropped {
                     dropped = false

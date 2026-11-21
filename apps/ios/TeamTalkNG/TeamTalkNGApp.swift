@@ -1,4 +1,5 @@
 import AVFoundation
+import CallKit
 import SwiftUI
 
 @main
@@ -99,9 +100,8 @@ struct TeamTalkNGApp: App {
                 .environment(model)
                 .onOpenURL { model.open($0) }
                 .task {
-                    // Set up at once, so sounds and speech play along with
-                    // other apps from the start (not only once connected).
-                    AudioSession.activate()
+                    // No audio session at launch (only Sound System and a
+                    // connection set one up).
                     AppModel.shared = model
                     LiveActivities.shared.endLeftovers()
                     // The Monitor's notifications: the device token to it.
@@ -121,29 +121,71 @@ enum AudioSession {
     /// `mixWithOthers`: plays along with other apps (music, VoiceOver's
     /// sounds stay). `echoCancellation`: the voice chat mode, which the
     /// SDK's Voice-Processing I/O unit (Apple's echo cancellation) needs.
-    static func activate(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
-                         bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic"),
-                         mixWithOthers: Bool = UserDefaults.standard.object(forKey: "mixWithOthers") as? Bool ?? true,
-                         echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1,
-                         call: Bool = false) {
-        let s = AVAudioSession.sharedInstance()
-        // Not on a server: plain playback for sounds and speech (no
-        // microphone, no call audio: the phone switched to call mode as soon
-        // as the app opened, with echo cancellation on). The call-style
-        // session (talking, listening, echo cancellation) only while
-        // connected.
-        let live = MainActor.assumeIsolated { AppModel.shared?.connections.values.contains { $0.needsCallAudio } ?? false }
-        if !live && !call {
-            try? s.setCategory(.playback, mode: .default, options: mixWithOthers ? [.mixWithOthers] : [])
-            try? s.setActive(true)
-            return
+    // MARK: When it's set up (the owner's rule, 2026-11-21)
+    //
+    // Only while Settings → Sound System is on screen (or its microphone
+    // test runs), or once a server connection has succeeded (from the
+    // first one; kept while it reconnects). Nothing else sets it up: when
+    // neither holds, it's given back to other apps.
+
+    /// Settings → Sound System on screen.
+    @MainActor static var settingsOpen = false { didSet { update() } }
+    /// Its "Test Selected" running.
+    @MainActor static var micTest = false { didSet { update() } }
+    /// Set up by this app now.
+    @MainActor private(set) static var isSetUp = false
+    /// Times it was taken back after something else had it (UI tests).
+    @MainActor private(set) static var resumes = 0
+
+    @MainActor static var wanted: Bool {
+        settingsOpen || micTest || (AppModel.shared?.connections.values.contains { $0.holdsAudioSession } ?? false)
+    }
+
+    /// Set up as the settings are now, or given back, as the rule says.
+    @MainActor static func update() {
+        if wanted {
+            _ = configure()
+            isSetUp = true
+            Recovery.shared.start()
+        } else if isSetUp {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            isSetUp = false
         }
+    }
+
+    /// Something else had the session (dictation, a phone call, Siri,
+    /// another app, iOS resetting its audio): taken back and every
+    /// connection's sound devices opened again, so TeamTalk keeps playing.
+    @MainActor @discardableResult
+    static func resume() -> Bool {
+        guard wanted else { return true }
+        guard configure() else { return false }
+        isSetUp = true
+        resumes += 1
+        for c in AppModel.shared?.connections.values.filter({ $0.holdsAudioSession }) ?? [] {
+            Task { await c.reopenAudio() }
+        }
+        return true
+    }
+
+    /// The call-style session (talking, listening, echo cancellation):
+    /// `speaker`, the loudspeaker rather than the earpiece (when nothing is
+    /// plugged in); `bluetoothMic`, Bluetooth headsets' microphones too
+    /// (call quality, both ways); `mixWithOthers`, along with other apps
+    /// (music, VoiceOver's sounds stay); `echoCancellation`, the voice chat
+    /// mode the SDK's Voice-Processing I/O unit needs. False: iOS refused
+    /// (a phone call has it).
+    private static func configure(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
+                                  bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic"),
+                                  mixWithOthers: Bool = UserDefaults.standard.object(forKey: "mixWithOthers") as? Bool ?? true,
+                                  echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1) -> Bool {
+        let s = AVAudioSession.sharedInstance()
         var options: AVAudioSession.CategoryOptions = [.allowBluetoothA2DP]
         if speaker { options.insert(.defaultToSpeaker) }
         if bluetoothMic { options.insert(.allowBluetoothHFP) }
         if mixWithOthers { options.insert(.mixWithOthers) }
         try? s.setCategory(.playAndRecord, mode: echoCancellation ? .voiceChat : .default, options: options)
-        try? s.setActive(true)
+        do { try s.setActive(true) } catch { return false }
         let choice = UserDefaults.standard.string(forKey: "preferredInput") ?? ""
         if echoCancellation {
             // Voice chat: the iPhone's microphone as iOS sets it up for
@@ -161,6 +203,7 @@ enum AudioSession {
             // The built-in microphone picked before it had a submenu: the bottom one.
             if port.portType == .builtInMic { useBuiltIn(.bottom, s) } else { try? s.setPreferredInput(port) }
         }
+        return true
     }
 
     /// The iPhone's own microphone: the bottom one (as phone calls use it),
@@ -294,3 +337,112 @@ enum UITestReset {
     }
 }
 #endif
+
+extension AudioSession {
+    /// Takes the session back after anything that took it: an interruption
+    /// that ends (or never says so), iOS resetting its audio, dictation
+    /// ending, a phone call ending, another app changing the session. Not
+    /// while a phone call or dictation still has it.
+    @MainActor final class Recovery: NSObject, CXCallObserverDelegate {
+        static let shared = Recovery()
+        private let calls = CXCallObserver()
+        private var started = false
+        /// Waiting to take it back (something has it).
+        private var pending = false
+        private var retry: Timer?
+
+        private var onCall: Bool { calls.calls.contains { !$0.hasEnded } }
+        /// The keyboard of the text field in use is dictating.
+        private var dictating: Bool { UIResponder.current?.textInputMode?.primaryLanguage == "dictation" }
+
+        func start() {
+            guard !started else { return }
+            started = true
+            calls.setDelegate(self, queue: .main)
+            let nc = NotificationCenter.default
+            nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { n in
+                let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+                MainActor.assumeIsolated {
+                    if type == .began { self.lost() } else { self.tryBack() }
+                }
+            }
+            nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { self.lost(); self.tryBack() }
+            }
+            // Another app (or iOS) set the session to something else.
+            nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { n in
+                let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+                MainActor.assumeIsolated {
+                    if reason == .categoryChange, AudioSession.isSetUp, AVAudioSession.sharedInstance().category != .playAndRecord {
+                        self.lost(); self.tryBack()
+                    }
+                }
+            }
+            // Dictation in this app: when the keyboard leaves it.
+            nc.addObserver(forName: UITextInputMode.currentInputModeDidChangeNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    if self.dictating { self.lost() } else if self.pending { self.tryBack(after: 0.5) }
+                }
+            }
+            nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { if self.pending { self.tryBack() } }
+            }
+        }
+
+        nonisolated func callObserver(_ callObserver: CXCallObserver, callChanged call: CXCall) {
+            let ended = call.hasEnded
+            MainActor.assumeIsolated {
+                if ended { if self.pending { self.tryBack(after: 1) } } else { self.lost() }
+            }
+        }
+
+        /// Something else has it now.
+        private func lost() {
+            guard AudioSession.isSetUp else { return }
+            pending = true
+            // An interruption doesn't always say it ended: tried again
+            // every few seconds while nothing (a call, dictation) has it.
+            if retry == nil {
+                retry = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+                    MainActor.assumeIsolated { self.tryBack() }
+                }
+            }
+        }
+
+        private func tryBack(after delay: TimeInterval = 0) {
+            guard delay == 0 else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { self.tryBack() } }
+                return
+            }
+            guard pending || !AudioSession.isSetUp || AVAudioSession.sharedInstance().category != .playAndRecord else { return }
+            guard AudioSession.wanted else { done(); return }
+            guard !onCall, !dictating else { return }
+            if AudioSession.resume() { done() }
+        }
+
+        private func done() {
+            pending = false
+            retry?.invalidate()
+            retry = nil
+        }
+
+        #if DEBUG
+        /// UI tests: as if something took the session and gave it back.
+        func simulateInterruption() {
+            lost()
+            tryBack(after: 1)
+        }
+        #endif
+    }
+}
+
+extension UIResponder {
+    private static weak var found: UIResponder?
+    /// What has the keyboard now (the first responder), if anything.
+    @MainActor static var current: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(ttngFound), to: nil, from: nil, for: nil)
+        return found
+    }
+    @objc private func ttngFound() { UIResponder.found = self }
+}

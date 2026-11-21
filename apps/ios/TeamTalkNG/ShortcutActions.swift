@@ -42,7 +42,7 @@ enum ShortcutActions {
     static func refreshSoundDevices(_ serverId: String?) async throws -> String {
         let list = try connections(serverId).filter(\.hasAudio)
         guard !list.isEmpty else { throw ShortcutProblem("The Monitor has no sound.") }
-        AudioSession.activate()
+        AudioSession.update()
         var failed: [String] = []
         for c in list where !(await c.reopenAudio()) { failed.append(name(c)) }
         if !failed.isEmpty { throw ShortcutProblem("The sound devices couldn't be opened on \(failed.joined(separator: ", ")).") }
@@ -217,9 +217,16 @@ extension ShortcutActions {
                 let shared = Service.group?.array(forKey: "shortcutServers")?.count ?? 0
                 said = "Shortcut servers: \(shared) of \(AppModel.shared?.servers.count ?? -1)"
             case "audioSession":
-                // What the audio session is set to now.
+                // Whether this app has the audio session set up now, and
+                // how often it took it back.
                 let a = AVAudioSession.sharedInstance()
-                said = "Audio session: \(a.category == .playAndRecord ? "call" : a.category == .playback ? "playback" : a.category.rawValue)"
+                said = AudioSession.isSetUp
+                    ? "Audio session: set up (\(a.category == .playAndRecord ? "call" : a.category.rawValue)), resumed \(AudioSession.resumes)"
+                    : "Audio session: not set up"
+            case "interruptAudio":
+                // As if dictation or a call took the session and gave it back.
+                AudioSession.Recovery.shared.simulateInterruption()
+                said = "Interruption simulated"
             case "forgottenRegistration":
                 Task { @MainActor in
                     guard let m = AppModel.shared else { return }

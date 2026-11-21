@@ -72,10 +72,9 @@ struct SoundSystemView: View {
                 // the speaker, with these settings.
                 Button(soundTest == nil ? "Test Selected" : "Stop Test") {
                     if let t = soundTest {
-                        t.stop(); soundTest = nil; AudioSession.activate()
+                        t.stop(); soundTest = nil; AudioSession.micTest = false
                     } else {
-                        // The microphone test needs the call-style session.
-                        AudioSession.activate(call: true)
+                        AudioSession.micTest = true
                         do { soundTest = try startSoundTest(devices: .default, settings: model.audio) } catch { announce(words(error)) }
                     }
                 }
@@ -104,12 +103,18 @@ struct SoundSystemView: View {
         .navigationBarTitleDisplayMode(.inline)
         // (The session is set up at launch, so iOS lists the microphones;
         // opening this screen doesn't set it up again.)
-        .onDisappear { if soundTest != nil { soundTest?.stop(); soundTest = nil; AudioSession.activate() } }
-        .onChange(of: speaker) { AudioSession.activate() }
-        .onChange(of: bluetoothMic) { AudioSession.activate() }
-        .onChange(of: preferredInput) { AudioSession.activate() }
-        .onChange(of: model.audio.echoCancellation) { AudioSession.activate() }
-        .onChange(of: mixWithOthers) { AudioSession.activate() }
+        // The audio session only while this screen is on (or a server is
+        // connected): set up here, so iOS lists the microphones.
+        .onAppear { AudioSession.settingsOpen = true; model.routeChanges += 1 }
+        .onDisappear {
+            if soundTest != nil { soundTest?.stop(); soundTest = nil; AudioSession.micTest = false }
+            AudioSession.settingsOpen = false
+        }
+        .onChange(of: speaker) { AudioSession.update() }
+        .onChange(of: bluetoothMic) { AudioSession.update() }
+        .onChange(of: preferredInput) { AudioSession.update() }
+        .onChange(of: model.audio.echoCancellation) { AudioSession.update() }
+        .onChange(of: mixWithOthers) { AudioSession.update() }
     }
 
     private func level(_ label: String, _ v: Binding<Int32>) -> some View {
