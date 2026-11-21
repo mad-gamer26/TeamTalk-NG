@@ -1,5 +1,5 @@
 The same layout as build 36, with clearer names and fixes.
 - The talk button now says Unmute and Mute.
-- Old names are back: Reset to Default, Send private message, Kick user, Move user, View properties, Edit properties, Create Channel, Sound Events, Text To Speech Events.
+- Old names are back: Reset to Default (Sound Events and Text To Speech Events), Send private message, Kick user, Move user, View properties, Edit properties, Create Channel, Sound Events, Text To Speech Events.
 - Automatic gain control and noise suppression are off by default (Settings → Sound System turns them on).
 Fixes: the app no longer switches to call audio when it opens (only on a server); admins join password channels without typing the password and can move themselves; no freezing while someone types to you; the Monitor "no longer knows this phone" message; a crash when stopping an AudioNet stream into a channel.

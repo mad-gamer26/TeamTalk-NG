@@ -38,7 +38,7 @@ struct SoundsView: View {
             Section {
                 Button("Turn all on") { sounds.setAll(true) }
                 Button("Turn all off") { sounds.setAll(false) }
-                Button("As they were at first", role: .destructive) { sounds.revert() }
+                Button("Reset to Default", role: .destructive) { sounds.revert() }
             }
         }
         .navigationTitle("Sound Events")
