@@ -1,6 +1,7 @@
 The same layout as build 36, with clearer names and audio fixes.
-- The talk button now says Unmute and Mute.
-- Old names are back: Reset to Default, Send private message, Kick user, Move user, View and Edit properties, Create Channel, Sound Events, Text To Speech Events, Monitor Info.
-- Audio: the app always plays along with other apps (the setting is gone); it only uses call audio while you're on a server or in Settings → Sound System; it comes back by itself after dictation or a phone call. The Monitor no longer switches to the earpiece or puts Bluetooth headphones in mono.
+- The talk button says Unmute and Mute. Old names are back: Reset to Default, Send private message, View and Edit properties, Create Channel, Sound Events, Text To Speech Events, Monitor Info.
+- People: Mute Voice and Mute Media File; Mark User for Moving, then a channel's Move Marked Users Here (marked people show "Marked for moving").
+- The server list shows Connected for servers you're on.
+- Audio: always plays along with other apps (the setting is gone); call audio only while on a server or in Settings → Sound System; comes back by itself after dictation or a phone call. The Monitor no longer switches to the earpiece or puts Bluetooth headphones in mono.
 - Automatic gain control and noise suppression are off by default.
-Fixes: admins join password channels without typing the password and can move themselves; no freezing while someone types to you; the "Set away status after" field can be tapped; the Monitor "no longer knows this phone" message; a crash when stopping an AudioNet stream into a channel.
+Fixes: admins join password channels without typing the password; no freezing while someone types to you; the "Set away status after" field can be tapped; the Monitor "no longer knows this phone" message; a crash when stopping an AudioNet stream into a channel.
