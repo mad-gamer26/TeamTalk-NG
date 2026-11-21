@@ -27,12 +27,18 @@ final class PeopleTalkUITests: NGTestCase {
         // UI tests can't send VoiceOver's swipes: moved twice, read at once.
         // (A drag lands near, not on, its position: what matters is that
         // each change shows at once.)
+        // (With four Simulators at once the Mac is busy: a change gets a
+        // few seconds to show, then must stay, not spring back.)
         volume.adjust(toNormalizedSliderPosition: 0.2)
+        Host.until("the first change shown", timeout: 3) { (volume.value as? String) != "50 percent" }
+        Thread.sleep(forTimeInterval: 1)
         let first = volume.value as? String
-        XCTAssertNotEqual(first, "50 percent", "the first change shows at once")
+        XCTAssertNotEqual(first, "50 percent", "the first change stays")
         volume.adjust(toNormalizedSliderPosition: 0.8)
+        Host.until("the second change shown", timeout: 3) { (volume.value as? String) != first }
+        Thread.sleep(forTimeInterval: 1)
         let second = volume.value as? String
-        XCTAssertNotEqual(second, first, "the second too")
+        XCTAssertNotEqual(second, first, "the second stays too")
         let right = app.switches.matching(NSPredicate(format: "label == 'Mute right'")).firstMatch
         right.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         XCTAssertEqual(right.value as? String, "1", "the switch stays on at once")

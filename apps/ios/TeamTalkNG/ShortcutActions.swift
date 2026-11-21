@@ -221,10 +221,11 @@ extension ShortcutActions {
                 // how often it took it back.
                 let a = AVAudioSession.sharedInstance()
                 let o = a.categoryOptions
-                let how = [o.contains(.defaultToSpeaker) ? "speaker" : "earpiece", o.contains(.allowBluetoothHFP) ? "bluetooth mono" : "bluetooth stereo"].joined(separator: ", ")
+                let how = [o.contains(.defaultToSpeaker) ? "speaker" : "earpiece", o.contains(.allowBluetoothHFP) ? "bluetooth mono" : "bluetooth stereo",
+                           o.contains(.mixWithOthers) ? "mixing" : "not mixing"].joined(separator: ", ")
                 said = AudioSession.isSetUp
                     ? "Audio session: set up (\(a.category == .playAndRecord ? "call" : a.category.rawValue)), resumed \(AudioSession.resumes), \(how)"
-                    : "Audio session: not set up (\(a.category == .soloAmbient ? "default" : a.category.rawValue))"
+                    : "Audio session: not set up (\(a.category == .playback && a.categoryOptions == [.mixWithOthers] ? "mixing" : a.category.rawValue))"
             case "monitorClients":
                 said = "Monitor clients made: \(ServerConnection.monitorClientsMade)"
             case "sdkSession":

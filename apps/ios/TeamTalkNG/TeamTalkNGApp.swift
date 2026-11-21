@@ -101,8 +101,10 @@ struct TeamTalkNGApp: App {
                 .onOpenURL { model.open($0) }
                 .task {
                     // No audio session at launch (only Sound System and a
-                    // connection set one up).
+                    // connection set one up); only told that the app's
+                    // sounds play along with other apps.
                     AppModel.shared = model
+                    AudioSession.update()
                     LiveActivities.shared.endLeftovers()
                     // The Monitor's notifications: the device token to it.
                     PushDelegate.tokenArrived = { token in Task { await model.monitor.setPushToken(token) } }
@@ -118,7 +120,7 @@ enum AudioSession {
     /// `speaker`: the loudspeaker rather than the earpiece (when nothing
     /// is plugged in). `bluetoothMic`: Bluetooth headsets' microphones too
     /// (calls quality, both ways).
-    /// `mixWithOthers`: plays along with other apps (music, VoiceOver's
+    /// Always along with other apps (the owner's rule: music and VoiceOver's
     /// sounds stay). `echoCancellation`: the voice chat mode, which the
     /// SDK's Voice-Processing I/O unit (Apple's echo cancellation) needs.
     // MARK: When it's set up (the owner's rule, 2026-11-21)
@@ -152,15 +154,22 @@ enum AudioSession {
         }
     }
 
-    /// Given back: inactive, and as iOS sets it up for an app that never
-    /// touched it (so nothing plays through the earpiece or in Bluetooth's
-    /// mono call profile).
+    /// Given back: inactive, and only told how the app's sounds play when
+    /// one does (speech, sound events, recordings): along with other apps
+    /// (the owner's rule: always), no microphone, so nothing goes to the
+    /// earpiece or Bluetooth's mono call profile. (iOS's own default, solo
+    /// ambient, would stop other apps' audio for each sound.)
     @MainActor private static func release() {
         let s = AVAudioSession.sharedInstance()
-        guard isSetUp || s.category != .soloAmbient || !s.categoryOptions.isEmpty || s.mode != .default else { return }
+        guard isSetUp || !isIdle(s) else { return }
         try? s.setActive(false, options: .notifyOthersOnDeactivation)
-        try? s.setCategory(.soloAmbient, mode: .default, options: [])
+        try? s.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         isSetUp = false
+    }
+
+    /// Set as given back (playback along with other apps).
+    private static func isIdle(_ s: AVAudioSession) -> Bool {
+        s.category == .playback && s.categoryOptions == [.mixWithOthers] && s.mode == .default
     }
 
     /// BearWare's SDK sets the session up itself the first time its sound
@@ -211,19 +220,19 @@ enum AudioSession {
     /// The call-style session (talking, listening, echo cancellation):
     /// `speaker`, the loudspeaker rather than the earpiece (when nothing is
     /// plugged in); `bluetoothMic`, Bluetooth headsets' microphones too
-    /// (call quality, both ways); `mixWithOthers`, along with other apps
+    /// (call quality, both ways); always along with other apps
     /// (music, VoiceOver's sounds stay); `echoCancellation`, the voice chat
     /// mode the SDK's Voice-Processing I/O unit needs. False: iOS refused
     /// (a phone call has it).
     @MainActor private static func configure(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
                                   bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic"),
-                                  mixWithOthers: Bool = UserDefaults.standard.object(forKey: "mixWithOthers") as? Bool ?? true,
                                   echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1) -> Bool {
         let s = AVAudioSession.sharedInstance()
         var options: AVAudioSession.CategoryOptions = [.allowBluetoothA2DP]
         if speaker { options.insert(.defaultToSpeaker) }
         if bluetoothMic { options.insert(.allowBluetoothHFP) }
-        if mixWithOthers { options.insert(.mixWithOthers) }
+        // Always along with other apps, whatever else is set.
+        options.insert(.mixWithOthers)
         try? s.setCategory(.playAndRecord, mode: echoCancellation ? .voiceChat : .default, options: options)
         applied = (s.categoryOptions, s.mode)
         do { try s.setActive(true) } catch { return false }

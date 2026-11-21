@@ -230,6 +230,8 @@ final class AudioDefaultsUITests: NGTestCase {
             waitFor(s, name)
             XCTAssertEqual(s.value as? String, "0", "\(name) off at first")
         }
+        // Always along with other apps: no switch for it any more.
+        XCTAssertFalse(app.switches["Play along with other apps"].exists, "no Play along with other apps switch")
     }
 }
 

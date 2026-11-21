@@ -8,7 +8,6 @@ struct SoundSystemView: View {
     @AppStorage("speaker") private var speaker = true
     @AppStorage("bluetoothMic") private var bluetoothMic = false
     @AppStorage("preferredInput") private var preferredInput = ""
-    @AppStorage("mixWithOthers") private var mixWithOthers = true
     /// The desktop's "Test Selected" while it runs.
     @State private var soundTest: TtSoundLoop?
 
@@ -16,7 +15,6 @@ struct SoundSystemView: View {
         @Bindable var model = model
         Form {
             Section {
-                Toggle("Play along with other apps", isOn: $mixWithOthers)
                 Toggle("Speaker Output", isOn: $speaker)
                 Toggle("Allow Bluetooth Microphones", isOn: $bluetoothMic)
                 // A menu, with the iPhone's own microphone as a submenu:
@@ -65,7 +63,7 @@ struct SoundSystemView: View {
             } header: {
                 Text("Where sound goes")
             } footer: {
-                Text("Along with other apps, music and other sounds keep playing while you're connected. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways. The iPhone's front and back microphones send stereo in channels whose codec is stereo, with echo cancellation off (Apple's echo cancellation is mono).")
+                Text("TeamTalk NG always plays along with other apps: music and other sounds keep playing. Without the speaker, sound comes from the earpiece when nothing is plugged in. Bluetooth microphones sound like a phone call, both ways. The iPhone's front and back microphones send stereo in channels whose codec is stereo, with echo cancellation off (Apple's echo cancellation is mono).")
             }
             Section {
                 // The desktop's "Test Selected": hear your microphone through
@@ -115,7 +113,6 @@ struct SoundSystemView: View {
         .onChange(of: bluetoothMic) { AudioSession.update() }
         .onChange(of: preferredInput) { AudioSession.update() }
         .onChange(of: model.audio.echoCancellation) { AudioSession.update() }
-        .onChange(of: mixWithOthers) { AudioSession.update() }
     }
 
     private func level(_ label: String, _ v: Binding<Int32>) -> some View {
