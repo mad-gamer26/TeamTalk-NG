@@ -128,8 +128,8 @@ struct UserMenu: View {
         let audio = connection.hasAudio
         if audio {
             m.append(.init("Change Their Volume") { open(.volume) })
-            m.append(.init(user.voiceMuted ? "Unmute" : "Mute") { connection.toggleMuteVoice(user) })
-            m.append(.init(user.mediaMuted ? "Unmute Their Media Files for Me" : "Mute Their Media Files for Me") { connection.toggleMuteMedia(user) })
+            m.append(.init(user.voiceMuted ? "Unmute Voice" : "Mute Voice") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.mediaMuted ? "Unmute Media File" : "Mute Media File") { connection.toggleMuteMedia(user) })
         }
         // The desktop offers these for anyone in a channel (the server
         // refuses unless I'm its operator or may kick and ban).

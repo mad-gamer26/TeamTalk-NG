@@ -581,6 +581,8 @@ private struct UserRow: View {
     /// channel info").
     private var label: String {
         var t = showUsername && !user.username.isEmpty ? user.username : user.displayName
+        // Marked to be moved (then a channel's "Move Marked Users Here").
+        if marked { t += ", Marked for moving" }
         let talking = user.talking || (isMe && connection.transmitting)
         let female = user.gender == .female
         switch style {
@@ -620,6 +622,8 @@ private struct UserRow: View {
         return t
     }
 
+    private var marked: Bool { connection.pickedToMove.contains(user.id) }
+
     /// What's shown: cut at the "Maximum text length" (VoiceOver gets it all).
     private var shown: String {
         label.count > maxLength ? String(label.prefix(maxLength)) + "..." : label
@@ -631,6 +635,11 @@ private struct UserRow: View {
                 if showIcons {
                     Image(systemName: user.talking ? "waveform.circle.fill" : "person.circle")
                         .foregroundStyle(user.talking ? .green : .secondary)
+                        .accessibilityHidden(true)
+                }
+                if marked {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .foregroundStyle(.orange)
                         .accessibilityHidden(true)
                 }
                 Text(shown)

@@ -114,13 +114,13 @@ struct PersonView: View {
             }
             if connection.hasAudio {
             Section("Their voice, for me") {
-                LiveToggle("Mute their voice", isOn: Binding(get: { u.voiceMuted }, set: { connection.setMuted(u, $0) }))
+                LiveToggle("Mute Voice", isOn: Binding(get: { u.voiceMuted }, set: { connection.setMuted(u, $0) }))
                 volume("Voice volume", u.voiceVolume) { connection.setVolume(u, percent: $0) }
                 LiveToggle("Left speaker", isOn: Binding(get: { u.voiceLeft }, set: { connection.setStereo(u, .voice, left: $0, right: u.voiceRight) }))
                 LiveToggle("Right speaker", isOn: Binding(get: { u.voiceRight }, set: { connection.setStereo(u, .voice, left: u.voiceLeft, right: $0) }))
             }
             Section("Their media files, for me") {
-                LiveToggle("Mute their media files", isOn: Binding(get: { u.mediaMuted }, set: { connection.setMediaMuted(u, $0) }))
+                LiveToggle("Mute Media File", isOn: Binding(get: { u.mediaMuted }, set: { connection.setMediaMuted(u, $0) }))
                 volume("Media file volume", u.mediaVolume) { connection.setMediaVolume(u, percent: $0) }
                 LiveToggle("Left speaker", isOn: Binding(get: { u.mediaLeft }, set: { connection.setStereo(u, .mediaFile, left: $0, right: u.mediaRight) }))
                 LiveToggle("Right speaker", isOn: Binding(get: { u.mediaRight }, set: { connection.setStereo(u, .mediaFile, left: u.mediaLeft, right: $0) }))
