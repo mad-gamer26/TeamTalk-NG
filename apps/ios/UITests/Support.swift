@@ -86,6 +86,8 @@ class NGTestCase: XCTestCase {
         app.launchArguments = ["-UITestReset", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXS"]
         // Paired with the run's own Monitor (most tests; not the pairing test).
         if pairedWithMonitor, let m = Host.env["OWN_MONITOR"] { app.launchEnvironment["UITEST_OWN_MONITOR"] = m }
+        if let u = Host.env["NG_URL"] { app.launchEnvironment["UITEST_SERVICE_URL"] = u }
+        if let u = Host.env["CATALOG_URL"] { app.launchEnvironment["UITEST_CATALOG_URL"] = u }
         app.launch()
     }
 
@@ -161,17 +163,65 @@ class NGTestCase: XCTestCase {
     func closeMenu() {
         let title = app.navigationBars.firstMatch.staticTexts.firstMatch
         if title.exists { title.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap() }
-        Host.until("the menu closed", timeout: 5) { !self.button("Disconnect").exists }
+        Host.until("the menu closed", timeout: 5) { !self.button("Server List").exists }
     }
 
     /// The server screen's More menu, then one of its items.
     @MainActor
+    /// Something the server screen does, wherever the old app's layout
+    /// put it (tests name it as the More menu did before build 37): the
+    /// top bar, the bottom row, its Manage Server menu, or More.
     func more(_ item: String) {
-        app.buttons["More"].tap()
-        let b = button(item)
-        waitFor(b, "\(item) in the More menu", timeout: 5)
-        b.tap()
+        let admin = app.buttons["Manage Server"].exists
+        let place: (String, String?) = switch item {
+        case "Disconnect": app.navigationBars.buttons["Disconnect"].exists ? ("Disconnect", nil) : ("More", "Disconnect")
+        case "Record conversations", "Stop recording": ("Record", nil)
+        case let a where a.hasPrefix("AudioNet"): ("AudioNet", nil)
+        case "Broadcast message": ("Broadcast Message", nil)
+        case "Stream a File to the Channel": ("Audio File", nil)
+        case "User accounts": admin ? ("Manage Server", "Accounts") : ("View My Information", nil)
+        case "Server settings": admin ? ("Manage Server", "Edit Server Properties") : ("More", "Server Properties")
+        case "Bans": admin ? ("Manage Server", "Bans") : ("More", "Bans")
+        case "Move users": admin ? ("Manage Server", "Move Users") : ("More", "Move users")
+        case "Server statistics": ("Manage Server", "Server Statistics")
+        case "Save server configuration": ("Manage Server", "Save Server Configuration")
+        default: ("More", item)
+        }
+        let first = app.buttons[place.0].firstMatch
+        waitFor(first, place.0, timeout: 5)
+        // The bottom row scrolls sideways: More is at its very end.
+        inRow(first).tap()
+        if let second = place.1 {
+            let b = button(second)
+            waitFor(b, "\(second) in \(place.0)", timeout: 5)
+            b.tap()
+        }
     }
+
+    /// A bottom-row button scrolled into view (the row scrolls sideways;
+    /// More is at its very end).
+    @discardableResult
+    func inRow(_ e: XCUIElement) -> XCUIElement {
+        let width = app.windows.firstMatch.frame.maxX
+        // Dragged from a point in the row itself (its scroll view's
+        // frame takes in more than the row).
+        let y = e.frame.midY
+        func drag(_ dx: CGFloat) {
+            let from = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: width / 2, dy: y))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: dx, dy: 0)))
+        }
+        for _ in 0..<6 {
+            let f = e.frame
+            if f.maxX > width { drag(-width / 2) } else if f.minX < 0 { drag(width / 2) } else { break }
+        }
+        return e
+    }
+
+    /// The bottom row's More.
+    var moreButton: XCUIElement { inRow(app.buttons["More"].firstMatch) }
+
+    /// Back to the server list, still connected (More → Server List).
+    func backToServers() { more("Server List") }
 
     /// A row's VoiceOver action (its actions list) by name.
     @MainActor

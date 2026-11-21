@@ -134,7 +134,7 @@ struct ChatTemplatesView: View {
                 Text("Templates")
             }
             Section {
-                Button("Every template as it was at first") {
+                Button("Reset to Default") {
                     for t in ChatTemplate.allCases { store.setTemplate(t, "") }
                 }
             }

@@ -118,7 +118,7 @@ struct UserMenu: View {
         var m: [MenuItem] = [
             .init("View User Information") { open(.info) },
             .init("Speak User Information") { connection.speakUserInfo(user) },
-            .init("Send Private Message") { open(.messages) },
+            .init("Send private message") { open(.messages) },
         ]
         // The desktop's Op: for anyone; without the right to make operators,
         // the channel's operator password is asked for.
@@ -128,13 +128,13 @@ struct UserMenu: View {
         let audio = connection.hasAudio
         if audio {
             m.append(.init("Change Their Volume") { open(.volume) })
-            m.append(.init(user.voiceMuted ? "Unmute Their Voice for Me" : "Mute Their Voice for Me") { connection.toggleMuteVoice(user) })
+            m.append(.init(user.voiceMuted ? "Unmute" : "Mute") { connection.toggleMuteVoice(user) })
             m.append(.init(user.mediaMuted ? "Unmute Their Media Files for Me" : "Mute Their Media Files for Me") { connection.toggleMuteMedia(user) })
         }
         // The desktop offers these for anyone in a channel (the server
         // refuses unless I'm its operator or may kick and ban).
         if user.channelId > 0 {
-            m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
+            m.append(.init("Kick user") { connection.kick(user, fromChannel: true) })
             m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
         }
         // The old app's "Move user": anyone, me too, with the right to move.

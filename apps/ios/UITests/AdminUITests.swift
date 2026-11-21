@@ -10,7 +10,7 @@ final class AdminUITests: NGTestCase {
 
     func testAChannelMadeChangedAndDeleted() {
         connect("admin")
-        more("New channel")
+        more("Create Channel")
         let name = app.textFields["Name"]
         waitFor(name, "the new channel's form")
         name.tap(); name.typeText("Testroom")

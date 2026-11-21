@@ -111,7 +111,7 @@ final class ServersUITests: NGTestCase {
     /// Settings → Display → "Tell me in a dialog when I'm kicked", then back
     /// on the server's screen (set after connecting: a tt:// link starts afresh).
     func turnOnTheKickDialog() {
-        app.navigationBars.buttons["Servers"].tap()
+        backToServers()
         app.buttons["Settings"].tap()
         app.buttons["Display"].tap()
         let sw = app.switches["Tell me in a dialog when I'm kicked"]
@@ -194,7 +194,7 @@ final class ServersUITests: NGTestCase {
         XCTAssertFalse(onTheServerList.exists, "still on the server's screen")
 
         // Show status line off: the line goes.
-        app.navigationBars.buttons["Servers"].tap()
+        backToServers()
         app.buttons["Settings"].tap()
         app.buttons["Display"].tap()
         let sw = app.switches["Show status line"]
@@ -242,7 +242,7 @@ final class BackupUITests: NGTestCase {
         waitFor(row, "the server in the list")
         app.buttons["Settings"].tap()
         // A sound pack of my own.
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
         sounds.tap()
         app.buttons["Sound packs"].tap()
@@ -254,7 +254,7 @@ final class BackupUITests: NGTestCase {
         waitFor(app.navigationBars["Backed pack"], "the pack's screen")
         app.navigationBars["Backed pack"].buttons.element(boundBy: 0).tap()
         app.navigationBars["Sound packs"].buttons.element(boundBy: 0).tap()
-        app.navigationBars["Sounds"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Sound Events"].buttons.element(boundBy: 0).tap()
         let transfer = app.buttons["Transfer or Reset"]
         if !transfer.waitForExistence(timeout: 3) { app.swipeUp() }
         transfer.tap()
@@ -298,7 +298,7 @@ final class BackupUITests: NGTestCase {
         let pack = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Backed pack'")).firstMatch
         Host.until("the pack gone") { !pack.exists }
         app.navigationBars["Sound packs"].buttons.element(boundBy: 0).tap()
-        app.navigationBars["Sounds"].buttons.element(boundBy: 0).tap()
+        app.navigationBars["Sound Events"].buttons.element(boundBy: 0).tap()
         button("Done").tap()
         run("openBackup", [:], says: "Backup opened")
         waitFor(app.navigationBars["Restore a backup"], "the restore screen")

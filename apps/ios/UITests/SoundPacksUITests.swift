@@ -6,7 +6,7 @@ import XCTest
 final class SoundPacksUITests: NGTestCase {
     func openPacks() {
         app.buttons["Settings"].tap()
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
         sounds.tap()
         app.buttons["Sound packs"].tap()
@@ -150,7 +150,7 @@ final class SoundPacksUITests: NGTestCase {
         (app.buttons.matching(NSPredicate(format: "label == 'Sign in'")).allElementsBoundByIndex.first { $0.frame != segment.frame })?.tap()
         waitFor(app.staticTexts["Signed in as"], "signed in", timeout: 20)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeDown() }
         sounds.tap()
         app.buttons["Sound packs"].tap()
@@ -223,7 +223,7 @@ final class SoundPacksUITests: NGTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         // Downloaded from the catalog.
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeDown() }
         sounds.tap()
         button("Get sound packs").tap()
@@ -296,7 +296,7 @@ final class SoundPacksUITests: NGTestCase {
         api("PATCH", "v1/packs/\(pack)", json: ["name": "Catalog pack", "author": "Someone", "description": "From the catalog", "public": true], token: token)
 
         app.buttons["Settings"].tap()
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
         sounds.tap()
         button("Get sound packs").tap()
@@ -331,7 +331,7 @@ final class SoundPacksUITests: NGTestCase {
         api("PATCH", "v1/packs/\(pack)", json: ["name": name, "author": author, "public": true], token: token)
 
         app.buttons["Settings"].tap()
-        let sounds = app.buttons["Sounds"]
+        let sounds = app.buttons["Sound Events"]
         if !sounds.waitForExistence(timeout: 3) { app.swipeUp() }
         sounds.tap()
         button("Get sound packs").tap()

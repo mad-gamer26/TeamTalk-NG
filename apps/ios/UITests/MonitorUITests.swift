@@ -35,12 +35,13 @@ final class MonitorUITests: NGTestCase {
         XCTAssertTrue(value.contains("version ") && !value.hasSuffix("version "), "the client's version: \(value)")
         button("Done").tap()
         // No audio at all (a text-only client).
-        XCTAssertFalse(app.buttons["Talk"].exists, "no Talk button")
-        app.buttons["More"].tap()
+        XCTAssertFalse(app.buttons["talk"].exists, "no Mute/Unmute button")
+        moreButton.tap()
         XCTAssertFalse(button("Mute Everyone for Me").exists, "no Mute everyone")
         XCTAssertFalse(button("Record conversations").exists, "no recording")
-        // Admin through the Monitor: its accounts.
-        button("User accounts").tap()
+        closeMenu()
+        // Admin through the Monitor: its accounts (Manage Server → Accounts).
+        more("User accounts")
         waitFor(any("carol"), "the server's accounts, through the Monitor", timeout: 20)
         button("Done").tap()
         // Disconnect: as a live one, back to the Monitor screen; opening it again connects.
@@ -227,7 +228,7 @@ final class MonitorUITests: NGTestCase {
         // Live: Bob is told Alice is typing.
         connect("alice")
         Host.until("Bob seeing Alice") { Host.user("alice") != nil }
-        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        action("Send private message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
         let live = app.textFields["Message Bob"]
         waitFor(live, "the conversation with Bob")
         live.tap(); live.typeText("Hello th")
@@ -246,7 +247,7 @@ final class MonitorUITests: NGTestCase {
         Host.until("the Monitor logged in as Quiet typer", timeout: 30) { Host.user("Quiet typer") != nil }
         visibleRow("it on the Monitor screen", timeout: 20).tap()
         waitFor(any("Bob"), "the server, through the Monitor", timeout: 30)
-        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        action("Send private message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
         let field = app.textFields["Message Bob"]
         waitFor(field, "the conversation with Bob")
         run("announced", says: "Announced")
@@ -299,7 +300,7 @@ final class MonitorUITests: NGTestCase {
         openMonitor()
         visibleRow("it on the Monitor screen", timeout: 20).tap()
         waitFor(any("Bob"), "Bob, through the Monitor", timeout: 30)
-        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        action("Send private message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
         waitFor(any("Kept for you"), "Bob's message, kept by the Monitor", timeout: 20)
     }
 
@@ -337,6 +338,6 @@ final class MonitorUITests: NGTestCase {
         run("tapMonitorNotification", ["event": "channel_message"], says: "Opened")
         waitFor(app.buttons["Chat"], "the server, through the Monitor", timeout: 30)
         XCTAssertTrue(app.buttons["Chat"].isSelected, "on the Chat tab")
-        XCTAssertFalse(app.buttons["Talk"].exists, "through the Monitor: no audio")
+        XCTAssertFalse(app.buttons["talk"].exists, "through the Monitor: no audio")
     }
 }

@@ -41,7 +41,7 @@ struct SoundsView: View {
                 Button("As they were at first", role: .destructive) { sounds.revert() }
             }
         }
-        .navigationTitle("Sounds")
+        .navigationTitle("Sound Events")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

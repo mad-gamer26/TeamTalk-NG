@@ -350,9 +350,9 @@ struct SettingsView: View {
             Form {
                 Section {
                     NavigationLink("General") { GeneralSettingsView() }
-                    NavigationLink("Sound system") { SoundSystemView() }
-                    NavigationLink("Sounds") { SoundsView() }
-                    NavigationLink("Spoken events") { SpeechView() }
+                    NavigationLink("Sound System") { SoundSystemView() }
+                    NavigationLink("Sound Events") { SoundsView() }
+                    NavigationLink("Text To Speech Events") { SpeechView() }
                     NavigationLink("Display") { DisplaySettingsView() }
                     NavigationLink("Connection") { ConnectionSettingsView() }
                     NavigationLink("Recording") { RecordingSettingsView() }

@@ -94,7 +94,7 @@ final class HostedMonitorUITests: NGTestCase {
         for _ in 0..<5 where !app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch.isHittable { app.swipeDown() }
         visibleRow("the server on the Monitor screen", timeout: 30).tap()
         waitFor(any("Bob"), "Bob, through the Monitor", timeout: 30)
-        action("Send Private Message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
+        action("Send private message", on: app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch)
         waitFor(any(text), "\(text): kept, and moved with the server", timeout: 20)
         // Back to the Monitor screen.
         for _ in 0..<4 where !app.navigationBars["Monitor"].exists || app.buttons["Bob"].exists {

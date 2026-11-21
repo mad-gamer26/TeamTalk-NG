@@ -17,6 +17,8 @@ final class NGAccountUITests: XCTestCase {
         let password = try XCTUnwrap(env["NG_PASSWORD"])
         let app = XCUIApplication()
         app.launchArguments = ["-UITestReset"]
+        if let u = Host.env["NG_URL"] { app.launchEnvironment["UITEST_SERVICE_URL"] = u }
+        if let u = Host.env["CATALOG_URL"] { app.launchEnvironment["UITEST_CATALOG_URL"] = u }
         app.launch()
 
         // A fresh install: the welcome sheet first.

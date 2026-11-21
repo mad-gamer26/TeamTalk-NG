@@ -384,11 +384,11 @@ struct SpeechView: View {
             Section {
                 Button("Turn all on") { speech.setAll(true) }
                 Button("Turn all off") { speech.setAll(false) }
-                Button("Every message as it was at first") { speech.resetTemplates() }
-                Button("Everything as it was at first", role: .destructive) { speech.revert() }
+                Button("Reset Messages to Default") { speech.resetTemplates() }
+                Button("Reset to Default", role: .destructive) { speech.revert() }
             }
         }
-        .navigationTitle("Spoken events")
+        .navigationTitle("Text To Speech Events")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editing) { e in TemplateEditor(event: e) }
     }

@@ -259,6 +259,10 @@ enum UITestReset {
         let d = UserDefaults.standard
         if let id = Bundle.main.bundleIdentifier { d.removePersistentDomain(forName: id) }
         d.set(true, forKey: "setUp")  // no welcome sheet
+        // The test lane's own service and catalog (scripts/test-ios-ui.sh).
+        let env = ProcessInfo.processInfo.environment
+        if let u = env["UITEST_SERVICE_URL"], !u.isEmpty { d.set(u, forKey: "uitestServiceURL") }
+        if let u = env["UITEST_CATALOG_URL"], !u.isEmpty { d.set(u, forKey: "uitestCatalogURL") }
         if let g = Bundle.main.object(forInfoDictionaryKey: "TTNGAppGroup") as? String, let gd = UserDefaults(suiteName: g) {
             for k in gd.dictionaryRepresentation().keys { gd.removeObject(forKey: k) }
         }

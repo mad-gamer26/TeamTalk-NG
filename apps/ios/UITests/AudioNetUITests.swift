@@ -63,8 +63,9 @@ final class AudioNetUITests: NGTestCase {
             self.companions().contains { $0["channel"] as? String == "/Lobby/" }
         }
         XCTAssertEqual((Host.user("alice")?["channel"] as? String), "/Lobby/", "my own login is untouched")
-        // Its volume, now that it streams.
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Its volume, now that it streams (back from the device, in the
+        // AudioNet sheet: not the server screen's Disconnect).
+        app.navigationBars["Mac test device"].buttons.element(boundBy: 0).tap()
         let volume = app.sliders.matching(NSPredicate(format: "label BEGINSWITH 'Volume of '")).firstMatch
         waitFor(volume, "the stream's volume while it streams")
         volume.adjust(toNormalizedSliderPosition: 0.5)
@@ -77,7 +78,7 @@ final class AudioNetUITests: NGTestCase {
         let toMac = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Send my microphone to '")).firstMatch
         waitFor(toMac, "the Mac's outputs offered")
         toMac.tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars["Mac test device"].buttons.element(boundBy: 0).tap()
         waitFor(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'My microphone to '")).firstMatch, "the second stream listed")
         Host.until("two volumes", timeout: 10) {
             self.app.sliders.matching(NSPredicate(format: "label BEGINSWITH 'Volume of '")).count == 2

@@ -17,8 +17,8 @@ struct SoundSystemView: View {
         Form {
             Section {
                 Toggle("Play along with other apps", isOn: $mixWithOthers)
-                Toggle("Play through the speaker", isOn: $speaker)
-                Toggle("Use Bluetooth headset microphones", isOn: $bluetoothMic)
+                Toggle("Speaker Output", isOn: $speaker)
+                Toggle("Allow Bluetooth Microphones", isOn: $bluetoothMic)
                 // A menu, with the iPhone's own microphone as a submenu:
                 // bottom (mono), or front or back in stereo. With echo
                 // cancellation (voice chat) it's just the iPhone's
@@ -79,9 +79,9 @@ struct SoundSystemView: View {
                         do { soundTest = try startSoundTest(devices: .default, settings: model.audio) } catch { announce(words(error)) }
                     }
                 }
-                Toggle("Echo cancellation", isOn: $model.audio.echoCancellation)
-                Toggle("Automatic gain control", isOn: $model.audio.gainControl)
-                Toggle("Noise suppression", isOn: $model.audio.noiseSuppression)
+                Toggle("Echo Cancellation", isOn: $model.audio.echoCancellation)
+                Toggle("Automatic Gain Control", isOn: $model.audio.gainControl)
+                Toggle("Noise Suppression", isOn: $model.audio.noiseSuppression)
             } header: {
                 Text("Microphone")
             } footer: {
@@ -95,12 +95,12 @@ struct SoundSystemView: View {
                 Text("To hear the files you stream, turn on your own media file subscription (your entry in the channel list), as on the desktop: the server sends your stream back to you.")
             }
             Section("Levels") {
-                level("Microphone gain", $model.audio.micGain)
-                level("Master volume", $model.audio.outputVolume)
+                level("Input Gain", $model.audio.micGain)
+                level("Master Volume", $model.audio.outputVolume)
                 level("Media file vs. voice volume", $model.audio.mediaVolume)
             }
         }
-        .navigationTitle("Sound system")
+        .navigationTitle("Sound System")
         .navigationBarTitleDisplayMode(.inline)
         // (The session is set up at launch, so iOS lists the microphones;
         // opening this screen doesn't set it up again.)
@@ -202,5 +202,49 @@ struct ClientStatisticsView: View {
 
     private func row(_ l: String, _ v: String) -> some View {
         LabeledContent(l, value: v).accessibilityElement(children: .ignore).accessibilityLabel(l).accessibilityValue(v)
+    }
+}
+
+/// The old app's Audio Controls (the server screen's button): the sound
+/// settings used most, in one place; the rest is in Settings → Sound system.
+struct AudioControlsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("speaker") private var speaker = true
+    @AppStorage("bluetoothMic") private var bluetoothMic = false
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle("Speaker Output", isOn: $speaker)
+                    // Voice Preprocessing in the old app, now its two parts.
+                    Toggle("Echo Cancellation", isOn: $model.audio.echoCancellation)
+                    Toggle("Noise Suppression", isOn: $model.audio.noiseSuppression)
+                    Toggle("Automatic Gain Control", isOn: $model.audio.gainControl)
+                    Toggle("Allow Bluetooth Microphones", isOn: $bluetoothMic)
+                }
+                Section {
+                    level("Master Volume", $model.audio.outputVolume)
+                    level("Input Gain", $model.audio.micGain)
+                    level("Media File Volume", $model.audio.mediaVolume)
+                }
+                Section {
+                    NavigationLink("More Sound Settings") { SoundSystemView() }
+                }
+            }
+            .navigationTitle("Audio Controls")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .onChange(of: speaker) { AudioSession.activate() }
+        .onChange(of: bluetoothMic) { AudioSession.activate() }
+        .onChange(of: model.audio.echoCancellation) { AudioSession.activate() }
+    }
+
+    private func level(_ label: String, _ v: Binding<Int32>) -> some View {
+        NamedSlider(label, int: Binding(get: { Int(v.wrappedValue) }, set: { v.wrappedValue = Int32($0) }), in: 0...100,
+                    spoken: { "\($0) percent" })
     }
 }

@@ -464,13 +464,15 @@ final class ChannelFeed: @unchecked Sendable {
 
     func stop() {
         let client = self.client
+        // On the feeding queue: no block goes in after this. Then logged
+        // out without "ending" the inserted audio first: an end makes the
+        // SDK's audio thread drain its queue and then set a timer on the
+        // connection, which crashed the app (in the SDK) when the logout
+        // closed it meanwhile. Without one, closing just stops that thread.
         queue.async { [self] in
             timer?.cancel()
             timer = nil
-        }
-        Task.detached {
-            try? client.endInsertedAudio()
-            try? client.disconnect()
+            Task.detached { try? client.disconnect() }
         }
     }
 }

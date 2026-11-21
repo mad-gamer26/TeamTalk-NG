@@ -7,7 +7,12 @@ import UserNotifications
 /// empty meaning the live service.
 enum Service {
     static var base: String {
-        (Bundle.main.object(forInfoDictionaryKey: "TTNGServiceURL") as? String)?
+        #if DEBUG
+        // UI tests in parallel lanes: each lane's own service (set at
+        // -UITestReset, kept through the relaunches tt:// links cause).
+        if let o = UserDefaults.standard.string(forKey: "uitestServiceURL"), !o.isEmpty { return o }
+        #endif
+        return (Bundle.main.object(forInfoDictionaryKey: "TTNGServiceURL") as? String)?
             .trimmingCharacters(in: .whitespaces) ?? ""
     }
 

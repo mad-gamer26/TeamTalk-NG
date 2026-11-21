@@ -55,7 +55,7 @@ final class FilesSettingsUITests: NGTestCase {
         Host.call("/talk", ["bot": "bob", "on": "0"])
         more("Stop recording")
         // Settings → Recording → Recordings lists it.
-        app.navigationBars.buttons["Servers"].tap()
+        backToServers()
         app.buttons["Settings"].tap()
         let recording = app.buttons["Recording"]
         if !recording.waitForExistence(timeout: 3) { app.swipeUp() }
@@ -117,7 +117,7 @@ final class FilesSettingsUITests: NGTestCase {
     func testVoiceActivationModeFromSettings() {
         // Connected first (opening a tt:// link starts the app again, as fresh).
         connect()
-        app.navigationBars.buttons["Servers"].tap()
+        backToServers()
         app.buttons["Settings"].tap()
         app.buttons["General"].tap()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Talk mode'")).firstMatch.tap()
@@ -125,10 +125,12 @@ final class FilesSettingsUITests: NGTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         button("Done").tap()
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH '127.0.0.1'")).firstMatch.tap()
-        waitFor(any("Voice activation"), "voice activation on the server screen")
-        waitFor(button("Mute"), "its mute button")
-        button("Mute").tap()
-        waitFor(any("Microphone muted"), "muted")
+        let talk = app.buttons["talk"]
+        waitFor(talk, "its Mute button")
+        Host.until("voice activation on the server screen") { ["Waiting for sound", "Sending"].contains(talk.value as? String ?? "") }
+        XCTAssertEqual(talk.label, "Mute")
+        inRow(talk).tap()
+        Host.until("muted: Unmute") { talk.label == "Unmute" }
     }
 
     func testResetAllSettings() {

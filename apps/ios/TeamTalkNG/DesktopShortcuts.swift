@@ -67,7 +67,7 @@ struct DesktopShortcuts: View {
             ("Broadcast Message", "e", [.command, .shift], .broadcast),
             ("Save Configuration", "s", [.command, .shift], .saveConfig),
             // This app's own: talking, and its tabs (the desktop has neither).
-            ("Talk or stop talking", "p", [.command, .shift], .talk),
+            ("Mute or Unmute", "p", [.command, .shift], .talk),
             ("Channels", "1", .control, .tab(.channels)),
             ("Chat", "2", .control, .tab(.chat)),
             ("Files", "3", .control, .tab(.files)),

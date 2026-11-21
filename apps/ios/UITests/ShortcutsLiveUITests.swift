@@ -22,7 +22,7 @@ final class ShortcutsLiveUITests: NGTestCase {
     func testMuteEveryoneForMeAndTalkMode() {
         connect()
         run("muteEveryone", ["value": "on"], says: "Everyone muted for you")
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Unmute Everyone for Me"), "the More menu following")
         closeMenu()
         run("muteEveryone", ["value": "toggle"], says: "Everyone unmuted for you")
@@ -71,7 +71,7 @@ final class ShortcutsLiveUITests: NGTestCase {
     }
 
     func openLiveActivitySettings() {
-        if app.navigationBars.buttons["Servers"].exists { app.navigationBars.buttons["Servers"].tap() }
+        if app.buttons["More"].exists { backToServers() }
         app.buttons["Settings"].tap()
         let link = app.buttons["Live Activities"]
         if !link.waitForExistence(timeout: 3) || !link.isHittable { app.swipeUp() }

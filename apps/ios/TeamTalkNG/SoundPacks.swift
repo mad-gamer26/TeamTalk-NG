@@ -161,7 +161,10 @@ struct InstalledPack: Codable, Identifiable, Hashable {
 final class SoundStore {
     /// The catalog's packs.json (the build's TTNGCatalogURL in tests).
     static var catalogURL: URL {
-        let set = (Bundle.main.object(forInfoDictionaryKey: "TTNGCatalogURL") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        var set = (Bundle.main.object(forInfoDictionaryKey: "TTNGCatalogURL") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        #if DEBUG
+        if let o = UserDefaults.standard.string(forKey: "uitestCatalogURL"), !o.isEmpty { set = o }
+        #endif
         return URL(string: set.isEmpty ? "https://ttng-soundpacks.mad-gamer.com/packs.json" : set)!
     }
 

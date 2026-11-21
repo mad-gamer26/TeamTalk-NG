@@ -50,11 +50,11 @@ final class PeopleTalkUITests: NGTestCase {
     func testRefreshSoundDevices() {
         connect()
         more("Refresh Sound Devices")
-        let talk = app.buttons["Talk"]
-        waitFor(talk, "the Talk button")
-        talk.tap()
+        let talk = app.buttons["talk"]
+        waitFor(talk, "the Unmute button")
+        inRow(talk).tap()
         Host.until("Bob hearing Alice after the refresh") { (Host.user("alice")?["talking"] as? Bool) == true }
-        talk.tap()
+        inRow(talk).tap()
     }
 
     func testRelayingSaysStopStraightAway() {
@@ -67,7 +67,7 @@ final class PeopleTalkUITests: NGTestCase {
         person("Bob").press(forDuration: 1.2)
         waitFor(button("Relay Their Voice to My Channel"), "Relay again", timeout: 5)
         button("Relay Their Media Files to My Channel").tap()
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Stop relaying"), "Stop relaying in More", timeout: 5)
         button("Stop relaying").tap()
         person("Bob").press(forDuration: 1.2)
@@ -77,13 +77,13 @@ final class PeopleTalkUITests: NGTestCase {
 
     func testMutingSaysUnmuteStraightAway() {
         connect()
-        menu("Mute Their Voice for Me", on: "Bob")
+        menu("Mute", on: "Bob")
         // At once: the next look says Unmute (no muting twice).
         person("Bob").press(forDuration: 1.2)
-        waitFor(button("Unmute Their Voice for Me"), "Unmute Voice next", timeout: 5)
-        button("Unmute Their Voice for Me").tap()
+        waitFor(button("Unmute"), "Unmute Voice next", timeout: 5)
+        button("Unmute").tap()
         person("Bob").press(forDuration: 1.2)
-        waitFor(button("Mute Their Voice for Me"), "Mute Voice again", timeout: 5)
+        waitFor(button("Mute"), "Mute Voice again", timeout: 5)
         button("Mute Their Media Files for Me").tap()
         person("Bob").press(forDuration: 1.2)
         waitFor(button("Unmute Their Media Files for Me"), "Unmute Media File next", timeout: 5)
@@ -94,19 +94,19 @@ final class PeopleTalkUITests: NGTestCase {
         connect()
         // The desktop's keyboard shortcut (Command-M) first.
         shortcut("m", .command)
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Unmute Everyone for Me"), "muted by Command-M", timeout: 5)
         button("Unmute Everyone for Me").tap()
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Mute Everyone for Me"), "Mute everyone next", timeout: 5)
         button("Mute Everyone for Me").tap()
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Unmute Everyone for Me"), "Unmute everyone next", timeout: 5)
         closeMenu()
         // The keys still work after the menu (Command-M unmutes); and the
         // app's own Control-2 opens the chat.
         shortcut("m", .command)
-        app.buttons["More"].tap()
+        moreButton.tap()
         waitFor(button("Mute Everyone for Me"), "unmuted by Command-M after using the menu", timeout: 5)
         closeMenu()
         shortcut("2", .control)
@@ -180,19 +180,20 @@ final class PeopleTalkUITests: NGTestCase {
 
     func testTalkButtonTapTogglesAndHoldTalksWhileHeld() {
         connect()
-        let talk = app.buttons["Talk"]
-        waitFor(talk, "the Talk button")
-        talk.tap()
+        let talk = app.buttons["talk"]
+        waitFor(talk, "the Unmute button")
+        XCTAssertEqual(talk.label, "Unmute")
+        inRow(talk).tap()
         Host.until("Bob hearing Alice") { (Host.user("alice")?["talking"] as? Bool) == true }
-        XCTAssertEqual(talk.value as? String, "Talking")
-        talk.tap()
+        XCTAssertEqual(talk.label, "Mute", "the old app's name while talking")
+        inRow(talk).tap()
         Host.until("Alice stopped") { (Host.user("alice")?["talking"] as? Bool) == false }
         // Held: talking while held, stopped when let go.
         var heardWhileHeld = false
         DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
             heardWhileHeld = (Host.user("alice")?["talking"] as? Bool) == true
         }
-        talk.press(forDuration: 3.5)
+        inRow(talk).press(forDuration: 3.5)
         XCTAssertTrue(heardWhileHeld, "talking while held")
         Host.until("stopped when let go") { (Host.user("alice")?["talking"] as? Bool) == false }
     }
@@ -221,7 +222,7 @@ final class TypingUITests: NGTestCase {
         }
         let bob = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch
         waitFor(bob, "Bob in the tree")
-        action("Send Private Message", on: bob)
+        action("Send private message", on: bob)
         waitFor(any("Bob is typing…"), "Bob is typing")
         let start = Date.now
         let field = app.textFields["Message Bob"]

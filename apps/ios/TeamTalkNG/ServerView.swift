@@ -45,6 +45,8 @@ struct ServerView: View {
     @State private var broadcastText = ""
     @State private var renaming = false
     @State private var newNickname = ""
+    @State private var showAudioControls = false
+    @State private var showAppSettings = false
     /// The row VoiceOver is on (the desktop's selected item, for its shortcuts).
     @AccessibilityFocusState private var voFocus: String?
 
@@ -88,56 +90,40 @@ struct ServerView: View {
             if !connection.isConnected {
                 notConnected
             } else {
-                Picker("Show", selection: $tab) {
-                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                switch tab {
-                case .channels: channels
-                case .chat: ChatView(connection: connection, privateWith: nil)
-                case .files: FilesView(connection: connection)
-                }
-                if connection.hasAudio {
-                    if let st = connection.snapshot?.streaming {
-                        StreamBar(connection: connection, stream: st)
-                    }
-                    TalkBar(connection: connection)
-                }
-                // The desktop's status bar: its latest message.
-                if model.showStatusLine && !connection.statusLine.isEmpty {
-                    Text(connection.statusLine)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.bottom, 4)
-                        .accessibilityLabel("Status: \(connection.statusLine)")
+                // The old app's: Channels, Chat and Files as tabs at the
+                // bottom, its button row above them.
+                TabView(selection: $tab) {
+                    withControls(channels)
+                        .tabItem { Label("Channels", systemImage: "list.bullet") }
+                        .tag(Tab.channels)
+                    withControls(ChatView(connection: connection, privateWith: nil))
+                        .tabItem { Label("Chat", systemImage: "message") }
+                        .tag(Tab.chat)
+                    withControls(FilesView(connection: connection))
+                        .tabItem { Label("Files", systemImage: "folder") }
+                        .tag(Tab.files)
                 }
             }
         }
         .onChange(of: tab) { connection.lastTab = tab.rawValue }
         .navigationTitle(connection.snapshot?.server.name.nonEmpty ?? connection.server.title)
         .navigationBarTitleDisplayMode(.inline)
+        // The old app's Disconnect where Back was; going back still
+        // connected is More's "Server List" (and VoiceOver's scrub).
+        .navigationBarBackButtonHidden(connection.monitorId == nil)
         .toolbar {
             // Monitor mode: the Monitor's own settings and conversations.
             if let id = connection.monitorId {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink("Monitor") { MonitorServerView(serverId: id) }
                 }
-            }
-            if connection.isConnected {
-                ToolbarItem(placement: .topBarTrailing) {
-                    // One list for the menu and its VoiceOver actions (reversed,
-                    // the owner's choice); what's on says its opposite, so
-                    // nothing needs a check mark.
-                    // Redrawn only when its items change (not with every
-                    // second of a streamed file).
-                    MoreMenu(items: moreItems).equatable()
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Disconnect") { connection.disconnect(); connection.leaveScreen() }
                 }
             }
         }
+        .accessibilityAction(.escape) { connection.leaveScreen() }
         .accessibilityAction(.magicTap) { if connection.hasAudio { connection.toggleTalking() } }
         // A hardware keyboard: the desktop's shortcuts (Help lists them).
         .background { DesktopShortcuts(run: perform) }
@@ -233,6 +219,8 @@ struct ServerView: View {
             if connection.rights.admin { AccountsView(connection: connection) } else { MyAccountView(connection: connection) }
         }
         .sheet(isPresented: $showServerVolume) { ServerVolumeView(connection: connection) }
+        .sheet(isPresented: $showAudioControls) { AudioControlsView() }
+        .sheet(isPresented: $showAppSettings) { SettingsView() }
         .sheet(isPresented: $showAudioNet) { AudioNetView(connection: connection) }
         .sheet(isPresented: $showMoveUsers) { MoveUsersView(connection: connection) }
         .sheet(isPresented: $showStats) { ServerStatisticsView(connection: connection) }
@@ -259,6 +247,82 @@ struct ServerView: View {
             Button("Delete", role: .destructive) { if let c = deletingChannel { connection.removeChannel(c) } }
         } message: {
             Text("Its subchannels and files go too.")
+        }
+    }
+
+    /// A tab's screen with the old app's bottom row under it: a streamed
+    /// file's controls, the status line, then the buttons.
+    private func withControls(_ content: some View) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if connection.hasAudio, let st = connection.snapshot?.streaming {
+                    StreamBar(connection: connection, stream: st)
+                }
+                // The desktop's status bar: its latest message.
+                if model.showStatusLine && !connection.statusLine.isEmpty {
+                    Text(connection.statusLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 4)
+                        .accessibilityLabel("Status: \(connection.statusLine)")
+                }
+                controlRow
+            }
+            .background(.bar)
+        }
+    }
+
+    /// The old app's bottom row (build 30), More at the very end.
+    private var controlRow: some View {
+        let snap = connection.snapshot
+        let inChannel = (snap?.myChannelId ?? 0) > 0
+        let audio = connection.hasAudio
+        let rights = connection.rights
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                if audio { MuteButton(connection: connection) }
+                if audio { RowButton("Audio Controls", "speaker.wave.2.fill") { showAudioControls = true } }
+                RowButton("App Settings", "gearshape") { showAppSettings = true }
+                if audio && inChannel {
+                    RowButton("Audio File", "play.rectangle") { pickingStream = true }
+                        .disabled(snap?.streaming != nil)
+                }
+                if audio {
+                    let streaming = model.audioNet.streams.filter { $0.connection === connection }.count
+                    RowButton("AudioNet", "dot.radiowaves.left.and.right", value: streaming == 0 ? nil : "\(streaming) streaming") { showAudioNet = true }
+                }
+                if audio && (inChannel || connection.recording) {
+                    RowButton("Record", connection.recording ? "record.circle.fill" : "record.circle",
+                              value: connection.recording ? "Recording" : nil) {
+                        if connection.recording { connection.stopRecording() } else { connection.startRecording() }
+                    }
+                    .tint(connection.recording ? .red : nil)
+                }
+                if rights.admin {
+                    Menu {
+                        Button("Accounts") { showAccounts = true }
+                        Button("Bans") { showBans = true }
+                        Button("Edit Server Properties") { showServerSettings = true }
+                        if rights.moveUsers { Button("Move Users") { showMoveUsers = true } }
+                        Button("Server Statistics") { showStats = true }
+                        Button("Save Server Configuration") { connection.saveServerConfig() }
+                    } label: {
+                        RowLabel(title: "Manage Server", image: "person.2.badge.gearshape")
+                    }
+                    .accessibilityLabel("Manage Server")
+                } else {
+                    RowButton("View My Information", "person") { showAccounts = true }
+                }
+                if rights.broadcast { RowButton("Broadcast Message", "star.bubble") { broadcasting = true } }
+                // Redrawn only when its items change (not with every
+                // second of a streamed file).
+                MoreMenu(items: moreItems).equatable()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
     }
 
@@ -517,9 +581,9 @@ private struct ChannelRow: View {
     private var menu: [MenuItem] {
         var m: [MenuItem] = []
         if expandable { m.append(.init(expanded ? "Collapse" : "Expand") { setExpanded(!expanded) }) }
-        if !here { m.append(.init("Join Channel", join)) }
-        if here, let connection { m.append(.init("Leave Channel") { connection.leaveChannel() }) }
-        m.append(.init("View Channel Info", info))
+        if !here { m.append(.init("Join channel", join)) }
+        if here, let connection { m.append(.init("Leave channel") { connection.leaveChannel() }) }
+        m.append(.init("View properties", info))
         if let connection {
             m.append(.init("Speak Channel Info") { connection.speakChannelInfo(channel) })
             if here { m.append(.init("Read What's Happening Here") { connection.speakChannelState() }) }
@@ -529,21 +593,21 @@ private struct ChannelRow: View {
         // without the right). Create Channel makes it inside the chosen one
         // only with the right to modify channels (otherwise inside mine: More
         // → New channel).
-        if rights.modifyChannels { m.append(.init("New Channel Inside This One", newSub)) }
+        if rights.modifyChannels { m.append(.init("Create Channel", newSub)) }
         // (Not through the Monitor: it can't change channels.)
         if connection?.isMonitor != true {
-            m.append(.init("Edit Channel", edit))
+            m.append(.init("Edit properties", edit))
             m.append(.init("Delete Channel", delete))
         }
         m.append(.init("Channel Bans", bans))
         if here {
-            if connection?.hasAudio != false { m.append(.init("Stream a File to the Channel", stream)) }
+            if connection?.hasAudio != false { m.append(.init("Stream audio file", stream)) }
             if let connection, connection.hasAudio, let st = snapshot.streaming {
                 m.append(.init("Pause or Resume the File") { connection.pauseStream(st.status != .paused) })
             }
             if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
         }
-        if !picked.isEmpty { m.append(.init("Move the \(picked.count) picked here", movePicked)) }
+        if !picked.isEmpty { m.append(.init("Move users here", movePicked)) }
         // The desktop's Allow All: classroom channels, operators and those who may modify channels.
         if channel.classroom, let connection, connection.canControlTransmit(channel: channel.id) {
             m.append(.init("Classroom: who may send", classroom))
@@ -652,7 +716,40 @@ private struct UserRow: View {
 }
 
 /// Push to talk, or the microphone's state in the other modes.
-private struct TalkBar: View {
+/// One of the bottom row's buttons: an icon over a short name.
+private struct RowLabel: View {
+    let title: String
+    let image: String
+    var body: some View {
+        VStack(spacing: 2) {
+            Image(systemName: image).font(.title3)
+            Text(title).font(.caption2).lineLimit(1)
+        }
+        .frame(minWidth: 64, minHeight: 44)
+        .contentShape(.rect)
+    }
+}
+
+private struct RowButton: View {
+    let title: String
+    let image: String
+    var value: String?
+    let action: () -> Void
+    init(_ title: String, _ image: String, value: String? = nil, action: @escaping () -> Void) {
+        self.title = title; self.image = image; self.value = value; self.action = action
+    }
+    var body: some View {
+        Button(action: action) { RowLabel(title: title, image: image) }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(title)
+            .accessibilityValue(value ?? "")
+    }
+}
+
+/// The old app's Mute/Unmute: "Unmute" starts talking, "Mute" stops. With
+/// push to talk a tap turns it on or off and pressing and holding talks
+/// while held; with voice activation it mutes the microphone.
+private struct MuteButton: View {
     @Environment(AppModel.self) private var model
     let connection: ServerConnection
     @GestureState private var holding = false
@@ -660,24 +757,25 @@ private struct TalkBar: View {
     @State private var pressStart: Date?
     @State private var wasTalking = false
 
+    /// Sending (talking, or a voice-activated microphone not muted).
+    private var on: Bool {
+        model.talkMode == .pushToTalk ? connection.transmitting : !connection.muted
+    }
+
     var body: some View {
+        let title = on ? "Mute" : "Unmute"
+        let label = RowLabel(title: title, image: on ? "mic.fill" : "mic.slash")
+            .foregroundStyle(on ? Color.green : Color.accentColor)
         Group {
             switch model.talkMode {
             case .pushToTalk:
-                Text(connection.transmitting ? "Talking" : "Tap or hold to talk")
-                    .font(.title3.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 64)
-                    .background(connection.transmitting ? Color.green : Color.accentColor, in: .rect(cornerRadius: 14))
-                    .foregroundStyle(.white)
-                    // A tap turns talking on or off; pressing and holding
-                    // talks while held (the owner's choice, instead of the
-                    // desktop's Push To Talk Lock setting).
+                label
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .updating($holding) { _, s, _ in s = true }
                     )
-                    .onChange(of: holding) { _, on in
-                        if on {
+                    .onChange(of: holding) { _, down in
+                        if down {
                             pressStart = .now
                             wasTalking = connection.transmitting
                             // Talking at once, for a hold.
@@ -690,28 +788,19 @@ private struct TalkBar: View {
                         }
                     }
                     .accessibilityElement()
-                    .accessibilityLabel("Talk")
-                    .accessibilityValue(connection.transmitting ? "Talking" : "Not talking")
-                    .accessibilityHint("Double-tap to start or stop talking, or double-tap and hold to talk while held. Magic Tap starts or stops anywhere.")
+                    .accessibilityLabel(title)
+                    .accessibilityHint("Double-tap to start or stop talking, or double-tap and hold to talk while held. Magic Tap does the same anywhere.")
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { connection.setTransmitting(!connection.transmitting) }
             case .voiceActivation:
-                HStack {
-                    Text(micText).frame(maxWidth: .infinity, alignment: .leading)
-                    Button(connection.muted ? "Unmute" : "Mute") { connection.setMicMuted(!connection.muted) }
-                        .buttonStyle(.borderedProminent)
-                        .tint(connection.muted ? .red : .accentColor)
-                        .accessibilityHint("Magic Tap does the same anywhere.")
-                }
-                .frame(minHeight: 64)
+                Button { connection.setMicMuted(!connection.muted) } label: { label }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(connection.muted ? "" : (connection.voiceActive ? "Sending" : "Waiting for sound"))
+                    .accessibilityHint("Magic Tap does the same anywhere.")
             }
         }
-        .padding()
-    }
-
-    private var micText: String {
-        if connection.muted { return "Microphone muted" }
-        return connection.voiceActive ? "Voice activation: sending" : "Voice activation: waiting for sound"
+        .accessibilityIdentifier("talk")
     }
 }
 
@@ -1119,13 +1208,9 @@ extension ServerView {
         let inChannel = (snap?.myChannelId ?? 0) > 0
         let audio = connection.hasAudio
         var m: [MenuItem] = []
-        if inChannel { m.append(.init("Leave channel") { connection.leaveChannel() }) }
         m.append(.init("Status") { showStatus = true })
         m.append(.init("Change nickname") { renaming = true })
         m.append(.init("Join a channel by its path") { joiningByPath = true })
-        if audio && inChannel && snap?.streaming == nil {
-            m.append(.init("Stream a File to the Channel") { pickingStream = true })
-        }
         let question = connection.me?.status == .question
         m.append(.init(question ? "Leave question mode" : "Question mode") {
             connection.setStatus(question ? .available : .question, connection.me?.statusMessage ?? "")
@@ -1138,13 +1223,7 @@ extension ServerView {
             m.append(.init("Volume for this server") { showServerVolume = true })
             // The desktop's Client → Sound Devices → Refresh Sound Devices.
             m.append(.init("Refresh Sound Devices") { Task { await connection.refreshSoundDevices() } })
-            let streaming = model.audioNet.streams.filter { $0.connection === connection }.count
-            m.append(.init(streaming == 0 ? "AudioNet" : "AudioNet (\(streaming) streaming)") { showAudioNet = true })
             if snap?.relaying != nil { m.append(.init("Stop relaying") { connection.setRelay(nil) }) }
-            if inChannel {
-                m.append(connection.recording ? .init("Stop recording") { connection.stopRecording() }
-                                              : .init("Record conversations") { connection.startRecording() })
-            }
         }
         // The desktop's Server menu, as its slotUpdateUI enables it: Create
         // Channel when in a channel (inside mine; the server refuses without
@@ -1153,23 +1232,27 @@ extension ServerView {
         // for operators of my channel and those who may ban.
         let myChannel = snap?.myChannelId ?? 0
         if inChannel {
-            m.append(.init("New channel") { channelSheet = .new(parent: myChannel, temporary: !connection.rights.modifyChannels) })
+            m.append(.init("Create Channel") { channelSheet = .new(parent: myChannel, temporary: !connection.rights.modifyChannels) })
         }
-        if connection.rights.broadcast { m.append(.init("Broadcast message") { broadcasting = true }) }
-        if connection.rights.moveUsers { m.append(.init("Move users") { showMoveUsers = true }) }
+        // An admin's are in the row's Manage Server.
+        let admin = connection.rights.admin
+        if connection.rights.moveUsers && !admin { m.append(.init("Move users") { showMoveUsers = true }) }
         m.append(.init("Online users") { showOnline = true })
         m.append(.init("Connection statistics") { showClientStats = true })
-        m.append(.init("Server settings") { showServerSettings = true })
-        if connection.rights.ban || connection.isOperator(of: myChannel) { m.append(.init("Bans") { showBans = true }) }
-        m.append(.init("User accounts") { showAccounts = true })
-        if connection.rights.admin {
-            m.append(.init("Server statistics") { showStats = true })
-            m.append(.init("Save server configuration") { connection.saveServerConfig() })
+        if !admin {
+            m.append(.init("Server Properties") { showServerSettings = true })
+            if connection.rights.ban || connection.isOperator(of: myChannel) { m.append(.init("Bans") { showBans = true }) }
         }
         m.append(.init("Clear chat history") { connection.clearHistory() })
-        var d = MenuItem("Disconnect") { connection.disconnect(); connection.leaveScreen() }
-        d.destructive = true
-        m.append(d)
+        // Back to the servers, still connected (Disconnect is at the top).
+        m.append(.init("Server List") { connection.leaveScreen() })
+        // Through the Monitor there's no Disconnect at the top (its back
+        // button and Monitor are there).
+        if connection.monitorId != nil {
+            var d = MenuItem("Disconnect") { connection.disconnect(); connection.leaveScreen() }
+            d.destructive = true
+            m.append(d)
+        }
         return m
     }
 
@@ -1265,9 +1348,12 @@ private struct MoreMenu: View, Equatable {
     nonisolated static func == (a: MoreMenu, b: MoreMenu) -> Bool { a.shown == b.shown }
 
     var body: some View {
-        Menu("More", systemImage: "ellipsis.circle") {
+        Menu {
             ForEach(items) { i in Button(i.title, role: i.destructive ? .destructive : nil, action: i.action) }
+        } label: {
+            RowLabel(title: "More", image: "ellipsis.circle")
         }
+        .accessibilityLabel("More")
         .accessibilityActions {
             ForEach(items.reversed()) { i in Button(i.title, action: i.action) }
         }
