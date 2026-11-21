@@ -58,8 +58,11 @@ final class ServerConnection {
     }
 
     /// Who is writing to me privately right now (until when).
-    private(set) var typing: [Int32: Date] = [:]
-    private var lastTypingSent: [Int32: (Bool, Date)] = [:]
+    /// Changed only when someone starts or stops (each "typing" redrew the
+    /// screens); until when is kept apart.
+    private(set) var typing: Set<Int32> = []
+    @ObservationIgnored private var typingUntil: [Int32: Date] = [:]
+    @ObservationIgnored private var lastTypingSent: [Int32: (Bool, Date)] = [:]
 
     /// Tells someone I'm writing (at most every few seconds), or stopped.
     func setTyping(to user: User, _ on: Bool) {
@@ -72,7 +75,11 @@ final class ServerConnection {
     }
 
     func isTyping(_ user: User) -> Bool { isTypingId(user.id) }
-    private func isTypingId(_ id: Int32) -> Bool { (typing[id] ?? .distantPast) > .now }
+    private func stoppedTyping(_ id: Int32) {
+        typingUntil[id] = nil
+        if typing.contains(id) { typing.remove(id) }
+    }
+    private func isTypingId(_ id: Int32) -> Bool { typing.contains(id) }
 
     /// People who logged out while I was connected (Online users).
     private(set) var departed: [(user: User, at: Date)] = []
@@ -1312,6 +1319,8 @@ final class ServerConnection {
             let mine = m.fromUserId == snapshot?.myUserId
             switch m.target {
             case .user:
+                // Their message came: no longer "typing".
+                stoppedTyping(m.fromUserId)
                 lines.append(ChatLine(from: from, text: m.text, privateWith: from, time: .now, kind: .privateMessage, vars: ["user": from, "content": m.text]))
                 // The desktop marks who has written until their messages are read.
                 if focusedConversation != m.fromUserId {
@@ -1470,17 +1479,22 @@ final class ServerConnection {
         case .typing(let userId, let on):
             if on {
                 let first = !isTypingId(userId)
-                typing[userId] = .now.addingTimeInterval(6)
-                if first, let u = snapshot?.users.first(where: { $0.id == userId }) {
-                    sound(.typing)
-                    say(focusedConversation == userId ? .typing : .typingAnywhere, vars(u))
+                // The desktop's: "typing" for ten seconds after each (it
+                // sends one every five while someone writes).
+                typingUntil[userId] = .now.addingTimeInterval(10)
+                if first {
+                    typing.insert(userId)
+                    if let u = snapshot?.users.first(where: { $0.id == userId }) {
+                        sound(.typing)
+                        say(focusedConversation == userId ? .typing : .typingAnywhere, vars(u))
+                    }
                 }
                 Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(6.5))
-                    if (self.typing[userId] ?? .distantPast) <= .now { self.typing[userId] = nil }
+                    try? await Task.sleep(for: .seconds(10.5))
+                    if (self.typingUntil[userId] ?? .distantPast) <= .now { self.stoppedTyping(userId) }
                 }
             } else {
-                typing[userId] = nil
+                stoppedTyping(userId)
             }
         case .voiceActivated(let on):
             voiceActive = on
@@ -1505,6 +1519,9 @@ final class ServerConnection {
             }
         default: break
         }
+        // "Typing" changes nothing the core holds: no new snapshot (it
+        // redrew every screen on each one while someone wrote to me).
+        if case .typing = event { return }
         refresh()
     }
 

@@ -192,6 +192,9 @@ struct PersonView: View {
             // The desktop: kicking and banning from a channel offered for
             // anyone (the server refuses non-operators); from the server and
             // moving need their rights.
+            if isMe && rights.moveUsers {
+                Section("Moderation") { Button("Move user") { dismiss(); move(u) } }
+            }
             if !isMe {
                 Section("Moderation") {
                     if rights.moveUsers {

@@ -70,6 +70,14 @@ struct ServerView: View {
         }
     }
 
+    /// A password channel asks for it, except an administrator's: the
+    /// server tells admins every channel's password (it still wants it).
+    private func joinOrAsk(_ c: Channel) {
+        if !c.hasPassword { connection.join(c) }
+        else if connection.rights.admin && !c.password.isEmpty { connection.join(c, password: c.password) }
+        else { passwordFor = c }
+    }
+
     enum Tab: String, CaseIterable, Identifiable {
         case channels = "Channels", chat = "Chat", files = "Files"
         var id: Self { self }
@@ -307,7 +315,7 @@ struct ServerView: View {
                     case .joinOrLeave where here: connection.leaveChannel()
                     default:
                         if here { break }
-                        if c.hasPassword { passwordFor = c } else { connection.join(c) }
+                        joinOrAsk(c)
                     }
                 }
             case .user(let u, let depth):
@@ -1220,7 +1228,7 @@ extension ServerView {
         case .moveUsers: if let c, connection.rights.moveUsers { connection.movePicked(to: c) }
         case .moveDialog: if connection.rights.moveUsers { showMoveUsers = true }
         case .muteAll: connection.setMuteAll(!(connection.snapshot?.mutedAll ?? false))
-        case .join: if let c, c.id != connection.snapshot?.myChannelId { if c.hasPassword { passwordFor = c } else { connection.join(c) } }
+        case .join: if let c, c.id != connection.snapshot?.myChannelId { joinOrAsk(c) }
         case .leave: connection.leaveChannel()
         case .speakChannelInfo: if let c { connection.speakChannelInfo(c) }
         case .speakChannelState: connection.speakChannelState()

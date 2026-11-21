@@ -204,3 +204,67 @@ final class PeopleTalkUITests: NGTestCase {
         Host.call("/talk", ["bot": "bob", "on": "0"])
     }
 }
+
+/// Someone writing to me ("typing" every half second, faster than the
+/// desktop's five) doesn't freeze the app: a tester's phone froze until
+/// the message came.
+final class TypingUITests: NGTestCase {
+    func testSomeoneTypingToMeDoesNotFreezeTheApp() {
+        connect()
+        let stop = Date.now.addingTimeInterval(20)
+        DispatchQueue.global().async {
+            while Date.now < stop {
+                _ = Host.call("/typing", ["bot": "bob", "to": "alice", "on": "1"])
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            _ = Host.call("/typing", ["bot": "bob", "to": "alice", "on": "0"])
+        }
+        let bob = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Bob'")).firstMatch
+        waitFor(bob, "Bob in the tree")
+        action("Send Private Message", on: bob)
+        waitFor(any("Bob is typing…"), "Bob is typing")
+        let start = Date.now
+        let field = app.textFields["Message Bob"]
+        waitFor(field, "the message field")
+        field.tap()
+        field.typeText("hello while you type")
+        button("Send").tap()
+        Host.until("Bob got it") {
+            Host.messages().contains { ($0["text"] as? String) == "hello while you type" }
+        }
+        let took = Date.now.timeIntervalSince(start)
+        XCTAssertLessThan(took, 12, "writing back took \(took) s while Bob typed")
+    }
+}
+
+/// An administrator: no channel passwords asked, and "Move user" for
+/// anyone, themselves too (a tester couldn't move themselves).
+final class AdminSelfUITests: NGTestCase {
+    func whereIs(_ user: String) -> String? { Host.user(user)?["channel"] as? String }
+    func row(_ name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+    }
+
+    func testAnAdminJoinsAPasswordChannelWithoutBeingAsked() {
+        connect("admin")
+        waitFor(row("Secret"), "Secret listed")
+        row("Secret").tap()
+        Host.until("the app's admin in Secret") { self.whereIs("NoName") == "/Secret/" }
+        XCTAssertFalse(app.alerts["Channel password"].exists, "no password asked")
+    }
+
+    func testAnAdminMovesThemselves() {
+        connect("admin")
+        waitFor(row("NoName"), "my own row")
+        action("Move user", on: row("NoName"))
+        let lobby = app.buttons["Lobby"]
+        waitFor(lobby, "the channels to move to")
+        lobby.tap()
+        Host.until("the app's admin moved to Lobby") { self.whereIs("NoName") == "/Lobby/" }
+        // And someone else, from the same action.
+        action("Move user", on: row("Bob"))
+        waitFor(app.buttons["Class"], "the channels to move Bob to")
+        app.buttons["Class"].tap()
+        Host.until("Bob moved to Class") { (Host.state()["me"] as? String) == "/Class/" }
+    }
+}

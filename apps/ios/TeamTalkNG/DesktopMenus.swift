@@ -137,6 +137,8 @@ struct UserMenu: View {
             m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
             m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
         }
+        // The old app's "Move user": anyone, me too, with the right to move.
+        if rights.moveUsers { m.append(.init("Move user") { open(.move) }) }
         if rights.kick { m.append(.init("Kick From Server") { connection.kick(user, fromChannel: false) }) }
         if rights.ban { m.append(.init("Kick and Ban From Server") { open(.banServer) }) }
         m.append(.init("Subscriptions") { open(.subscriptions) })

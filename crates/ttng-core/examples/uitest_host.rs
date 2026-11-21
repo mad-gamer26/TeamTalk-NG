@@ -9,6 +9,7 @@
 //!   /join?bot=bob&path=/Lobby/&password=
 //!   /say?bot=bob&text=…        to bob's channel
 //!   /pm?bot=bob&to=Alice&text=…  privately, by nickname
+//!   /typing?bot=bob&to=Alice&on=1  the desktop's "typing" to someone
 //!   /broadcast?text=…          as admin
 //!   /talk?bot=bob&on=1         a test tone as bob's voice
 //!   /stream?bot=bob            a three-second tone file to bob's channel
@@ -279,6 +280,18 @@ fn main() {
                         .ok_or(format!("nobody called {}", q["to"]))?
                         .id;
                     ok(c()?.client.send_message(MessageTarget::User(to), &q["text"]))
+                }
+                "/typing" => {
+                    let to = c()?
+                        .client
+                        .snapshot()
+                        .users
+                        .into_iter()
+                        .find(|u| u.nickname == q["to"] || u.username == q["to"])
+                        .ok_or(format!("nobody called {}", q["to"]))?
+                        .id;
+                    let on = q.get("on").map(|v| v == "1").unwrap_or(true);
+                    ok(c()?.client.set_typing(to, on))
                 }
                 "/kick" => {
                     // The admin bot kicks someone (by nickname or username) from
