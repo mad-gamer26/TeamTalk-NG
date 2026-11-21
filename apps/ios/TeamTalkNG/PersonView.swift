@@ -193,13 +193,15 @@ struct PersonView: View {
             // anyone (the server refuses non-operators); from the server and
             // moving need their rights.
             if isMe && rights.moveUsers {
-                Section("Moderation") { Button("Move user") { dismiss(); move(u) } }
+                Section("Moderation") {
+                    Button(connection.pickedToMove.contains(u.id) ? "Unmark User for Moving" : "Mark User for Moving") { connection.togglePicked(u) }
+                }
             }
             if !isMe {
                 Section("Moderation") {
                     if rights.moveUsers {
                         Button("Move to a channel") { dismiss(); move(u) }
-                        Button(connection.pickedToMove.contains(u.id) ? "Don't move with the others" : "Pick to move with others") { connection.togglePicked(u) }
+                        Button(connection.pickedToMove.contains(u.id) ? "Unmark User for Moving" : "Mark User for Moving") { connection.togglePicked(u) }
                     }
                     if u.channelId > 0 { Button("Kick from the channel", role: .destructive) { confirm = .kickChannel } }
                     if rights.kick { Button("Kick from the server", role: .destructive) { confirm = .kickServer } }

@@ -543,7 +543,7 @@ private struct ChannelRow: View {
             }
             if rights.uploadFiles || rights.admin { m.append(.init("Upload File", upload)) }
         }
-        if !picked.isEmpty { m.append(.init("Move users here", movePicked)) }
+        if !picked.isEmpty { m.append(.init("Move Marked Users Here", movePicked)) }
         // The desktop's Allow All: classroom channels, operators and those who may modify channels.
         if channel.classroom, let connection, connection.canControlTransmit(channel: channel.id) {
             m.append(.init("Classroom: who may send", classroom))

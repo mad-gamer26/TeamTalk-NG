@@ -16,7 +16,7 @@ extension ServerConnection {
     func speakUserInfo(_ u: User) {
         let female = u.gender == .female
         var s = "\(u.displayName): " + (u.admin ? (female ? "Administrator" : "Administrator") : "User")
-        if pickedToMove.contains(u.id) { s += ", Selected for move" }
+        if pickedToMove.contains(u.id) { s += ", Marked for moving" }
         if u.operator { s += ", Channel operator" }
         if u.talking { s += ", Talking" }
         switch u.status {
@@ -134,11 +134,14 @@ struct UserMenu: View {
         // The desktop offers these for anyone in a channel (the server
         // refuses unless I'm its operator or may kick and ban).
         if user.channelId > 0 {
-            m.append(.init("Kick user") { connection.kick(user, fromChannel: true) })
+            m.append(.init("Kick From Channel") { connection.kick(user, fromChannel: true) })
             m.append(.init("Kick and Ban From Channel") { open(.banChannel) })
         }
-        // The old app's "Move user": anyone, me too, with the right to move.
-        if rights.moveUsers { m.append(.init("Move user") { open(.move) }) }
+        // Marked here, then a channel's "Move Marked Users Here" (as the old
+        // app): anyone, me too, with the right to move.
+        if rights.moveUsers {
+            m.append(.init(connection.pickedToMove.contains(user.id) ? "Unmark User for Moving" : "Mark User for Moving") { connection.togglePicked(user) })
+        }
         if rights.kick { m.append(.init("Kick From Server") { connection.kick(user, fromChannel: false) }) }
         if rights.ban { m.append(.init("Kick and Ban From Server") { open(.banServer) }) }
         m.append(.init("Subscriptions") { open(.subscriptions) })

@@ -157,8 +157,8 @@ private struct ServerRow: View {
         let up = canMove && index > 0
         let down = canMove && index < count - 1
         NavigationLink(value: server) {
-            // Only what the server is, as the old app: its name (when it
-            // has one) and host:port. Never its state or an error.
+            // What the server is, as the old app: its name (when it has
+            // one) and host:port, and "Connected" while it is (never an error).
             // (A name that is only its host, as from a tt:// link, isn't
             // repeated; the port is plain digits, not "10,333".)
             let named = !server.name.isEmpty && server.name.caseInsensitiveCompare(server.host) != .orderedSame
@@ -167,6 +167,9 @@ private struct ServerRow: View {
                 Text(verbatim: "\(server.host):\(String(server.tcpPort))")
                     .font(named ? .subheadline : .headline)
                     .foregroundStyle(named ? .secondary : .primary)
+                if model.connections[server.id]?.isConnected == true {
+                    Text("Connected").font(.subheadline).foregroundStyle(.green)
+                }
             }
             .accessibilityElement(children: .combine)
         }

@@ -58,7 +58,7 @@ final class ServerConnection {
     func togglePicked(_ u: User) {
         if pickedToMove.contains(u.id) { pickedToMove.remove(u.id) } else { pickedToMove.insert(u.id) }
         // The desktop's "Store User(s) for Move", in plainer words.
-        note(pickedToMove.contains(u.id) ? "\(u.displayName) picked for moving" : "\(u.displayName) no longer picked for moving")
+        note(pickedToMove.contains(u.id) ? "\(u.displayName) marked for moving" : "\(u.displayName) unmarked for moving")
     }
 
     /// Moves everyone picked into a channel.
