@@ -22,6 +22,9 @@ final class MonitorUITests: NGTestCase {
             ((Host.state()["users"] as? [[String: Any]]) ?? []).filter { $0["username"] as? String == "admin" }.count >= 2
         }
         let watched = visibleRow("it on the Monitor screen", timeout: 20)
+        // Listing it made no TeamTalk client (one starts the SDK's sound
+        // system, which took the audio session: earpiece, Bluetooth mono).
+        run("monitorClients", says: "Monitor clients made: 0")
         watched.tap()
         // As if connected: the channels and people.
         waitFor(any("Lobby"), "the channels, through the Monitor", timeout: 30)
@@ -46,6 +49,8 @@ final class MonitorUITests: NGTestCase {
         // Disconnect: as a live one, back to the Monitor screen; opening it again connects.
         more("Disconnect")
         waitFor(app.navigationBars["Monitor"], "back on the Monitor screen")
+        // Its whole screen, through the Monitor, used no TeamTalk client either.
+        run("monitorClients", says: "Monitor clients made: 0")
         watched.tap()
         waitFor(any("Lobby"), "back, through the Monitor", timeout: 30)
     }
@@ -209,7 +214,7 @@ final class MonitorUITests: NGTestCase {
         if button("Done").exists { button("Done").tap() }
         run("announced", says: "Announced")
         // Back to the Monitor screen (the Back button, not the server
-        // screen's own "Monitor" button), and a while there.
+        // screen's own "Monitor Info" button), and a while there.
         let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
         edge.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
         waitFor(app.navigationBars["Monitor"], "the Monitor screen")

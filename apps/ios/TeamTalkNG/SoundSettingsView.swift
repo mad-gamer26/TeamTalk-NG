@@ -76,6 +76,7 @@ struct SoundSystemView: View {
                     } else {
                         AudioSession.micTest = true
                         do { soundTest = try startSoundTest(devices: .default, settings: model.audio) } catch { announce(words(error)) }
+                        AudioSession.enforceSoon()
                     }
                 }
                 Toggle("Echo Cancellation", isOn: $model.audio.echoCancellation)

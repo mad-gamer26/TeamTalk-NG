@@ -146,7 +146,14 @@ struct NumberField: View {
                 .onChange(of: focused) { if !focused { commit() } }
                 .accessibilityLabel(label)
                 .accessibilityHint("Between \(range.lowerBound) and \(range.upperBound).")
+                // Room for the number however long the label ("Set away
+                // status after (seconds)" squeezed it to nothing to tap).
+                .frame(minWidth: 80)
+                .layoutPriority(1)
         }
+        // A tap anywhere on the row starts typing in it.
+        .contentShape(.rect)
+        .onTapGesture { focused = true }
         .onAppear { text = String(value) }
         .onChange(of: value) { if !focused { text = String(value) } }
     }

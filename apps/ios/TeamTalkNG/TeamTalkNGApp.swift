@@ -147,11 +147,51 @@ enum AudioSession {
             _ = configure()
             isSetUp = true
             Recovery.shared.start()
-        } else if isSetUp {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            isSetUp = false
+        } else {
+            release()
         }
     }
+
+    /// Given back: inactive, and as iOS sets it up for an app that never
+    /// touched it (so nothing plays through the earpiece or in Bluetooth's
+    /// mono call profile).
+    @MainActor private static func release() {
+        let s = AVAudioSession.sharedInstance()
+        guard isSetUp || s.category != .soloAmbient || !s.categoryOptions.isEmpty || s.mode != .default else { return }
+        try? s.setActive(false, options: .notifyOthersOnDeactivation)
+        try? s.setCategory(.soloAmbient, mode: .default, options: [])
+        isSetUp = false
+    }
+
+    /// BearWare's SDK sets the session up itself the first time its sound
+    /// system starts (the first TeamTalk client, or the microphone test):
+    /// play-and-record with Bluetooth headset microphones (headphones
+    /// switch to their mono call profile), no speaker (the earpiece), and
+    /// active. Its files aren't ours to change, so this undoes it: given
+    /// back as iOS's untouched default when the rule says no session, or
+    /// set as this app's settings say when it says yes.
+    @MainActor static func enforce() {
+        let s = AVAudioSession.sharedInstance()
+        if wanted {
+            guard isSetUp else { update(); return }
+            if s.category != .playAndRecord || s.categoryOptions != applied.options || s.mode != applied.mode { _ = configure() }
+        } else {
+            release()
+        }
+    }
+
+    /// Checked again a little after something that starts the SDK's sound
+    /// system (it does so on its own thread, a moment later).
+    @MainActor static func enforceSoon() {
+        for delay in [0.3, 1.0, 2.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { enforce() } }
+        }
+    }
+
+    /// What iOS reported right after this app set it up (compared as iOS
+    /// reports it, so a setting it reads back differently isn't set again
+    /// and again).
+    @MainActor private static var applied: (options: AVAudioSession.CategoryOptions, mode: AVAudioSession.Mode) = ([], .default)
 
     /// Something else had the session (dictation, a phone call, Siri,
     /// another app, iOS resetting its audio): taken back and every
@@ -175,7 +215,7 @@ enum AudioSession {
     /// (music, VoiceOver's sounds stay); `echoCancellation`, the voice chat
     /// mode the SDK's Voice-Processing I/O unit needs. False: iOS refused
     /// (a phone call has it).
-    private static func configure(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
+    @MainActor private static func configure(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
                                   bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic"),
                                   mixWithOthers: Bool = UserDefaults.standard.object(forKey: "mixWithOthers") as? Bool ?? true,
                                   echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1) -> Bool {
@@ -185,6 +225,7 @@ enum AudioSession {
         if bluetoothMic { options.insert(.allowBluetoothHFP) }
         if mixWithOthers { options.insert(.mixWithOthers) }
         try? s.setCategory(.playAndRecord, mode: echoCancellation ? .voiceChat : .default, options: options)
+        applied = (s.categoryOptions, s.mode)
         do { try s.setActive(true) } catch { return false }
         let choice = UserDefaults.standard.string(forKey: "preferredInput") ?? ""
         if echoCancellation {

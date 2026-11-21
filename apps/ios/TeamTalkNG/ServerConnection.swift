@@ -35,7 +35,21 @@ final class ServerConnection {
     /// For the desktop's menus (DesktopMenus.swift).
     var appModel: AppModel? { app }
     private let bridge = EventBridge()
-    private let client: TtClient
+    /// The TeamTalk client, made on first use only: making one starts the
+    /// SDK's sound system, which sets the audio session up (earpiece,
+    /// Bluetooth mono). Through the Monitor nothing uses it, so none is made.
+    @ObservationIgnored private var madeClient: TtClient?
+    private var client: TtClient {
+        if let c = madeClient { return c }
+        let c = TtClient(listener: bridge)
+        madeClient = c
+        if monitorId != nil { Self.monitorClientsMade += 1 }
+        // The SDK's sound system may start now and set the session up.
+        AudioSession.enforceSoon()
+        return c
+    }
+    /// TeamTalk clients made for Monitor connections (UI tests: none).
+    private(set) static var monitorClientsMade = 0
     /// For screens that call the core themselves (off the main thread).
     var coreClient: TtClient { client }
     /// People picked to move together (the desktop's "store for move").
@@ -135,7 +149,6 @@ final class ServerConnection {
     init(server: SavedServer, app: AppModel) {
         self.server = server
         self.app = app
-        client = TtClient(listener: bridge)
         bridge.connection = self
     }
 

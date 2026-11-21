@@ -419,6 +419,7 @@ final class ChannelFeed: @unchecked Sendable {
         rate = sampleRate
         self.channels = channels
         client = TtClient(listener: QuietListener())
+        Task { @MainActor in AudioSession.enforceSoon() }
     }
 
     /// Logs in (and joins the channel); a problem when it can't.

@@ -124,7 +124,7 @@ struct ServerView: View {
             // Monitor mode: the Monitor's own settings and conversations.
             if let id = connection.monitorId {
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink("Monitor") { MonitorServerView(serverId: id) }
+                    NavigationLink("Monitor Info") { MonitorServerView(serverId: id) }
                 }
             }
             if connection.isConnected {

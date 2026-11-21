@@ -232,3 +232,21 @@ final class AudioDefaultsUITests: NGTestCase {
         }
     }
 }
+
+/// Settings → General's "Set away status after (seconds)": a long label
+/// squeezed its box to nothing to tap. It has room, and typing works.
+final class AwayFieldUITests: NGTestCase {
+    func testTheAwayFieldCanBeTappedAndTypedIn() {
+        app.buttons["Settings"].tap()
+        app.buttons["General"].tap()
+        let field = app.textFields["Set away status after (seconds)"]
+        waitFor(field, "the away field")
+        XCTAssertGreaterThanOrEqual(field.frame.width, 60, "room to tap: \(field.frame)")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "45")
+        // Done typing: a tap elsewhere (the number pad has no Return).
+        app.navigationBars.firstMatch.staticTexts.firstMatch.tap()
+        Host.until("45 seconds kept") { (field.value as? String) == "45" }
+        XCTAssertTrue(app.textFields["Status message during inactivity"].exists, "its message field shown")
+    }
+}

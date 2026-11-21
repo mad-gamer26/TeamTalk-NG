@@ -220,9 +220,22 @@ extension ShortcutActions {
                 // Whether this app has the audio session set up now, and
                 // how often it took it back.
                 let a = AVAudioSession.sharedInstance()
+                let o = a.categoryOptions
+                let how = [o.contains(.defaultToSpeaker) ? "speaker" : "earpiece", o.contains(.allowBluetoothHFP) ? "bluetooth mono" : "bluetooth stereo"].joined(separator: ", ")
                 said = AudioSession.isSetUp
-                    ? "Audio session: set up (\(a.category == .playAndRecord ? "call" : a.category.rawValue)), resumed \(AudioSession.resumes)"
-                    : "Audio session: not set up"
+                    ? "Audio session: set up (\(a.category == .playAndRecord ? "call" : a.category.rawValue)), resumed \(AudioSession.resumes), \(how)"
+                    : "Audio session: not set up (\(a.category == .soloAmbient ? "default" : a.category.rawValue))"
+            case "monitorClients":
+                said = "Monitor clients made: \(ServerConnection.monitorClientsMade)"
+            case "sdkSession":
+                // As BearWare's SDK sets it when its sound system starts (on a
+                // phone; it skips this in the Simulator).
+                let a = AVAudioSession.sharedInstance()
+                try? a.setCategory(.playAndRecord, options: [.allowBluetoothHFP])
+                try? a.setActive(true)
+                // What a new TeamTalk client does after this.
+                AudioSession.enforceSoon()
+                said = "SDK session set"
             case "interruptAudio":
                 // As if dictation or a call took the session and gave it back.
                 AudioSession.Recovery.shared.simulateInterruption()

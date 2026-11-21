@@ -342,6 +342,8 @@ final class AppModel {
         // when they end, see AudioSession.Recovery.
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
             let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            // The SDK (or anything) set the session: back to what the rule says.
+            if reason == .categoryChange { MainActor.assumeIsolated { AudioSession.enforce() } }
             let text: String?
             switch reason {
             case .newDeviceAvailable:

@@ -142,12 +142,12 @@ final class AudioSessionUITests: NGTestCase {
     /// The owner's rule: no audio session at launch; set up once a server
     /// is connected, given back when it disconnects.
     func testSetUpOnlyWhileConnected() {
-        run("audioSession", says: "Audio session: not set up")
+        run("audioSession", says: "Audio session: not set up (default)")
         connect("alice")
         run("audioSession", says: "Audio session: set up (call)")
         more("Disconnect")
         Thread.sleep(forTimeInterval: 2)
-        run("audioSession", says: "Audio session: not set up")
+        run("audioSession", says: "Audio session: not set up (default)")
     }
 
     /// Settings → Sound System sets it up while it's on screen only.
@@ -157,7 +157,29 @@ final class AudioSessionUITests: NGTestCase {
         waitFor(app.navigationBars["Sound System"], "Sound System")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         button("Done").tap()
-        run("audioSession", says: "Audio session: not set up")
+        run("audioSession", says: "Audio session: not set up (default)")
+    }
+
+    /// The Monitor screen (its TeamTalk clients start the SDK's sound
+    /// system, which sets the session up itself: earpiece, Bluetooth mono):
+    /// no session after it, as iOS's default.
+    func testTheMonitorLeavesNoSession() {
+        openMonitor()
+        Thread.sleep(forTimeInterval: 3)
+        leaveMonitor()
+        run("audioSession", says: "Audio session: not set up (default)")
+    }
+
+    /// The SDK's own setup undone: given back when nothing needs it, this
+    /// app's settings (the speaker, Bluetooth stereo) while connected.
+    func testTheSDKsSessionIsUndone() {
+        run("sdkSession", says: "SDK session set")
+        Thread.sleep(forTimeInterval: 1)
+        run("audioSession", says: "Audio session: not set up (default)")
+        connect("alice")
+        run("sdkSession", says: "SDK session set")
+        Thread.sleep(forTimeInterval: 1)
+        run("audioSession", says: "Audio session: set up (call), resumed 0, speaker, bluetooth stereo")
     }
 
     /// Something takes the session (dictation, a call) and gives it back:

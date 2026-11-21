@@ -28,8 +28,9 @@ struct MonitorListView: View {
                 }
                 ForEach(monitor.servers, id: \.id) { s in
                     NavigationLink {
-                        // As if connected: the server screen, from the Monitor.
-                        ServerView(connection: model.monitorConnection(for: s))
+                        // As if connected: the server screen, from the Monitor
+                        // (made when opened, not when the list is drawn).
+                        MonitoredServerScreen(server: s)
                     } label: {
                         VStack(alignment: .leading) {
                             Text(verbatim: s.name).font(.headline)
@@ -796,4 +797,12 @@ struct MonitorDefaultsView: View {
         .onChange(of: d.statusMessage) { MonitorStore.defaults = d }
         .onChange(of: d.gender) { MonitorStore.defaults = d }
     }
+}
+
+/// A monitored server's screen, its connection made only once it's opened
+/// (a NavigationLink builds its destination when the list is drawn).
+private struct MonitoredServerScreen: View {
+    @Environment(AppModel.self) private var model
+    let server: MonitorServer
+    var body: some View { ServerView(connection: model.monitorConnection(for: server)) }
 }
