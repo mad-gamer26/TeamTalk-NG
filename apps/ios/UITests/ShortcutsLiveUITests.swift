@@ -135,3 +135,16 @@ final class ShortcutServersUITests: NGTestCase {
         run("shortcutServers", ["restart": "1"], says: "Shortcut servers: 1 of 1")
     }
 }
+
+/// No call audio (or microphone) until a server is connected: the phone
+/// switched to call mode as soon as the app opened before.
+final class AudioSessionUITests: NGTestCase {
+    func testCallAudioOnlyWhileConnected() {
+        run("audioSession", says: "Audio session: playback")
+        connect("alice")
+        run("audioSession", says: "Audio session: call")
+        more("Disconnect")
+        Thread.sleep(forTimeInterval: 2)
+        run("audioSession", says: "Audio session: playback")
+    }
+}

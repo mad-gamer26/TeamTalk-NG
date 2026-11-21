@@ -160,6 +160,21 @@ final class MonitorStore {
     }
     #endif
 
+    #if DEBUG
+    /// UI test: TeamTalk NG's Monitor forgot this phone (its token no
+    /// longer works): the next call signs up again and works.
+    func forgottenRegistrationTest() async -> String {
+        guard own == nil, hosted else { return "Forgotten registration: not using TeamTalk NG's Monitor" }
+        _ = await call(registering: true, { try $0.servers() })
+        Passwords.setSecret("no-longer-known", Self.hostedService, "token")
+        let r = await call({ try $0.servers() })
+        let ok: Bool
+        if case .success? = r { ok = true } else { ok = false }
+        let token = Passwords.secret(Self.hostedService, "token")
+        return "Forgotten registration: works \(ok), signed up again \(!token.isEmpty && token != "no-longer-known")"
+    }
+    #endif
+
     /// Moves every server `from` watches to `to`: added there first (with
     /// its passwords and conversations, from `export`; an older Monitor
     /// without it gives its settings, and the password saved on this
@@ -247,8 +262,20 @@ final class MonitorStore {
     @discardableResult
     func call<T: Sendable>(registering: Bool = false, _ f: @escaping @Sendable (MonitorClient) throws -> T) async -> Result<T, Error>? {
         guard let c = await client(registering: registering) else { return nil }
-        let r = await Task.detached { Result { try f(c) } }.value
-        if case .failure(let e) = r { problem = NGAccountStore.words(e) }
+        var r = await Task.detached { Result { try f(c) } }.value
+        // TeamTalk NG's Monitor no longer knows this phone (its data was
+        // deleted, or the registration ended elsewhere): forget the dead
+        // registration, sign up again, and try once more (it looped on
+        // "no longer knows this phone" before).
+        if case .failure(let e) = r, case .SignedOut = e as? NgError, own == nil, hosted {
+            Passwords.setSecret("", Self.hostedService, "token")
+            Passwords.setSecret("", Self.hostedService, "push key")
+            if Service.hasPushKey(for: "hosted") { Service.forgetPushKey() }
+            if let fresh = await hostedClient(registering: true) {
+                r = await Task.detached { Result { try f(fresh) } }.value
+            }
+        }
+        if case .failure(let e) = r { problem = NGAccountStore.words(e) } else { problem = nil }
         return r
     }
 

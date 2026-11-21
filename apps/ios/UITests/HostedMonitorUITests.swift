@@ -117,3 +117,23 @@ final class FailedMoveUITests: NGTestCase {
         XCTAssertEqual(done.label, "Failed move: refused true, key kept true, hosted registration left false")
     }
 }
+
+/// TeamTalk NG's Monitor forgot this phone (its data deleted): the app
+/// signs up again by itself, instead of "no longer knows this phone" in a loop.
+final class ForgottenRegistrationUITests: NGTestCase {
+    override var pairedWithMonitor: Bool { false }
+
+    func testAForgottenPhoneSignsUpAgain() {
+        openMonitor()
+        let use = app.buttons["monitor-use-hosted"]
+        for _ in 0..<5 where !(use.exists && use.isHittable) { app.swipeUp() }
+        use.tap()
+        app.buttons.matching(NSPredicate(format: "label == %@", "Use TeamTalk NG's Monitor")).allElementsBoundByIndex.last { $0.isHittable }?.tap()
+        Thread.sleep(forTimeInterval: 1)
+        leaveMonitor()
+        run("forgottenRegistration", says: "Forgotten registration:")
+        let done = app.staticTexts.matching(NSPredicate(format: "identifier == 'uitest-action-result' AND label BEGINSWITH 'Forgotten registration: works'")).firstMatch
+        waitFor(done, "the test's result", timeout: 30)
+        XCTAssertEqual(done.label, "Forgotten registration: works true, signed up again true")
+    }
+}

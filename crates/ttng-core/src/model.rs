@@ -682,7 +682,7 @@ impl Default for AudioSettings {
     fn default() -> Self {
         AudioSettings {
             echo_cancellation: false,
-            gain_control: true,
+            gain_control: false,
             noise_suppression: true,
             mic_gain: 50,
             output_volume: 50,

@@ -1,3 +1,4 @@
+import AVFoundation
 import Security
 import UserNotifications
 import Foundation
@@ -215,6 +216,16 @@ extension ShortcutActions {
                 }
                 let shared = Service.group?.array(forKey: "shortcutServers")?.count ?? 0
                 said = "Shortcut servers: \(shared) of \(AppModel.shared?.servers.count ?? -1)"
+            case "audioSession":
+                // What the audio session is set to now.
+                let a = AVAudioSession.sharedInstance()
+                said = "Audio session: \(a.category == .playAndRecord ? "call" : a.category == .playback ? "playback" : a.category.rawValue)"
+            case "forgottenRegistration":
+                Task { @MainActor in
+                    guard let m = AppModel.shared else { return }
+                    m.uiTestActionResult = await m.monitor.forgottenRegistrationTest()
+                }
+                said = "Forgotten registration: started"
             case "failedMove":
                 Task { @MainActor in
                     guard let m = AppModel.shared else { return }

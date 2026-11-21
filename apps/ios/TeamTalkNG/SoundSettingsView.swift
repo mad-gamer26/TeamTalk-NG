@@ -72,9 +72,10 @@ struct SoundSystemView: View {
                 // the speaker, with these settings.
                 Button(soundTest == nil ? "Test Selected" : "Stop Test") {
                     if let t = soundTest {
-                        t.stop(); soundTest = nil
+                        t.stop(); soundTest = nil; AudioSession.activate()
                     } else {
-                        AudioSession.activate()
+                        // The microphone test needs the call-style session.
+                        AudioSession.activate(call: true)
                         do { soundTest = try startSoundTest(devices: .default, settings: model.audio) } catch { announce(words(error)) }
                     }
                 }
@@ -103,7 +104,7 @@ struct SoundSystemView: View {
         .navigationBarTitleDisplayMode(.inline)
         // (The session is set up at launch, so iOS lists the microphones;
         // opening this screen doesn't set it up again.)
-        .onDisappear { soundTest?.stop(); soundTest = nil }
+        .onDisappear { if soundTest != nil { soundTest?.stop(); soundTest = nil; AudioSession.activate() } }
         .onChange(of: speaker) { AudioSession.activate() }
         .onChange(of: bluetoothMic) { AudioSession.activate() }
         .onChange(of: preferredInput) { AudioSession.activate() }

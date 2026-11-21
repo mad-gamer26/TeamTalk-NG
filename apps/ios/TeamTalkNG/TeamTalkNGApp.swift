@@ -124,8 +124,20 @@ enum AudioSession {
     static func activate(speaker: Bool = UserDefaults.standard.object(forKey: "speaker") as? Bool ?? true,
                          bluetoothMic: Bool = UserDefaults.standard.bool(forKey: "bluetoothMic"),
                          mixWithOthers: Bool = UserDefaults.standard.object(forKey: "mixWithOthers") as? Bool ?? true,
-                         echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1) {
+                         echoCancellation: Bool = (UserDefaults.standard.dictionary(forKey: "audio")?["echo"] as? Int) == 1,
+                         call: Bool = false) {
         let s = AVAudioSession.sharedInstance()
+        // Not on a server: plain playback for sounds and speech (no
+        // microphone, no call audio: the phone switched to call mode as soon
+        // as the app opened, with echo cancellation on). The call-style
+        // session (talking, listening, echo cancellation) only while
+        // connected.
+        let live = MainActor.assumeIsolated { AppModel.shared?.connections.values.contains { $0.needsCallAudio } ?? false }
+        if !live && !call {
+            try? s.setCategory(.playback, mode: .default, options: mixWithOthers ? [.mixWithOthers] : [])
+            try? s.setActive(true)
+            return
+        }
         var options: AVAudioSession.CategoryOptions = [.allowBluetoothA2DP]
         if speaker { options.insert(.defaultToSpeaker) }
         if bluetoothMic { options.insert(.allowBluetoothHFP) }

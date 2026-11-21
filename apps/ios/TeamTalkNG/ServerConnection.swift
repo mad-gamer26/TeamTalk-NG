@@ -77,7 +77,15 @@ final class ServerConnection {
     /// People who logged out while I was connected (Online users).
     private(set) var departed: [(user: User, at: Date)] = []
 
-    private(set) var state: ConnectionState = .disconnected
+    private(set) var state: ConnectionState = .disconnected {
+        didSet {
+            // Connected (or not) any more: the audio session follows (call
+            // audio only while connected; plain playback otherwise).
+            if (oldValue == .disconnected) != (state == .disconnected), monitorId == nil { AudioSession.activate() }
+        }
+    }
+    /// Connected, or on the way: what the call-style audio session is for.
+    var needsCallAudio: Bool { monitorId == nil && (state != .disconnected || busy) }
     private(set) var snapshot: Snapshot?
     private(set) var lines: [ChatLine] = [] {
         didSet {
